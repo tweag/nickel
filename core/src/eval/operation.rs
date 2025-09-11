@@ -22,7 +22,7 @@ use crate::{
     cache::InputFormat,
     bytecode::value::{
         Array, ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody,
-        ValueContent, ValueContentRef, ValueContentRefMut,
+        TermBody, TypeBody, ValueContent, ValueContentRef, ValueContentRefMut,
     },
     closurize::Closurize,
     error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
@@ -1019,7 +1019,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                             // Unmatched groups get turned into empty strings. It
                                             // might be nicer to have a 'Some s / 'None instead,
                                             // but that would be an API break.
-                                            .map(|s| NickelValue::string_posess(
+                                            .map(|s| NickelValue::string_posless(
                                                 s.unwrap_or_default()
                                             ))
                                     ),
@@ -1074,21 +1074,25 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ignore_not_exported,
             } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
-                fn seq_terms<I>(terms: I, pos: PosIdx, cont: NickelValue) -> NickelValue
+                fn seq_terms<I>(
+                    pos_table: &mut PosTable,
+                    terms: I,
+                    pos: PosIdx,
+                    cont: NickelValue,
+                ) -> NickelValue
                 where
                     I: Iterator<Item = NickelValue>,
                 {
                     terms
                         .fold(cont, |acc, t| mk_app!(mk_term::op1(UnaryOp::Seq, t), acc))
-                        .with_pos_idx(&mut self.pos_table, pos)
+                        .with_pos_idx(pos_table, pos)
                 }
 
                 match value.content() {
                     // TODO[RFC007]: it's intentional that we don't want to handle empty arrays here
-                    Term::Record(lens) => {
-                        let fields = lens
-                            .take()
-                            .0
+                    ValueContent::Record(lens) => {
+                        let record = lens.take().0;
+                        let fields = record
                             .fields
                             .into_iter()
                             .filter(|(_, field)| {
@@ -1118,7 +1122,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos.to_inherited_block(&mut self.pos_table),
                         );
 
-                        Ok(seq_terms(terms, pos_op, cont).into())
+                        Ok(seq_terms(&mut self.pos_table, terms, pos_op, cont).into())
                     }
                     //TODO[RFC007] We intentionally do NOT want to handle empty arrays here
                     ValueContent::Array(lens) => {
@@ -1150,123 +1154,131 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .collect::<Array>();
 
                         let terms = ts.clone().into_iter();
-                        let cont = NickelValue::array(ts, Vec::new(), pos_inh);
+                        let cont = NickelValue::array_force_pos(
+                            &mut self.pos_table,
+                            ts,
+                            Vec::new(),
+                            pos_inh,
+                        );
 
-                        Ok(seq_terms(terms, pos_op, cont).into())
+                        Ok(seq_terms(&mut self.pos_table, terms, pos_op, cont).into())
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
-                    Term::EnumVariant { tag, arg, attrs } => {
-                        let arg = mk_term::op1(
-                            UnaryOp::Force {
-                                ignore_not_exported,
-                            },
-                            arg,
-                        )
-                        .closurize(&mut self.context.cache, env.clone());
-                        let cont = NickelValue::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.clone(),
-                                attrs,
-                            },
-                            pos.into_inherited(),
-                        );
+                    ValueContent::EnumVariant(lens) => {
+                        let EnumVariantBody { tag, arg } = lens.take();
 
-                        Ok(Closure {
-                            body: seq_terms(std::iter::once(arg), pos_op, cont),
-                            env,
-                        })
+                        if let Some(arg) = arg {
+                            let arg = mk_term::op1(
+                                UnaryOp::Force {
+                                    ignore_not_exported,
+                                },
+                                arg,
+                            )
+                            .closurize(&mut self.context.cache, env.clone());
+
+                            let cont = NickelValue::enum_variant(
+                                tag,
+                                Some(arg.clone()),
+                                pos.to_inherited_block(&mut self.pos_table),
+                            );
+
+                            Ok(Closure {
+                                value: seq_terms(
+                                    &mut self.pos_table,
+                                    std::iter::once(arg),
+                                    pos_op,
+                                    cont,
+                                ),
+                                env,
+                            })
+                        } else {
+                            Ok(Closure {
+                                value: NickelValue::enum_tag(tag, pos_op_inh).into(),
+                                env,
+                            })
+                        }
                     }
-                    _ => Ok(Closure {
-                        body: NickelValue { term: t, pos },
+                    lens => Ok(Closure {
+                        value: lens.restore(),
                         env,
                     }),
                 }
             }
-            UnaryOp::RecDefault => {
-                Ok(RecPriority::Bottom.propagate_in_term(&mut self.context.cache, value, env, pos))
-            }
-            UnaryOp::RecForce => {
-                Ok(RecPriority::Top.propagate_in_term(&mut self.context.cache, value, env, pos))
-            }
-            UnaryOp::RecordEmptyWithTail => match_sharedterm!(match (t) {
-                Term::Record(r) => {
-                    let mut empty = RecordData::empty();
-                    empty.sealed_tail = r.sealed_tail;
-                    Ok(Closure {
-                        body: NickelValue::new(Term::Record(empty), pos_op.into_inherited()),
-                        env,
-                    })
+            UnaryOp::RecordFreeze => {
+                // If the record is already frozen, there's nothing to do.
+                if matches!(value.as_record(), Some(RecordBody(record)) if record.attrs.frozen) {
+                    // A frozen record shouldn't have a polymorphic tail
+                    debug_assert!(value.as_record().unwrap().0.sealed_tail.is_none());
+
+                    return Ok(Closure { value, env });
                 }
-                _ => mk_type_error!("Record"),
-            }),
-            UnaryOp::RecordFreeze => match_sharedterm!(match (t) {
-                Term::Record(record) => {
-                    let mut record = record;
 
-                    if record.attrs.frozen {
-                        // A frozen record shouldn't have a polymorphic tail
-                        debug_assert!(record.sealed_tail.is_none());
+                // Ditto if the record is empty. We can also drop the environment.
+                if value.is_empty_record() {
+                    return Ok(value.into());
+                }
 
-                        return Ok(Closure {
-                            body: NickelValue::new(Term::Record(record), pos),
+                match value.content() {
+                    ValueContent::Record(lens) => {
+                        let mut record = lens.take().0;
+
+                        // It's not clear what the semantics of freezing a record with a sealed tail
+                        // would be, as their might be dependencies between the sealed part and the
+                        // unsealed part. Merging is disallowed on records with tail, so we disallow
+                        // freezing as well.
+                        if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                            return self.throw_with_ctxt(
+                                EvalErrorData::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::Freeze,
+                                    evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                    label,
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                },
+                            );
+                        }
+
+                        let fields = record
+                            .fields
+                            .into_iter()
+                            .map(|(id, field)| {
+                                let value = field.value.map(|value| {
+                                    let pos = value.pos_idx();
+                                    RuntimeContract::apply_all(value, field.pending_contracts, pos)
+                                });
+
+                                let field = Field {
+                                    value,
+                                    pending_contracts: Vec::new(),
+                                    ..field
+                                }
+                                .closurize(&mut self.cache, env.clone());
+
+                                (id, field)
+                            })
+                            .collect();
+
+                        let attrs = record.attrs.frozen();
+
+                        Ok(Closure {
+                            value: NickelValue::record_force_pos(
+                                &mut self.pos_table,
+                                RecordData {
+                                    fields,
+                                    attrs,
+                                    sealed_tail: None,
+                                },
+                                pos_op_inh,
+                            ),
                             env,
-                        });
-                    }
-
-                    // It's not clear what the semantics of freezing a record with a sealed tail
-                    // would be, as their might be dependencies between the sealed part and the
-                    // unsealed part. Merging is disallowed on records with tail, so we disallow
-                    // freezing as well.
-                    if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                        return Err(EvalErrorData::IllegalPolymorphicTailAccess {
-                            action: IllegalPolymorphicTailAction::Freeze,
-                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                            label,
-                            call_stack: std::mem::take(&mut self.call_stack),
-                        });
-                    }
-
-                    let fields = record
-                        .fields
-                        .into_iter()
-                        .map(|(id, field)| {
-                            let value = field.value.map(|value| {
-                                let pos = value.pos;
-                                RuntimeContract::apply_all(value, field.pending_contracts, pos)
-                            });
-
-                            let field = Field {
-                                value,
-                                pending_contracts: Vec::new(),
-                                ..field
-                            }
-                            .closurize(&mut self.context.cache, env.clone());
-
-                            (id, field)
                         })
-                        .collect();
-
-                    let attrs = record.attrs.frozen();
-
-                    Ok(Closure {
-                        body: NickelValue::new(
-                            Term::Record(RecordData {
-                                fields,
-                                attrs,
-                                sealed_tail: None,
-                            }),
-                            pos_op.into_inherited(),
-                        ),
-                        env,
-                    })
+                    }
+                    _ => mk_type_error!("Record"),
                 }
-                _ => mk_type_error!("Record"),
-            }),
+            }
             UnaryOp::Trace => {
                 if let Some(s) = value.as_string() {
-                    let _ = writeln!(self.context.trace, "std.trace: {s}");
+                    let _ = writeln!(self.context.trace, "std.trace: {}", s.0);
                     Ok(())
                 } else {
                     mk_type_error!("String")
@@ -1275,21 +1287,25 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 self.stack
                     .pop_arg(&self.context.cache)
                     .map(|(next, ..)| next)
-                    .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("trace"), pos_op))
+                    .ok_or_else(|| {
+                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                            2,
+                            String::from("trace"),
+                            pos_op,
+                        ))
+                    })
             }
-            UnaryOp::LabelPushDiag => {
-                match_sharedterm!(match (t) {
-                    Term::Lbl(label) => {
-                        let mut label = label;
-                        label.push_diagnostic();
-                        Ok(Closure {
-                            body: NickelValue::new(Term::Lbl(label), pos),
-                            env,
-                        })
-                    }
-                    _ => mk_type_error!("Label"),
-                })
-            }
+            UnaryOp::LabelPushDiag => match value.content() {
+                ValueContent::Label(lens) => {
+                    let mut label = lens.take().0;
+                    label.push_diagnostic();
+                    Ok(Closure {
+                        value: NickelValue::label(label, pos),
+                        env,
+                    })
+                }
+                _ => mk_type_error!("Label"),
+            },
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Some(s) = value.as_string() {
@@ -1320,7 +1336,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumGetArg => {
-                if let Term::EnumVariant { arg, .. } = &*value {
+                if let Some(EnumVariantBody { arg: Some(arg), .. }) = value.as_enum_variant() {
                     Ok(Closure {
                         value: arg.clone(),
                         env,
@@ -1330,67 +1346,70 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumMakeVariant => {
-                let Term::Str(tag) = &*value else {
+                let Some(tag) = value.as_string() else {
                     return mk_type_error!("String");
                 };
 
-                let (arg_clos, _) = self.stack.pop_arg(&self.contex.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
+                let (arg_clos, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("enum/make_variant"),
+                        pos,
+                    ))
                 })?;
-                let arg_pos = arg_clos.value.pos;
-                let arg = NickelValue::new(Term::Closure(Thunk::new(arg_clos)), arg_pos);
+                let arg_pos = arg_clos.value.pos_idx();
+                let arg = NickelValue::thunk(Thunk::new(arg_clos), arg_pos);
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::EnumVariant {
-                        tag: LocIdent::new(tag).with_pos(pos),
-                        arg,
-                        attrs: EnumVariantAttrs { closurized: true },
-                    },
+                Ok(NickelValue::enum_variant(
+                    LocIdent::new(tag.0).with_pos(self.pos_table.get(pos)),
+                    Some(arg),
                     pos_op_inh,
-                )))
+                )
+                .into())
             }
-            UnaryOp::EnumGetTag => match &*value {
-                Term::EnumVariant { tag, .. } | Term::Enum(tag) => Ok(Closure::atomic_closure(
-                    NickelValue::new(Term::Enum(*tag), pos_op_inh),
-                )),
+            UnaryOp::EnumGetTag => match value.as_enum_variant() {
+                Some(EnumVariantBody { tag, .. }) => {
+                    Ok(NickelValue::enum_tag(*tag, pos_op_inh).into())
+                }
                 _ => mk_type_error!("Enum"),
             },
-            UnaryOp::EnumIsVariant => {
-                let result = matches!(&*value, Term::EnumVariant { .. });
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Bool(result),
-                    pos_op_inh,
-                )))
-            }
+            UnaryOp::EnumIsVariant => Ok(NickelValue::bool_value(
+                value.as_enum_variant().is_some(),
+                self.pos_table.make_inline(pos_op_inh),
+            )
+            .into()),
             UnaryOp::PatternBranch => {
                 // The continuation, that we must evaluate in the augmented environment.
                 let (mut cont, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(2, String::from("with_env"), pos_op)
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        2,
+                        String::from("with_env"),
+                        pos_op,
+                    ))
                 })?;
 
-                match_sharedterm!(match (t) {
-                    Term::Record(data) => {
+                match value.content() {
+                    ValueContent::Record(lens) => {
+                        let data = lens.take().0;
+
                         for (id, field) in data.fields {
                             debug_assert!(field.metadata.is_empty());
 
                             if let Some(value) = field.value {
-                                match_sharedterm!(match (value.term) {
-                                    Term::Closure(idx) => {
-                                        cont.env.insert(id.ident(), idx);
-                                    }
-                                    _ => {
-                                        cont.env.insert(
-                                            id.ident(),
-                                            self.context.cache.add(
-                                                Closure {
-                                                    body: value,
-                                                    env: env.clone(),
-                                                },
-                                                BindingType::Normal,
-                                            ),
-                                        );
-                                    }
-                                });
+                                if let Some(idx) = value.as_thunk() {
+                                    cont.env.insert(id.ident(), idx.0.clone());
+                                } else {
+                                    cont.env.insert(
+                                        id.ident(),
+                                        self.context.cache.add(
+                                            Closure {
+                                                value,
+                                                env: env.clone(),
+                                            },
+                                            BindingType::Normal,
+                                        ),
+                                    );
+                                }
                             } else {
                                 // This should not really happen, as `with_env` is intended to be
                                 // used with very simple records: no metadata, no recursive fields,
@@ -1402,24 +1421,25 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Ok(cont)
                     }
                     _ => mk_type_error!("Record"),
-                })
+                }
             }
             UnaryOp::ContractCustom => {
-                let contract = if let Term::Fun(..) | Term::Match(_) = &*value {
-                    value.closurize(&mut self.context.cache, env)
-                } else {
-                    return mk_type_error!("Function or MatchExpression");
-                };
+                let contract =
+                    if let Some(TermBody(Term::Fun(..) | Term::Match(_))) = value.as_term() {
+                        value.closurize(&mut self.context.cache, env)
+                    } else {
+                        return mk_type_error!("Function or MatchExpression");
+                    };
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::CustomContract(contract),
-                    pos_op_inh,
-                )))
+                Ok(NickelValue::custom_contract(contract, pos_op_inh).into())
             }
             UnaryOp::ContractPostprocessResult => {
-                let (tag, arg) = match (*value).clone() {
-                    Term::EnumVariant { tag, arg, .. } => (tag, arg),
-                    _ => return mk_type_error!("[| 'Ok, 'Error _ |]"),
+                let Some(EnumVariantBody {
+                    tag,
+                    arg: Some(arg),
+                }) = value.as_enum_variant()
+                else {
+                    return mk_type_error!("[| 'Ok, 'Error _ |]");
                 };
 
                 // We pop the second argument which isn't strict: we don't need to evaluate the
@@ -1427,7 +1447,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (label_closure, pos_label) = self.stack.pop_arg(&self.context.cache).unwrap();
 
                 match (tag.label(), arg) {
-                    ("Ok", value) => Ok(Closure { value, env }),
+                    ("Ok", value) => Ok(Closure {
+                        value: value.clone(),
+                        env,
+                    }),
                     ("Error", err_data) => {
                         // In the error case, we first need to force the error data so that
                         // primitive values (strings) can be extracted from it, attach the
@@ -1462,7 +1485,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         );
 
                         Ok(Closure {
-                            value: err_data,
+                            value: err_data.clone(),
                             env,
                         })
                     }
@@ -1470,7 +1493,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ContractAttachDefaultLabel => {
-                if !matches!(value.as_ref(), Term::EnumVariant { .. }) {
+                if !matches!(
+                    value.as_enum_variant(),
+                    Some(EnumVariantBody { arg: Some(_), .. })
+                ) {
                     return mk_type_error!("[| 'Ok, 'Error _ |]");
                 }
                 // The stack should already contain the default label to attach, so push
@@ -1482,21 +1508,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: Environment::new(),
                 })
             }
-            UnaryOp::NumberArcCos => Self::process_unary_number_operation(
+            UnaryOp::NumberArcCos => self.process_unary_number_operation(
                 value,
                 pos_arg,
                 pos_op,
                 "number/arccos",
                 f64::acos,
             ),
-            UnaryOp::NumberArcSin => Self::process_unary_number_operation(
+            UnaryOp::NumberArcSin => self.process_unary_number_operation(
                 value,
                 pos_arg,
                 pos_op,
                 "number/arcsin",
                 f64::asin,
             ),
-            UnaryOp::NumberArcTan => Self::process_unary_number_operation(
+            UnaryOp::NumberArcTan => self.process_unary_number_operation(
                 value,
                 pos_arg,
                 pos_op,
@@ -1504,46 +1530,47 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 f64::atan,
             ),
             UnaryOp::NumberCos => {
-                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/cos", f64::cos)
+                self.process_unary_number_operation(value, pos_arg, pos_op, "number/cos", f64::cos)
             }
             UnaryOp::NumberSin => {
-                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/sin", f64::sin)
+                self.process_unary_number_operation(value, pos_arg, pos_op, "number/sin", f64::sin)
             }
             UnaryOp::NumberTan => {
-                Self::process_unary_number_operation(value, pos_arg, pos_op, "number/tan", f64::tan)
+                self.process_unary_number_operation(value, pos_arg, pos_op, "number/tan", f64::tan)
             }
+            UnaryOp::RecDefault => unimplemented!(),
+            UnaryOp::RecForce => unimplemented!(),
         }
     }
 
     fn process_unary_number_operation<Op>(
+        &mut self,
         body: NickelValue,
-        arg_pos: TermPos,
-        pos_op: TermPos,
+        arg_pos: PosIdx,
+        pos_op: PosIdx,
         op_name: &str,
         op: Op,
     ) -> Result<Closure, EvalError>
     where
         Op: Fn(f64) -> f64,
     {
-        if let Term::Num(ref n) = &*body.term {
+        if let Some(n) = body.as_number() {
+            let n = &n.0;
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                EvalErrorData::Other(
+                self.err_with_ctxt(EvalErrorData::Other(
                     format!(
                         "invalid arithmetic operation: \
                         {op_name}({n}) returned {result_as_f64}, \
                         but {result_as_f64} isn't representable in Nickel"
                     ),
                     pos_op,
-                )
+                ))
             })?;
 
-            Ok(Closure::atomic_closure(NickelValue::new(
-                Term::Num(result),
-                pos_op.into_inherited(),
-            )))
+            Ok(NickelValue::number(result, pos_op.to_inherited_block(&mut self.pos_table)).into())
         } else {
-            Err(EvalErrorData::UnaryPrimopTypeError {
+            self.throw_with_ctxt(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
                 expected: String::from("Number"),
                 pos_arg: arg_pos,
@@ -1568,141 +1595,127 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         increment!(format!("primop:{b_op}"));
 
         let Closure {
-            value: NickelValue {
-                term: t1,
-                pos: pos1,
-            },
+            value: value1,
             env: env1,
         } = fst_clos;
+
         let Closure {
-            value: NickelValue {
-                term: t2,
-                pos: pos2,
-            },
+            value: value2,
             env: env2,
         } = clos;
-        let pos_op_inh = pos_op.into_inherited();
+
+        let pos1 = value1.pos_idx();
+        let pos2 = value2.pos_idx();
+        let pos_op_inh = pos_op.to_inherited_block(&mut self.pos_table);
 
         macro_rules! mk_type_error {
-            (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
-                Err(EvalErrorData::NAryPrimopTypeError {
+            (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $arg_evaled:expr) => {
+                self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
                     primop: String::from($op_name),
                     expected: String::from($expected),
                     arg_number: $arg_number,
-                    arg_pos: {
+                    pos_arg: {
                         match $arg_number {
                             1 => fst_pos,
                             2 => snd_pos,
                             _ => unimplemented!(),
                         }
                     },
-                    arg_evaluated: NickelValue {
-                        term: $term,
-                        pos: $pos,
-                    },
-                    op_pos: pos_op,
+                    arg_evaluated: $arg_evaled,
+                    pos_op,
                 })
             };
-            ($expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
+            ($expected:expr, $arg_number:expr, $arg_evaled:expr) => {
                 mk_type_error!(
                     op_name = b_op.to_string(),
                     $expected,
                     $arg_number,
-                    $term,
-                    $pos
+                    $arg_evaled
                 )
             };
         }
 
         match b_op {
             BinaryOp::Seal => {
-                if let Term::SealingKey(s) = &*t1 {
-                    if let Term::Lbl(lbl) = &*t2 {
-                        Ok(Closure::atomic_closure(
-                            mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
-                                .with_pos(pos_op_inh),
-                        ))
-                    } else {
-                        mk_type_error!("Label", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("SealingKey", 1, t1, pos1)
-                }
+                let Some(key) = value1.as_sealing_key() else {
+                    return mk_type_error!("SealingKey", 1, value1);
+                };
+
+                let Some(label) = value2.as_label() else {
+                    return mk_type_error!("Label", 2, value2);
+                };
+
+                Ok(mk_fun!(
+                    "x",
+                    NickelValue::term(
+                        Term::Sealed(key.0, mk_term::var("x"), label.0.clone()),
+                        pos_op_inh
+                    )
+                )
+                .into())
             }
-            BinaryOp::Plus => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Num(n1 + n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
-            BinaryOp::Sub => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Num(n1 - n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
-            BinaryOp::Mult => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Num(n1 * n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
+            BinaryOp::Plus => self.process_binary_number_operation(
+                |n1, n2| n1 + n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::Sub => self.process_binary_number_operation(
+                |n1, n2| n1 - n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::Mult => self.process_binary_number_operation(
+                |n1, n2| n1 * n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
             BinaryOp::Div => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        if n2 == &Number::ZERO {
-                            Err(EvalErrorData::Other(
-                                String::from("division by zero"),
-                                pos_op,
-                            ))
-                        } else {
-                            Ok(Closure::atomic_closure(NickelValue::new(
-                                Term::Num(n1 / n2),
-                                pos_op_inh,
-                            )))
-                        }
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
+                let Some(n1) = value1.as_number() else {
+                    return mk_type_error!("Number", 1, value1);
+                };
+
+                let Some(n2) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
+                };
+
+                let n1 = &n1.0;
+                let n2 = &n2.0;
+
+                if n2 == &Number::ZERO {
+                    self.throw_with_ctxt(EvalErrorData::Other(
+                        String::from("division by zero"),
+                        pos_op,
+                    ))
                 } else {
-                    mk_type_error!("Number", 1, t1, pos1)
+                    Ok(NickelValue::number(n1 / n2, pos_op_inh).into())
                 }
             }
             BinaryOp::Modulo => {
-                let Term::Num(ref n1) = *t1 else {
-                    return mk_type_error!("Number", 1, t1, pos1);
+                let Some(n1) = value1.as_number() else {
+                    return mk_type_error!("Number", 1, value1);
                 };
 
-                let Term::Num(ref n2) = *t2 else {
-                    return mk_type_error!("Number", 2, t2, pos2);
+                let Some(n2) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
                 };
+
+                let n1 = &n1.0;
+                let n2 = &n2.0;
 
                 if n2 == &Number::ZERO {
-                    return Err(EvalErrorData::Other(
+                    return self.throw_with_ctxt(EvalErrorData::Other(
                         String::from("division by zero (%)"),
                         pos2,
                     ));
@@ -1711,53 +1724,51 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // This is the equivalent of `truncate()` for `Number`
                 let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Num(n1 - quotient * n2),
-                    pos_op_inh,
-                )))
+                Ok(NickelValue::number(n1 - quotient * n2, pos_op_inh).into())
             }
             BinaryOp::NumberArcTan2 => {
-                let Term::Num(ref n1) = *t1 else {
-                    return mk_type_error!("Number", 1, t1, pos1);
+                let Some(n1) = value1.as_number() else {
+                    return mk_type_error!("Number", 1, value1);
                 };
 
-                let Term::Num(ref n2) = *t2 else {
-                    return mk_type_error!("Number", 2, t2, pos2);
+                let Some(n2) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
                 };
 
+                let n1 = &n1.0;
+                let n2 = &n2.0;
                 let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
                 let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
 
                 let result_as_f64 = y.atan2(x);
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    EvalErrorData::Other(
+                    self.err_with_ctxt(EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/arctan2({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
-                    )
+                    ))
                 })?;
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Num(result),
-                    pos_op_inh,
-                )))
+                Ok(NickelValue::number(result, pos_op_inh).into())
             }
             BinaryOp::NumberLog => {
-                let Term::Num(ref n1) = *t1 else {
-                    return mk_type_error!("Number", 1, t1, pos1);
+                let Some(n1) = value1.as_number() else {
+                    return mk_type_error!("Number", 1, value1);
                 };
 
-                let Term::Num(ref n2) = *t2 else {
-                    return mk_type_error!("Number", 2, t2, pos2);
+                let Some(n2) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
                 };
 
+                let n1 = &n1.0;
+                let n2 = &n2.0;
                 let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
 
-                let result_as_f64 = if n2 == &Number::from(2) {
+                let result_as_f64 = if n2 == &2 {
                     n.log2()
                 } else if n2 == &Number::from(10) {
                     n.log10()
@@ -1767,94 +1778,87 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    EvalErrorData::Other(
+                    self.err_with_ctxt(EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/log({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
-                    )
+                    ))
                 })?;
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Num(result),
-                    pos_op_inh,
-                )))
+                Ok(NickelValue::number(result, pos_op_inh).into())
             }
             BinaryOp::Pow => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        // Malachite's Rationals don't support exponents larger than `u64`. Anyway,
-                        // the result of such an operation would be huge and impractical to
-                        // store.
-                        //
-                        // We first try to convert the rational to an `i64`, in which case the
-                        // power is computed in an exact way.
-                        //
-                        // If the conversion fails, we fallback to converting both the exponent and
-                        // the value to the nearest `f64`, perform the exponentiation, and convert
-                        // the result back to rationals, with a possible loss of precision.
-                        let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
-                            n1.pow(n2_as_i64)
-                        } else {
-                            let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
-                                .0
-                                .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
-                            // The following conversion fails if the result is NaN or +/-infinity
-                            Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                                EvalErrorData::Other(
-                                    format!(
-                                        "invalid arithmetic operation: \
+                let Some(n1) = value1.as_number() else {
+                    return mk_type_error!("Number", 1, value1);
+                };
+
+                let Some(n2) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
+                };
+
+                let n1 = &n1.0;
+                let n2 = &n2.0;
+
+                // Malachite's Rationals don't support exponents larger than `u64`. Anyway,
+                // the result of such an operation would be huge and impractical to
+                // store.
+                //
+                // We first try to convert the rational to an `i64`, in which case the
+                // power is computed in an exact way.
+                //
+                // If the conversion fails, we fallback to converting both the exponent and
+                // the value to the nearest `f64`, perform the exponentiation, and convert
+                // the result back to rationals, with a possible loss of precision.
+                let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
+                    n1.pow(n2_as_i64)
+                } else {
+                    let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
+                        .0
+                        .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
+                    // The following conversion fails if the result is NaN or +/-infinity
+                    Number::try_from_float_simplest(result_as_f64).map_err(|_| {
+                        self.err_with_ctxt(EvalErrorData::Other(
+                            format!(
+                                "invalid arithmetic operation: \
                                         {n1}^{n2} returned {result_as_f64}, \
                                         but {result_as_f64} isn't representable in Nickel"
-                                    ),
-                                    pos_op,
-                                )
-                            })?
-                        };
+                            ),
+                            pos_op,
+                        ))
+                    })?
+                };
 
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Num(result),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
+                Ok(NickelValue::number(result, pos_op_inh).into())
             }
             BinaryOp::StringConcat => {
-                if let Term::Str(s1) = &*t1 {
-                    if let Term::Str(s2) = &*t2 {
-                        let ss: [&str; 2] = [s1, s2];
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Str(ss.concat().into()),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("String", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("String", 1, t1, pos1)
-                }
+                let Some(s1) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
+
+                let Some(s2) = value2.as_string() else {
+                    return mk_type_error!("String", 2, value2);
+                };
+
+                Ok(NickelValue::string(format!("{}{}", &s1.0, &s2.0), pos_op_inh).into())
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
-                // Doing just one `if let Term::Type` and putting the call to `increment!` there
-                // looks sensible at first, but it's annoying to explain to rustc and clippy that
-                // we match on `typ` but use it only if the `metrics` feature is enabled (we get
-                // unused variable warning otherwise). It's simpler to just make a separate `if`
-                // conditionally included.
+                // Performing only one match `if let Term::Type` and putting the call to
+                // `increment!` there looks sensible at first, but it's annoying to explain to
+                // rustc and clippy that we match on `typ` but use it only if the `metrics` feature
+                // is enabled (we get unused variable warning otherwise). It's simpler to just make
+                // a separate `if` conditionally included.
                 #[cfg(feature = "metrics")]
-                if let Term::Type { typ, .. } = &*t1 {
+                if Some(TypeBody { typ, .. }) = value1.as_type() {
                     increment!(format!(
                         "primop:contract/apply:{}",
                         typ.pretty_print_cap(40)
                     ));
                 }
 
-                let t1 = if let Term::Type { typ: _, contract } = &*t1 {
+                if let Some(TypeBody { typ: _, contract }) = value1.as_type() {
                     // The contract generation from a static type might return any kind of
                     // contract, including e.g. a record or a custom contract. The result needs to
                     // be evaluated first, and then passed to `b_op` again. In that case, we don't
@@ -1867,10 +1871,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         OperationCont::Op2First(
                             b_op,
                             Closure {
-                                value: NickelValue {
-                                    term: t2,
-                                    pos: pos2,
-                                },
+                                value: value2,
                                 env: env2,
                             },
                             fst_pos,
@@ -1883,170 +1884,171 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         value: contract.clone(),
                         env: env1,
                     });
-                } else {
-                    t1
+                }
+
+                let mut label;
+
+                match value2.content() {
+                    ValueContent::Label(lens) => {
+                        label = lens.take().0;
+                    }
+                    lens => {
+                        return mk_type_error!("Label", 2, lens.restore());
+                    }
                 };
 
-                let t2 = t2.into_owned();
+                increment!(format!(
+                    "contract:originates_from_type {}",
+                    label.typ.pretty_print_cap(40)
+                ));
 
-                if let Term::Lbl(mut label) = t2 {
-                    increment!(format!(
-                        "contract:originates_from_type {}",
-                        label.typ.pretty_print_cap(40)
-                    ));
+                #[cfg(feature = "metrics")]
+                if let Some(field) = label.field_name {
+                    increment!(format!("contract:originates_from_field {field}"));
+                }
 
-                    #[cfg(feature = "metrics")]
-                    if let Some(field) = label.field_name {
-                        increment!(format!("contract:originates_from_field {field}"));
-                    }
+                // Pop the contract argument to track its cache index in the label for better
+                // error reporting, and because we might add post-processing steps on the stack
+                // which need to sit underneath the value and the label (they will be run after
+                // the contract application is evaluated). We'll just push the value and the
+                // label back on the stack at the end.
+                let (idx, stack_value_pos) =
+                    self.stack.pop_arg_as_idx(&mut self.context.cache).ok_or_else(|| {
+                        EvalErrorData::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
+                    })?;
 
-                    // Pop the contract argument to track its cache index in the label for better
-                    // error reporting, and because we might add post-processing steps on the stack
-                    // which need to sit underneath the value and the label (they will be run after
-                    // the contract application is evaluated). We'll just push the value and the
-                    // label back on the stack at the end.
-                    let (idx, stack_value_pos) =
-                        self.stack.pop_arg_as_idx(&mut self.context.cache).ok_or_else(|| {
-                            EvalErrorData::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
-                        })?;
+                // We update the label and convert it back to a term form that can be cheaply cloned
+                label.arg_pos = self.context.cache.get_then(idx.clone(), |c| c.value.pos_idx());
+                label.arg_idx = Some(idx.clone());
+                let new_label = NickelValue::label(label, pos2);
 
-                    // We update the label and convert it back to a term form that can be cheaply cloned
-                    label.arg_pos = self.context.cache.get_then(idx.clone(), |c| c.value.pos);
-                    label.arg_idx = Some(idx.clone());
-                    let new_label = NickelValue::new(Term::Lbl(label), pos2);
+                // If we're evaluating a plain contract application but we are applying
+                // something with the signature of a custom contract, we need to setup some
+                // post-processing.
+                //
+                // We prepare the stack so that `contract/postprocess_result` will be applied
+                // afterwards. This primop converts the result of a custom contract `'Ok value`
+                // or `'Error err_data` to either `value` or a proper contract error with
+                // `err_data` included in the label.
+                //
+                // That is, prepare the stack to represent the evaluation context
+                // `%contract/postprocess_result% [.] label`
+                if let (
+                    ValueContent::CustomContract(_)
+                    | ValueContent::Record(_)
+                    | ValueContent::Inline(InlineValue::EmptyRecord),
+                    BinaryOp::ContractApply,
+                ) = (value1.content_ref(), &b_op)
+                {
+                    self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
-                    // If we're evaluating a plain contract application but we are applying
-                    // something with the signature of a custom contract, we need to setup some
-                    // post-processing.
-                    //
-                    // We prepare the stack so that `contract/postprocess_result` will be applied
-                    // afterwards. This primop converts the result of a custom contract `'Ok value`
-                    // or `'Error err_data` to either `value` or a proper contract error with
-                    // `err_data` included in the label.
-                    //
-                    // That is, prepare the stack to represent the evaluation context
-                    // `%contract/postprocess_result% [.] label`
-                    if matches!(
-                        (&*t1, &b_op),
-                        (
-                            Term::CustomContract(_) | Term::Record(_),
-                            BinaryOp::ContractApply
-                        )
-                    ) {
-                        self.stack
-                            .push_arg(Closure::atomic_closure(new_label.clone()), pos_op_inh);
+                    self.stack.push_op_cont(
+                        OperationCont::Op1(
+                            UnaryOp::ContractPostprocessResult,
+                            pos1.to_inherited_block(&mut self.pos_table),
+                        ),
+                        self.call_stack.len(),
+                        pos_op_inh,
+                    );
+                }
 
-                        self.stack.push_op_cont(
-                            OperationCont::Op1(
-                                UnaryOp::ContractPostprocessResult,
-                                pos1.into_inherited(),
-                            ),
-                            self.call_stack.len(),
-                            pos_op_inh,
-                        );
-                    }
+                // Contract checks are allowed to specify a blame location, but they don't
+                // have to. We insert an op to check if they omitted the blame location and
+                // put in a default one if not.
+                //
+                // Prepare the stack to represent the evaluation context
+                // `%contract/attach_default_label% [.] label`
+                if let BinaryOp::ContractCheck = &b_op {
+                    self.stack.push_arg(new_label.clone(), pos_op_inh);
 
-                    // Contract checks are allowed to specify a blame location, but they don't
-                    // have to. We insert an op to check if they omitted the blame location and
-                    // put in a default one if not.
-                    //
-                    // Prepare the stack to represent the evaluation context
-                    // `%contract/attach_default_label% [.] label`
-                    if matches!(&b_op, BinaryOp::ContractCheck) {
-                        self.stack
-                            .push_arg(Closure::atomic_closure(new_label.clone()), pos_op_inh);
+                    self.stack.push_op_cont(
+                        OperationCont::Op1(
+                            UnaryOp::ContractAttachDefaultLabel,
+                            pos1.to_inherited_block(&mut self.pos_table),
+                        ),
+                        self.call_stack.len(),
+                        pos_op_inh,
+                    );
+                }
 
-                        self.stack.push_op_cont(
-                            OperationCont::Op1(
-                                UnaryOp::ContractAttachDefaultLabel,
-                                pos1.into_inherited(),
-                            ),
-                            self.call_stack.len(),
-                            pos_op_inh,
-                        );
-                    }
+                // Now that we've updated the label, we push the checked value and the new
+                // label back on the stack, so that they become the two arguments of the
+                // contract (transformed to something that can be applied directly). That is,
+                // we prepare the stack to represent the evaluation context `[.] label value`
+                // and proceed with the evaluation of `functoid`.
+                self.stack.push_tracked_arg(idx, stack_value_pos);
+                self.stack
+                    .push_arg(new_label, pos2.to_inherited_block(&mut self.pos_table));
 
-                    // Now that we've updated the label, we push the checked value and the new
-                    // label back on the stack, so that they become the two arguments of the
-                    // contract (transformed to something that can be applied directly). That is,
-                    // we prepare the stack to represent the evaluation context `[.] label value`
-                    // and proceed with the evaluation of `functoid`.
-                    self.stack.push_tracked_arg(idx, stack_value_pos);
-                    self.stack
-                        .push_arg(Closure::atomic_closure(new_label), pos2.into_inherited());
+                // We convert the contract (which can be a custom contract, a record, a naked
+                // function, etc.) to a form that can be applied to a label and a value.
+                let functoid = match &*t1 {
+                    Term::Fun(..) | Term::Match { .. } => {
+                        let as_naked = NickelValue {
+                            term: t1,
+                            pos: pos1,
+                        };
 
-                    // We convert the contract (which can be a custom contract, a record, a naked
-                    // function, etc.) to a form that can be applied to a label and a value.
-                    let functoid = match &*t1 {
-                        Term::Fun(..) | Term::Match { .. } => {
-                            let as_naked = NickelValue {
-                                term: t1,
-                                pos: pos1,
-                            };
-
-                            // Warn on naked function contracts, but not if they came from the
-                            // stdlib. Some stdlib functions return naked function contracts.
-                            if let Some(pos) = pos1.as_opt_ref() {
-                                if !self.context.import_resolver.files().is_stdlib(pos.src_id) {
-                                    self.warn(Warning::NakedFunctionContract {
-                                        func_pos: pos1,
-                                        app_pos: pos_op,
-                                    });
-                                }
-                            }
-
-                            if let BinaryOp::ContractApply = b_op {
-                                Closure {
-                                    value: as_naked,
-                                    env: env1,
-                                }
-                            } else {
-                                // Prepare the stack to represent the evaluation context `[.]
-                                // as_naked` and proceed with `$naked_to_custom`
-                                self.stack.push_arg(
-                                    Closure {
-                                        value: as_naked,
-                                        env: env1,
-                                    },
-                                    fst_pos,
-                                );
-
-                                Closure {
-                                    value: internals::naked_to_custom(),
-                                    env: Environment::new(),
-                                }
+                        // Warn on naked function contracts, but not if they came from the
+                        // stdlib. Some stdlib functions return naked function contracts.
+                        if let Some(pos) = pos1.as_opt_ref() {
+                            if !self.context.import_resolver.files().is_stdlib(pos.src_id) {
+                                self.warn(Warning::NakedFunctionContract {
+                                    func_pos: pos1,
+                                    app_pos: pos_op,
+                                });
                             }
                         }
-                        Term::CustomContract(ctr) => Closure {
-                            value: ctr.clone(),
-                            env: env1,
-                        },
-                        Term::Record(..) => {
-                            // Prepare the stack to represent the evaluation context `[.] t1` and
-                            // proceed with `$record_contract`
+
+                        if let BinaryOp::ContractApply = b_op {
+                            Closure {
+                                value: as_naked,
+                                env: env1,
+                            }
+                        } else {
+                            // Prepare the stack to represent the evaluation context `[.]
+                            // as_naked` and proceed with `$naked_to_custom`
                             self.stack.push_arg(
                                 Closure {
-                                    value: NickelValue {
-                                        term: t1,
-                                        pos: pos1,
-                                    },
+                                    value: as_naked,
                                     env: env1,
                                 },
                                 fst_pos,
                             );
 
                             Closure {
-                                value: internals::record_contract(),
+                                value: internals::naked_to_custom(),
                                 env: Environment::new(),
                             }
                         }
-                        _ => return mk_type_error!("Contract", 1, t1, pos1),
-                    };
+                    }
+                    Term::CustomContract(ctr) => Closure {
+                        value: ctr.clone(),
+                        env: env1,
+                    },
+                    Term::Record(..) => {
+                        // Prepare the stack to represent the evaluation context `[.] t1` and
+                        // proceed with `$record_contract`
+                        self.stack.push_arg(
+                            Closure {
+                                value: NickelValue {
+                                    term: t1,
+                                    pos: pos1,
+                                },
+                                env: env1,
+                            },
+                            fst_pos,
+                        );
 
-                    Ok(functoid)
-                } else {
-                    mk_type_error!("Label", 2, t2.into(), pos2)
-                }
+                        Closure {
+                            value: internals::record_contract(),
+                            env: Environment::new(),
+                        }
+                    }
+                    _ => return mk_type_error!("Contract", 1, t1, pos1),
+                };
+
+                Ok(functoid)
             }
             BinaryOp::LabelWithErrorData => {
                 // We need to extract plain values from a Nickel data structure, which most likely
@@ -3163,6 +3165,47 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )))
             }
         }
+    }
+
+    fn process_binary_number_operation<Op>(
+        &mut self,
+        op: Op,
+        value1: NickelValue,
+        pos1: PosIdx,
+        value2: NickelValue,
+        pos2: PosIdx,
+        pos_op: PosIdx,
+        op_name: String,
+    ) -> Result<Closure, EvalError>
+    where
+        Op: Fn(&Number, &Number) -> Number,
+    {
+        let Some(n1) = value1.as_number() else {
+            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+                primop: op_name,
+                expected: "Number".to_owned(),
+                arg_number: 1,
+                pos_arg: pos1,
+                arg_evaluated: value1,
+                pos_op,
+            });
+        };
+
+        let Some(n2) = value2.as_number() else {
+            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+                primop: op_name,
+                expected: "Number".to_owned(),
+                arg_number: 2,
+                pos_arg: pos2,
+                arg_evaluated: value2,
+                pos_op,
+            });
+        };
+
+        let n1 = &n1.0;
+        let n2 = &n2.0;
+
+        Ok(NickelValue::number(op(n1, n2), pos_op_inh).into())
     }
 
     /// Evaluate a n-ary operation.
