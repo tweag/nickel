@@ -6,7 +6,7 @@
 use crate::files::FileId;
 use codespan::{self, ByteIndex};
 use std::{
-    cmp::{max, min, Ordering},
+    cmp::{Ordering, max, min},
     ops::Range,
 };
 
@@ -362,8 +362,7 @@ impl PosIdx {
 
         if let TermPos::Original(raw_span) = pos {
             table.push_inline(TermPos::Inherited(raw_span))
-        }
-        else {
+        } else {
             self
         }
     }
@@ -376,8 +375,7 @@ impl PosIdx {
 
         if let TermPos::Original(raw_span) = pos {
             table.push_block(TermPos::Inherited(raw_span))
-        }
-        else {
+        } else {
             self
         }
     }
@@ -475,6 +473,14 @@ impl PosTable {
             "maximum number of positions reached for value blocks"
         );
         PosIdx(next + Self::FIRST_BLOCK_IDX)
+    }
+
+    /// Converts an position index to an inline position index. If the provided index is already
+    /// an inline position index, it is returned unchanged. Otherwise, a new inline position index
+    /// is allocated with the same position as the provided block index.
+    pub fn make_inline(&mut self, idx: PosIdx) -> InlinePosIdx {
+        idx.try_into()
+            .unwrap_or_else(|_| self.push_inline(self.get(idx)))
     }
 
     /// Returns the position at index `idx`.
