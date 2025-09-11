@@ -386,11 +386,7 @@ impl NickelValue {
     /// As opposed to [Self::record], if `value` is an empty record but `pos_idx` isn't a valid
     /// inline value index, a new inline position index is allocated in the table automatically, making
     /// this method always succeed.
-    pub fn record_force_pos(
-        pos_table: &mut PosTable,
-        value: RecordData,
-        pos_idx: PosIdx,
-    ) -> Self {
+    pub fn record_force_pos(pos_table: &mut PosTable, value: RecordData, pos_idx: PosIdx) -> Self {
         if value.is_empty() {
             Self::inline(
                 InlineValue::EmptyRecord,
@@ -568,6 +564,18 @@ impl NickelValue {
     pub fn as_enum_tag(&self) -> Option<LocIdent> {
         let enum_var = self.as_enum_variant()?;
         enum_var.arg.is_none().then(|| enum_var.tag)
+    }
+
+    /// Returns a reference to the inner sealing key stored in this value if `self` is a value
+    /// block with sealing key inside, or `None` otherwise.
+    pub fn as_sealing_key(&self) -> Option<&SealingKeyBody> {
+        self.as_value_body()
+    }
+
+    /// Returns a reference to the inner type stored in this value if `self` is a value with a type
+    /// inside, or `None` otherwise.
+    pub fn as_type(&self) -> Option<&TypeBody> {
+        self.as_value_body()
     }
 
     /// Returns the value block pointed to by this Nickel value if it's a value block, or `Err`
