@@ -184,7 +184,9 @@ impl TermCache {
 
                 Ok(CacheOp::Done(()))
             }
-            _ => Err(CacheError::NotParsed),
+            _ => Err(CacheError::IncompatibleState {
+                want: EntryState::Parsed,
+            }),
         }
     }
 
@@ -237,7 +239,9 @@ impl TermCache {
 
                 Ok(CacheOp::Done(()))
             }
-            _ => Err(CacheError::NotParsed),
+            _ => Err(CacheError::IncompatibleState {
+                want: EntryState::Parsed,
+            }),
         }
     }
 
@@ -1037,40 +1041,50 @@ impl CacheHub {
         Ok(())
     }
 
-    /// Applies a custom transform to an input and its imports, leaving them in the same state as
-    /// before. Requires that the input has been parsed. In order for the transform to apply to
-    /// imports, they need to have been resolved.
+    /// Applies a custom transform to an input and its imports. [CacheError::IncompatibleState] is returned
+    /// if the file has not yet been typechecked.
+    ///
+    /// If multiple invocations of `custom_transform` are needed, you must supply `transform_id` with
+    /// with a number higher than that of all previous invocations.
     pub fn custom_transform<E>(
         &mut self,
         file_id: FileId,
+        transform_id: usize,
         f: &mut impl FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     ) -> Result<(), CacheError<E>> {
         match self.terms.entry_state(file_id) {
-            Some(state) if state >= EntryState::Parsed => {
-                if state < EntryState::Transforming {
+            None => Err(CacheError::IncompatibleState {
+                want: EntryState::Parsed,
+            }),
+            Some(state) if state < EntryState::Typechecked => Err(CacheError::IncompatibleState {
+                want: EntryState::Typechecked,
+            }),
+            Some(state) => {
+                if state.needs_custom_transform(transform_id) {
                     let cached_term = self.terms.terms.remove(&file_id).unwrap();
                     let term = f(self, cached_term.term)?;
                     self.terms.insert(
                         file_id,
                         TermEntry {
                             term,
-                            state: EntryState::Transforming,
+                            state: EntryState::CustomTransforming,
                             ..cached_term
                         },
                     );
 
                     if let Some(imports) = self.import_data.imports.get(&file_id).cloned() {
                         for file_id in imports.into_iter() {
-                            self.custom_transform(file_id, f)?;
+                            self.custom_transform(file_id, transform_id, f)?;
                         }
                     }
-                    // TODO: We're setting the state back to whatever it was.
                     // unwrap(): we inserted the term just above
-                    let _ = self.terms.update_state(file_id, state).unwrap();
+                    let _ = self
+                        .terms
+                        .update_state(file_id, EntryState::CustomTransformed { transform_id })
+                        .unwrap();
                 }
                 Ok(())
             }
-            _ => Err(CacheError::NotParsed),
         }
     }
 
@@ -1172,7 +1186,9 @@ impl CacheHub {
             }) => Ok(CacheOp::Done(Vec::new())),
             // >= EntryState::ImportsResolved
             Some(_) => Ok(CacheOp::Cached(Vec::new())),
-            None => Err(CacheError::NotParsed),
+            None => Err(CacheError::IncompatibleState {
+                want: EntryState::Parsed,
+            }),
         }
     }
 
@@ -1447,6 +1463,10 @@ pub enum EntryState {
     Typechecking,
     /// The entry and its transitive imports have been typechecked.
     Typechecked,
+    /// A custom transformation of the entry (through `Program::custom_transform`) is underway.
+    CustomTransforming,
+    /// This entry has completed custom transformations of this ID and lower.
+    CustomTransformed { transform_id: usize },
     /// The imports of the entry have been resolved, and the imports of its (transitive) imports are
     /// being resolved.
     ImportsResolving,
@@ -1458,6 +1478,19 @@ pub enum EntryState {
     Transformed,
     /// The entry has been closurized.
     Closurized,
+}
+
+impl EntryState {
+    fn needs_custom_transform(&self, transform_id: usize) -> bool {
+        if let EntryState::CustomTransformed {
+            transform_id: done_transform_id,
+        } = self
+        {
+            transform_id > *done_transform_id
+        } else {
+            self < &EntryState::CustomTransforming
+        }
+    }
 }
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
@@ -1482,7 +1515,7 @@ impl<T> CacheOp<T> {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum CacheError<E> {
     Error(E),
-    NotParsed,
+    IncompatibleState { want: EntryState },
 }
 
 impl<E> From<E> for CacheError<E> {
@@ -1496,14 +1529,14 @@ impl<E> CacheError<E> {
     pub fn unwrap_error(self, msg: &str) -> E {
         match self {
             CacheError::Error(err) => err,
-            CacheError::NotParsed => panic!("{}", msg),
+            CacheError::IncompatibleState { .. } => panic!("{}", msg),
         }
     }
 
     pub fn map_err<O>(self, f: impl FnOnce(E) -> O) -> CacheError<O> {
         match self {
             CacheError::Error(e) => CacheError::Error(f(e)),
-            CacheError::NotParsed => CacheError::NotParsed,
+            CacheError::IncompatibleState { want } => CacheError::IncompatibleState { want },
         }
     }
 }
@@ -2327,7 +2360,9 @@ mod ast_cache {
             initial_mode: TypecheckMode,
         ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
             let Some(TermEntry { state, format, .. }) = slice.terms.get_entry(file_id) else {
-                return Err(CacheError::NotParsed);
+                return Err(CacheError::IncompatibleState {
+                    want: EntryState::Parsed,
+                });
             };
 
             let state = *state;
@@ -2363,7 +2398,12 @@ mod ast_cache {
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(slice.sources);
             self.with_mut(|slf| -> Result<(), CacheError<TypecheckError>> {
-                let ast = *slf.asts.get(&file_id).ok_or(CacheError::NotParsed)?;
+                let ast = *slf
+                    .asts
+                    .get(&file_id)
+                    .ok_or(CacheError::IncompatibleState {
+                        want: EntryState::Parsed,
+                    })?;
 
                 let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
                 let type_ctxt = slf.type_ctxt.clone();
@@ -2431,7 +2471,12 @@ mod ast_cache {
 
             let typ: Result<ast::typ::Type<'_>, CacheError<TypecheckError>> =
                 self.with_mut(|slf| {
-                    let ast = *slf.asts.get(&file_id).ok_or(CacheError::NotParsed)?;
+                    let ast = *slf
+                        .asts
+                        .get(&file_id)
+                        .ok_or(CacheError::IncompatibleState {
+                            want: EntryState::Parsed,
+                        })?;
 
                     let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
                     let type_ctxt = slf.type_ctxt.clone();
@@ -2509,7 +2554,9 @@ mod ast_cache {
             self.with_mut(|slf| {
                 let ast = slf.asts.get(&file_id);
                 let Some(&ast) = ast else {
-                    return Err(CacheError::NotParsed);
+                    return Err(CacheError::IncompatibleState {
+                        want: EntryState::Parsed,
+                    });
                 };
 
                 let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
