@@ -30,6 +30,7 @@ pub struct TestFixture {
     pub expected_diags: Vec<Url>,
 }
 
+#[derive(Clone, Debug)]
 pub struct TestFile {
     pub uri: Url,
     pub contents: String,
