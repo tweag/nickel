@@ -7,12 +7,11 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    Cache, Closure, Environment, ImportResolver, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
-    merge::{self, MergeMode, split},
+    merge::{self, split, MergeMode},
     stack::StrAccData,
-    subst,
+    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -21,13 +20,13 @@ use crate::nix_ffi;
 use crate::{
     cache::InputFormat,
     bytecode::value::{
-        Array, ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody,
-        TermBody, TypeBody, ValueContent, ValueContentRef, ValueContentRefMut,
+        Array, ArrayBody, EnumVariantBody, InlineValue, LabelBody, NickelValue, NumberBody,
+        RecordBody, TermBody, TypeBody, ValueContent, ValueContentRef, ValueContentRefMut,
     },
     closurize::Closurize,
     error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
-    label::{Polarity, TypeVarData, ty_path},
+    label::{ty_path, Polarity, TypeVarData},
     metrics::increment,
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
@@ -41,11 +40,11 @@ use crate::{
 use crate::pretty::PrettyPrintCap;
 
 use malachite::{
-    Integer,
     base::{
         num::{arithmetic::traits::Pow, basic::traits::Zero, conversion::traits::RoundingFrom},
         rounding_modes::RoundingMode,
     },
+    Integer,
 };
 
 use md5::digest::Digest;
@@ -1654,7 +1653,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
                 .into())
             }
-            BinaryOp::Plus => self.process_binary_number_operation(
+            BinaryOp::Plus => self.binary_number_op(
                 |n1, n2| n1 + n2,
                 value1,
                 pos1,
@@ -1663,7 +1662,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 pos_op_inh,
                 b_op.to_string(),
             ),
-            BinaryOp::Sub => self.process_binary_number_operation(
+            BinaryOp::Sub => self.binary_number_op(
                 |n1, n2| n1 - n2,
                 value1,
                 pos1,
@@ -1672,7 +1671,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 pos_op_inh,
                 b_op.to_string(),
             ),
-            BinaryOp::Mult => self.process_binary_number_operation(
+            BinaryOp::Mult => self.binary_number_op(
                 |n1, n2| n1 * n2,
                 value1,
                 pos1,
@@ -1914,11 +1913,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // label back on the stack at the end.
                 let (idx, stack_value_pos) =
                     self.stack.pop_arg_as_idx(&mut self.context.cache).ok_or_else(|| {
-                        EvalErrorData::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
+                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                            3,
+                            String::from("contract/apply"),
+                            pos_op,
+                        ))
                     })?;
 
                 // We update the label and convert it back to a term form that can be cheaply cloned
-                label.arg_pos = self.context.cache.get_then(idx.clone(), |c| c.value.pos_idx());
+                label.arg_pos = self
+                    .pos_table
+                    .get(self.cache.get_then(idx.clone(), |c| c.value.pos_idx()));
                 label.arg_idx = Some(idx.clone());
                 let new_label = NickelValue::label(label, pos2);
 
@@ -1934,9 +1939,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // That is, prepare the stack to represent the evaluation context
                 // `%contract/postprocess_result% [.] label`
                 if let (
-                    ValueContent::CustomContract(_)
-                    | ValueContent::Record(_)
-                    | ValueContent::Inline(InlineValue::EmptyRecord),
+                    ValueContentRef::CustomContract(_)
+                    | ValueContentRef::Record(_)
+                    | ValueContentRef::Inline(InlineValue::EmptyRecord),
                     BinaryOp::ContractApply,
                 ) = (value1.content_ref(), &b_op)
                 {
@@ -1959,7 +1964,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // Prepare the stack to represent the evaluation context
                 // `%contract/attach_default_label% [.] label`
                 if let BinaryOp::ContractCheck = &b_op {
-                    self.stack.push_arg(new_label.clone(), pos_op_inh);
+                    self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
                     self.stack.push_op_cont(
                         OperationCont::Op1(
@@ -1977,32 +1982,29 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // we prepare the stack to represent the evaluation context `[.] label value`
                 // and proceed with the evaluation of `functoid`.
                 self.stack.push_tracked_arg(idx, stack_value_pos);
-                self.stack
-                    .push_arg(new_label, pos2.to_inherited_block(&mut self.pos_table));
+                self.stack.push_arg(
+                    new_label.into(),
+                    pos2.to_inherited_block(&mut self.pos_table),
+                );
 
                 // We convert the contract (which can be a custom contract, a record, a naked
                 // function, etc.) to a form that can be applied to a label and a value.
-                let functoid = match &*t1 {
-                    Term::Fun(..) | Term::Match { .. } => {
-                        let as_naked = NickelValue {
-                            term: t1,
-                            pos: pos1,
-                        };
-
+                let functoid = match value1.content_ref() {
+                    ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match { .. })) => {
                         // Warn on naked function contracts, but not if they came from the
                         // stdlib. Some stdlib functions return naked function contracts.
-                        if let Some(pos) = pos1.as_opt_ref() {
+                        if let Some(pos) = self.pos_table.get(pos1).as_opt_ref() {
                             if !self.context.import_resolver.files().is_stdlib(pos.src_id) {
                                 self.warn(Warning::NakedFunctionContract {
-                                    func_pos: pos1,
-                                    app_pos: pos_op,
+                                    func_pos: self.pos_table.get(pos1),
+                                    app_pos: self.pos_table.get(pos_op),
                                 });
                             }
                         }
 
                         if let BinaryOp::ContractApply = b_op {
                             Closure {
-                                value: as_naked,
+                                value: value1,
                                 env: env1,
                             }
                         } else {
@@ -2010,42 +2012,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             // as_naked` and proceed with `$naked_to_custom`
                             self.stack.push_arg(
                                 Closure {
-                                    value: as_naked,
+                                    value: value1,
                                     env: env1,
                                 },
                                 fst_pos,
                             );
 
-                            Closure {
-                                value: internals::naked_to_custom(),
-                                env: Environment::new(),
-                            }
+                            todo!("internals::naked_to_custom().into()")
                         }
                     }
-                    Term::CustomContract(ctr) => Closure {
-                        value: ctr.clone(),
+                    ValueContentRef::CustomContract(ctr) => Closure {
+                        value: ctr.0.clone(),
                         env: env1,
                     },
-                    Term::Record(..) => {
+                    ValueContentRef::Record(..) => {
                         // Prepare the stack to represent the evaluation context `[.] t1` and
                         // proceed with `$record_contract`
                         self.stack.push_arg(
                             Closure {
-                                value: NickelValue {
-                                    term: t1,
-                                    pos: pos1,
-                                },
+                                value: value1,
                                 env: env1,
                             },
                             fst_pos,
                         );
 
-                        Closure {
-                            value: internals::record_contract(),
-                            env: Environment::new(),
-                        }
+                        todo!("internals::record_contract().into()")
                     }
-                    _ => return mk_type_error!("Contract", 1, t1, pos1),
+                    _ => return mk_type_error!("Contract", 1, value1),
                 };
 
                 Ok(functoid)
@@ -2054,115 +2047,95 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We need to extract plain values from a Nickel data structure, which most likely
                 // contains closures at least, even if it's fully evaluated. As for serialization,
                 // we thus need to fully substitute all variables first.
-                let t1 = subst(
-                    &self.context.cache,
-                    NickelValue {
-                        term: t1,
-                        pos: pos1,
-                    },
-                    &self.initial_env,
-                    &env1,
-                )
-                .term
-                .into_owned();
+                let value1 = subst(&self.context.cache, value1, &self.initial_env, &env1);
 
-                let t2 = t2.into_owned();
-
-                let Term::Lbl(mut label) = t2 else {
-                    return mk_type_error!("Label", 2, t2.into(), pos2);
+                let Some(LabelBody(label)) = value2.as_label() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
-                if let Term::Record(mut record_data) = t1 {
+                let mut label = label.clone();
+
+                if let Some(RecordBody(record_data)) = value1.as_record() {
                     // If the contract returned a label as part of its error
                     // data, blame that one instead.
-                    if let Some(Term::Lbl(user_label)) = record_data
+                    if let Some(user_label) = record_data
                         .fields
-                        .swap_remove(&LocIdent::from("blame_location"))
-                        .and_then(|field| field.value)
-                        .map(|v| v.term.into_owned())
+                        .get(&LocIdent::from("blame_location"))
+                        .and_then(|field| field.value.as_ref())
+                        .and_then(NickelValue::as_label)
                     {
-                        label = user_label;
+                        label = user_label.0.clone();
                     }
 
-                    if let Some(Term::Str(msg)) = record_data
+                    if let Some(msg) = record_data
                         .fields
-                        .swap_remove(&LocIdent::from("message"))
-                        .and_then(|field| field.value)
-                        .map(|v| v.term.into_owned())
+                        .get(&LocIdent::from("message"))
+                        .and_then(|field| field.value.as_ref())
+                        .and_then(NickelValue::as_string)
                     {
-                        label = label.with_diagnostic_message(msg.into_inner());
+                        label = label.with_diagnostic_message(msg.0.into_inner());
                     }
 
-                    if let Some(notes_term) = record_data
+                    if let Some(notes) = record_data
                         .fields
-                        .swap_remove(&LocIdent::from("notes"))
-                        .and_then(|field| field.value)
+                        .get(&LocIdent::from("notes"))
+                        .and_then(|field| field.value.as_ref())
+                        .and_then(NickelValue::as_array)
                     {
-                        if let Term::Array(array, _) = notes_term.into() {
-                            let notes = array
-                                .into_iter()
-                                .map(|element| {
-                                    let term = element.term.into_owned();
+                        let notes = notes
+                            .array
+                            .into_iter()
+                            .map(|element| {
+                                if let Some(s) = element.as_string() {
+                                    Ok(s.0.into_inner())
+                                } else {
+                                    mk_type_error!("String (notes)", 1, element)
+                                }
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
 
-                                    if let Term::Str(s) = term {
-                                        Ok(s.into_inner())
-                                    } else {
-                                        mk_type_error!(
-                                            "String (notes)",
-                                            1,
-                                            term.into(),
-                                            element.pos
-                                        )
-                                    }
-                                })
-                                .collect::<Result<Vec<_>, _>>()?;
-
-                            label = label.with_diagnostic_notes(notes);
-                        }
+                        label = label.with_diagnostic_notes(notes);
                     }
 
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Lbl(label),
-                        pos2,
-                    )))
+                    Ok(NickelValue::label(label, pos2).into())
                 } else {
-                    mk_type_error!("Record", 1, t1.into(), pos1)
+                    mk_type_error!("Record", 1, value1)
                 }
             }
             BinaryOp::Unseal => {
-                if let Term::SealingKey(s1) = &*t1 {
-                    // Return a function that either behaves like the identity or
-                    // const unwrapped_term
-
-                    Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
-                        if *s1 == s2 {
-                            Closure {
-                                value: mk_fun!("-invld", t),
-                                env: env2,
+                if let Some(s1) = value1.as_sealing_key() {
+                    // The last argument (lazy, on the stack) of unseal is an expression raising
+                    // blame. If the keys match, we ignore the blame and thus return a function
+                    // `const unsealed_term_content`. Otherwise, we return `id`.
+                    //
+                    // Since the stack is set up as `[.] blame_expr`, this does ignore the error
+                    // and proceed with the unsealed term in the happy path, or on the opposite
+                    // drop the sealed term and proceed with the error on the stack otherwise.
+                    Ok(
+                        if let Some(TermBody(Term::Sealed(s2, inner, _))) = value2.as_term() {
+                            if s1.0 == *s2 {
+                                Closure {
+                                    value: mk_fun!(LocIdent::fresh(), inner.clone()),
+                                    env: env2,
+                                }
+                            } else {
+                                mk_term::id().into()
                             }
                         } else {
-                            Closure::atomic_closure(mk_term::id())
-                        }
-                    } else {
-                        Closure::atomic_closure(mk_term::id())
-                    })
+                            mk_term::id().into()
+                        },
+                    )
                 } else {
-                    mk_type_error!("SealingKey", 1, t1, pos1)
+                    mk_type_error!("SealingKey", 1, value1)
                 }
             }
             BinaryOp::Eq => {
                 let c1 = Closure {
-                    value: NickelValue {
-                        term: t1,
-                        pos: pos1,
-                    },
+                    value: value1,
                     env: env1,
                 };
                 let c2 = Closure {
-                    value: NickelValue {
-                        term: t2,
-                        pos: pos2,
-                    },
+                    value: value2,
                     env: env2,
                 };
 
@@ -2170,91 +2143,67 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
-                            Ok(Closure::atomic_closure(NickelValue::new(
-                                Term::Bool(false),
-                                pos_op_inh,
-                            )))
+                            Ok(NickelValue::bool_value(
+                                false,
+                                self.pos_table.make_inline(pos_op_inh),
+                            )
+                            .into())
                         }
-                        (true, None) => Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(true),
-                            pos_op_inh,
-                        ))),
+                        (true, None) => Ok(NickelValue::bool_value(
+                            true,
+                            self.pos_table.make_inline(pos_op_inh),
+                        )
+                        .into()),
                         (true, Some((c1, c2))) => {
-                            let t1 = c1.value.closurize(&mut self.context.cache, c1.env);
-                            let t2 = c2.value.closurize(&mut self.context.cache, c2.env);
+                            let v1 = c1.value.closurize(&mut self.context.cache, c1.env);
+                            let v2 = c2.value.closurize(&mut self.context.cache, c2.env);
 
-                            Ok(Closure {
-                                value: NickelValue::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
-                                env: Environment::new(),
-                            })
+                            Ok(NickelValue::term(Term::Op2(BinaryOp::Eq, v1, v2), pos_op).into())
                         }
                     },
-                    EqResult::Eqs(t1, t2, subeqs) => {
+                    EqResult::Eqs(v1, v2, subeqs) => {
                         self.stack.push_eqs(subeqs.into_iter());
 
-                        Ok(Closure {
-                            value: NickelValue::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
-                            env: Environment::new(),
-                        })
+                        Ok(NickelValue::term(Term::Op2(BinaryOp::Eq, v1, v2), pos_op).into())
                     }
                 }
             }
-            BinaryOp::LessThan => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(n1 < n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
-            BinaryOp::LessOrEq => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(n1 <= n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
-            BinaryOp::GreaterThan => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(n1 > n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
-            BinaryOp::GreaterOrEq => {
-                if let Term::Num(ref n1) = *t1 {
-                    if let Term::Num(ref n2) = *t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(n1 >= n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Number", 2, t2, pos2)
-                    }
-                } else {
-                    mk_type_error!("Number", 1, t1, pos1)
-                }
-            }
+            BinaryOp::LessThan => self.binary_number_cmp(
+                |n1, n2| n1 < n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::LessOrEq => self.binary_number_cmp(
+                |n1, n2| n1 <= n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::GreaterThan => self.binary_number_cmp(
+                |n1, n2| n1 > n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::GreaterOrEq => self.binary_number_cmp(
+                |n1, n2| n1 >= n2,
+                value1,
+                pos1,
+                value2,
+                pos2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
             BinaryOp::LabelGoField => match_sharedterm!(match (t1) {
                 Term::Str(field) => match_sharedterm!(match (t2) {
                     Term::Lbl(l) => {
@@ -3167,7 +3116,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
     }
 
-    fn process_binary_number_operation<Op>(
+    fn binary_number_cmp<Op>(
+        &mut self,
+        op: Op,
+        value1: NickelValue,
+        pos1: PosIdx,
+        value2: NickelValue,
+        pos2: PosIdx,
+        pos_op: PosIdx,
+        op_name: String,
+    ) -> Result<Closure, EvalError>
+    where
+        Op: Fn(&Number, &Number) -> bool,
+    {
+        let pos_op_inh = pos_op.to_inherited_inline(&mut self.pos_table);
+
+        self.binary_number_fn(
+            |n1, n2| NickelValue::bool_value(op(n1, n2), pos_op_inh),
+            value1,
+            pos1,
+            value2,
+            pos2,
+            pos_op,
+            op_name,
+        )
+    }
+
+    fn binary_number_op<Op>(
         &mut self,
         op: Op,
         value1: NickelValue,
@@ -3179,6 +3154,32 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<Closure, EvalError>
     where
         Op: Fn(&Number, &Number) -> Number,
+    {
+        let pos_op_inh = pos_op.to_inherited_block(&mut self.pos_table);
+
+        self.binary_number_fn(
+            |n1, n2| NickelValue::number(op(n1, n2), pos_op_inh),
+            value1,
+            pos1,
+            value2,
+            pos2,
+            pos_op,
+            op_name,
+        )
+    }
+
+    fn binary_number_fn<Op>(
+        &mut self,
+        op: Op,
+        value1: NickelValue,
+        pos1: PosIdx,
+        value2: NickelValue,
+        pos2: PosIdx,
+        pos_op: PosIdx,
+        op_name: String,
+    ) -> Result<Closure, EvalError>
+    where
+        Op: Fn(&Number, &Number) -> NickelValue,
     {
         let Some(n1) = value1.as_number() else {
             return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
@@ -3205,7 +3206,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let n1 = &n1.0;
         let n2 = &n2.0;
 
-        Ok(NickelValue::number(op(n1, n2), pos_op_inh).into())
+        Ok(op(n1, n2).into())
     }
 
     /// Evaluate a n-ary operation.
@@ -3725,7 +3726,7 @@ fn eq<C: Cache>(
     cache: &mut C,
     c1: Closure,
     c2: Closure,
-    pos_op: TermPos,
+    pos_op: PosIdx,
 ) -> Result<EqResult, EvalError> {
     let Closure {
         value: NickelValue {
