@@ -27,3 +27,11 @@ jobs:
           --testbed ubuntu-latest \
           --adapter rust_criterion \
           nix develop --command cargo bench --package nickel-lang-core --features=benchmark-ci --bench numeric --bench arrays
+
+          bencher run \
+          --project nickel \
+          --token '${{ secrets.BENCHER_API_TOKEN }}' \
+          --branch master \
+          --testbed ubuntu-latest \
+          --adapter rust_criterion \
+          nix develop --command cargo bench --package nickel-lang-lsp
