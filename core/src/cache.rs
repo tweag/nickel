@@ -1037,36 +1037,40 @@ impl CacheHub {
         Ok(())
     }
 
-    /// Applies a custom transform to an input and its imports, leaving them in the same state as
-    /// before. Requires that the input has been parsed. In order for the transform to apply to
-    /// imports, they need to have been resolved.
+    /// Applies a custom transform to an input and its imports. Requires that source has been typechecked.
+    ///
+    /// If multiple invocations of `custom_transform` are needed, you must supply `transform_id` with
+    /// with a number higher than that of all previous invocations.
     pub fn custom_transform<E>(
         &mut self,
         file_id: FileId,
+        transform_id: usize,
         f: &mut impl FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     ) -> Result<(), CacheError<E>> {
         match self.terms.entry_state(file_id) {
-            Some(state) if state >= EntryState::Parsed => {
-                if state < EntryState::Transforming {
+            Some(state) if state <= EntryState::CustomTransformed { transform_id } => {
+                if state.needs_custom_transform(transform_id) {
                     let cached_term = self.terms.terms.remove(&file_id).unwrap();
                     let term = f(self, cached_term.term)?;
                     self.terms.insert(
                         file_id,
                         TermEntry {
                             term,
-                            state: EntryState::Transforming,
+                            state: EntryState::CustomTransforming,
                             ..cached_term
                         },
                     );
 
                     if let Some(imports) = self.import_data.imports.get(&file_id).cloned() {
                         for file_id in imports.into_iter() {
-                            self.custom_transform(file_id, f)?;
+                            self.custom_transform(file_id, transform_id, f)?;
                         }
                     }
-                    // TODO: We're setting the state back to whatever it was.
                     // unwrap(): we inserted the term just above
-                    let _ = self.terms.update_state(file_id, state).unwrap();
+                    let _ = self
+                        .terms
+                        .update_state(file_id, EntryState::CustomTransformed { transform_id })
+                        .unwrap();
                 }
                 Ok(())
             }
@@ -1447,6 +1451,10 @@ pub enum EntryState {
     Typechecking,
     /// The entry and its transitive imports have been typechecked.
     Typechecked,
+    /// A custom transformation of the entry (through `Program::custom_transform`) is underway.
+    CustomTransforming,
+    /// This entry has completed custom transformations of this ID and lower.
+    CustomTransformed { transform_id: usize },
     /// The imports of the entry have been resolved, and the imports of its (transitive) imports are
     /// being resolved.
     ImportsResolving,
@@ -1458,6 +1466,19 @@ pub enum EntryState {
     Transformed,
     /// The entry has been closurized.
     Closurized,
+}
+
+impl EntryState {
+    fn needs_custom_transform(&self, transform_id: usize) -> bool {
+        if let EntryState::CustomTransformed {
+            transform_id: done_transform_id,
+        } = self
+        {
+            transform_id > *done_transform_id
+        } else {
+            self < &EntryState::CustomTransforming
+        }
+    }
 }
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
