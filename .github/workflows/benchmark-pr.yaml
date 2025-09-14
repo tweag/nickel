@@ -32,6 +32,7 @@ jobs:
       - name: run benchmarks
         run: |
           nix develop --command cargo bench --package nickel-lang-core --features=benchmark-ci --bench numeric --bench arrays > criterion-output.txt
+          nix develop --command cargo bench --package nickel-lang-lsp >> criterion-output.txt
       - name: upload results
         uses: actions/upload-artifact@v4
         with:
