@@ -259,7 +259,7 @@ impl NickelValue {
         Self::inline_posless(InlineValue::EmptyArray)
     }
 
-    /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
+    /// Creates a new empty record with the index set to [InlinePosIdx::NONE].
     pub const fn empty_record() -> Self {
         Self::inline_posless(InlineValue::EmptyRecord)
     }
@@ -363,6 +363,20 @@ impl NickelValue {
         }
     }
 
+    /// Creates a new empty array, but don't inline it. This forces the allocation of a value
+    /// block. [Self::empty_array] can be useful when one needs to have a pre-allocated array that
+    /// will be mutated in a second step.
+    pub fn empty_array_block(pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(
+            ArrayBody {
+                array: Array::default(),
+                pending_contracts: Vec::new(),
+            },
+            pos_idx,
+        )
+        .into()
+    }
+
     /// Allocates a new record value. If the record is empty, it is automatically inlined as
     /// [InlineValue::EmptyRecord].
     ///
@@ -407,6 +421,17 @@ impl NickelValue {
         } else {
             ValueBlockRc::encode(RecordBody(value), PosIdx::NONE).into()
         }
+    }
+
+    /// Creates a new empty record, but don't inline it. This forces the allocation of a value
+    /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record that
+    /// will be mutated in a second step.
+    pub fn empty_record_block(pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(
+            RecordBody(RecordData::empty()),
+            pos_idx,
+        )
+        .into()
     }
 
     /// Allocates a new thunk value.
@@ -858,13 +883,17 @@ impl NickelValue {
         })
     }
 
-    /// Checks if this value is the inlined empty array.
+    /// Checks if this value is the inlined empty array. Caution: note that `self` could also be an
+    /// empty array, but allocated as a block. In that case, [Self::is_empty_array] would still
+    /// return `false`.
     pub fn is_empty_array(&self) -> bool {
         self.as_inline()
             .is_some_and(|inl| matches!(inl, InlineValue::EmptyArray))
     }
 
-    /// Checks if this value is the inlined empty record.
+    /// Checks if this value is the inlined empty record. Caution: note that `self` could also be
+    /// an empty record, but allocated as a block. In that case, [Self::is_empty_record] would
+    /// still return `false`.
     pub fn is_empty_record(&self) -> bool {
         self.as_inline()
             .is_some_and(|inl| matches!(inl, InlineValue::EmptyRecord))
