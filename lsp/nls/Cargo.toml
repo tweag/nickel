@@ -42,7 +42,7 @@ ouroboros.workspace = true
 pretty.workspace = true
 regex.workspace = true
 scopeguard.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 serde_json.workspace = true
 thiserror.workspace = true
 git-version.workspace = true

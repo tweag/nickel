@@ -17,45 +17,13 @@ use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, worl
 /// Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 
-/// The url and source contents to evaluate. This is what the background process will deserialize
-/// the request into so all data is owned.
-#[derive(Debug, Deserialize)]
+/// The evaluation data that gets sent to the background worker.
+#[derive(Debug, Serialize, Deserialize)]
 struct Eval {
-    /// The contents of the file to evaluate and all dependencies required for evaluation.
-    contents: Vec<(Url, String)>,
-    /// The url of the file to evaluate.
-    eval: Url,
-}
-
-/// The request for evaluation sent into BackgroundJobs
-#[derive(Debug)]
-struct EvalCommand {
-    /// All file contents that are needed for the evaluation. Contents are cloned references
-    /// to the file contents in the main SourceCache
+    /// All file contents that are needed for the evaluation.
     contents: Vec<(Url, Arc<str>)>,
     /// The url of the file to evaluate.
     eval: Url,
-}
-
-impl EvalCommand {
-    fn eval_ref(&self) -> EvalRef {
-        let contents: Vec<_> = self
-            .contents
-            .iter()
-            .map(|(url, contents)| (url, contents.as_ref()))
-            .collect();
-        EvalRef {
-            contents,
-            eval: &self.eval,
-        }
-    }
-}
-
-/// Version of EvalCommand with the file contents as a plain ref for serialization
-#[derive(Debug, Serialize)]
-struct EvalRef<'a> {
-    contents: Vec<(&'a Url, &'a str)>,
-    eval: &'a Url,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,7 +34,7 @@ pub struct Diagnostics {
 
 pub struct BackgroundJobs {
     receiver: Option<Receiver<Diagnostics>>,
-    sender: Sender<EvalCommand>,
+    sender: Sender<Eval>,
 }
 
 fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
@@ -91,7 +59,7 @@ pub fn worker_main() -> anyhow::Result<()> {
         bincode::config::standard(),
     )?;
     for (uri, text) in eval.contents {
-        world.add_file(uri, text)?;
+        world.add_file(uri, text.to_string())?;
     }
 
     let Ok(path) = uri_to_path(&eval.eval) else {
@@ -118,11 +86,11 @@ pub fn worker_main() -> anyhow::Result<()> {
 }
 
 struct SupervisorState {
-    eval_rx: Receiver<EvalCommand>,
+    eval_rx: Receiver<Eval>,
     response_tx: Sender<Diagnostics>,
 
     // A stack of files we want to evaluate, which we do in LIFO order.
-    eval_stack: Vec<EvalCommand>,
+    eval_stack: Vec<Eval>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
     // and refuse to evaluate it for `self.config.blacklist_duration`
@@ -133,7 +101,7 @@ struct SupervisorState {
 
 impl SupervisorState {
     fn new(
-        eval_rx: Receiver<EvalCommand>,
+        eval_rx: Receiver<Eval>,
         response_tx: Sender<Diagnostics>,
         config: config::LspEvalConfig,
     ) -> anyhow::Result<Self> {
@@ -150,7 +118,7 @@ impl SupervisorState {
     //
     // The current implementation uses a background process per invocation, which is not the
     // most efficient thing but it allows for cancellation and prevents memory leaks.
-    fn eval(&self, eval: &EvalCommand) -> anyhow::Result<Diagnostics> {
+    fn eval(&self, eval: &Eval) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
             .env(
@@ -179,11 +147,7 @@ impl SupervisorState {
         let mut tx = tx.ok_or_else(|| anyhow!("failed to get worker stdin"))?;
         let mut rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
 
-        bincode::serde::encode_into_std_write(
-            eval.eval_ref(),
-            &mut tx,
-            bincode::config::standard(),
-        )?;
+        bincode::serde::encode_into_std_write(eval, &mut tx, bincode::config::standard())?;
 
         let result = run_with_timeout(
             move || bincode::serde::decode_from_std_read(&mut rx, bincode::config::standard()),
@@ -193,7 +157,7 @@ impl SupervisorState {
         Ok(result??)
     }
 
-    fn handle_eval(&mut self, eval: EvalCommand) {
+    fn handle_eval(&mut self, eval: Eval) {
         match self.banned_files.get(&eval.eval) {
             Some(blacklist_time) if blacklist_time.elapsed() < self.config.blacklist_duration => {}
             _ => {
@@ -297,7 +261,7 @@ impl BackgroundJobs {
 
     pub fn eval_file(&mut self, uri: Url, world: &World) {
         if let Some(contents) = self.contents(&uri, world) {
-            let _ = self.sender.send(EvalCommand {
+            let _ = self.sender.send(Eval {
                 eval: uri,
                 contents,
             });
