@@ -7,11 +7,12 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
+    Cache, Closure, Environment, ImportResolver, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
-    merge::{self, split, MergeMode},
+    merge::{self, MergeMode, split},
     stack::StrAccData,
-    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
+    subst,
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -21,12 +22,13 @@ use crate::{
     cache::InputFormat,
     bytecode::value::{
         Array, ArrayBody, EnumVariantBody, InlineValue, LabelBody, NickelValue, NumberBody,
-        RecordBody, TermBody, TypeBody, ValueContent, ValueContentRef, ValueContentRefMut,
+        RecordBody, StringBody, TermBody, TypeBody, ValueContent, ValueContentRef,
+        ValueContentRefMut,
     },
     closurize::Closurize,
     error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
-    label::{ty_path, Polarity, TypeVarData},
+    label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
@@ -40,11 +42,11 @@ use crate::{
 use crate::pretty::PrettyPrintCap;
 
 use malachite::{
+    Integer,
     base::{
         num::{arithmetic::traits::Pow, basic::traits::Zero, conversion::traits::RoundingFrom},
         rounding_modes::RoundingMode,
     },
-    Integer,
 };
 
 use md5::digest::Digest;
@@ -1230,7 +1232,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             return self.throw_with_ctxt(
                                 EvalErrorData::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::Freeze,
-                                    evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                    evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                                     label,
                                     call_stack: std::mem::take(&mut self.call_stack),
                                 },
@@ -1251,7 +1253,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     pending_contracts: Vec::new(),
                                     ..field
                                 }
-                                .closurize(&mut self.cache, env.clone());
+                                .closurize(&mut self.context.cache, env.clone());
 
                                 (id, field)
                             })
@@ -1923,7 +1925,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We update the label and convert it back to a term form that can be cheaply cloned
                 label.arg_pos = self
                     .pos_table
-                    .get(self.cache.get_then(idx.clone(), |c| c.value.pos_idx()));
+                    .get(self.context.cache.get_then(idx.clone(), |c| c.value.pos_idx()));
                 label.arg_idx = Some(idx.clone());
                 let new_label = NickelValue::label(label, pos2);
 
@@ -2204,81 +2206,75 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 pos_op_inh,
                 b_op.to_string(),
             ),
-            BinaryOp::LabelGoField => match_sharedterm!(match (t1) {
-                Term::Str(field) => match_sharedterm!(match (t2) {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Field(field.into_inner().into()));
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                    _ => mk_type_error!("Label", 2, t2, pos2),
-                }),
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
+            BinaryOp::LabelGoField => {
+                let Some(field) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
+
+                let Some(label) = value2.as_label() else {
+                    return mk_type_error!("Label", 2, value2);
+                };
+
+                let mut label = label.0.clone();
+                label
+                    .path
+                    .push(ty_path::Elem::Field(field.0.into_inner().into()));
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
             BinaryOp::RecordGet => {
-                match_sharedterm!(match (t1) {
-                    Term::Str(id) => {
-                        if let Term::Record(record) = &*t2 {
-                            // We have to apply potential pending contracts. Right now, this
-                            // means that repeated field access will re-apply the contract again
-                            // and again, which is not optimal. The same thing happens with array
-                            // contracts. There are several way to improve this, but this is left
-                            // as future work.
-                            let ident = LocIdent::from(&id);
-                            match record.get_value_with_ctrs(&ident).map_err(
-                                |missing_field_err| missing_field_err.into_eval_err(pos2, pos_op),
-                            )? {
-                                Some(value) => {
-                                    self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
-                                    Ok(Closure {
-                                        body: value,
-                                        env: env2,
-                                    })
-                                }
-                                None => match record.sealed_tail.as_ref() {
-                                    Some(t) if t.has_dyn_field(&id) => {
-                                        Err(EvalErrorData::IllegalPolymorphicTailAccess {
-                                            action: IllegalPolymorphicTailAction::FieldAccess {
-                                                field: id.to_string(),
-                                            },
-                                            evaluated_arg: t
-                                                .label
-                                                .get_evaluated_arg(&self.context.cache),
-                                            label: t.label.clone(),
-                                            call_stack: std::mem::take(&mut self.call_stack),
-                                        })
-                                    }
-                                    _ => Err(EvalErrorData::FieldMissing {
-                                        id: ident,
-                                        field_names: record
-                                            .field_names(RecordOpKind::IgnoreEmptyOpt),
-                                        operator: String::from("(.$)"),
-                                        pos_record: pos2,
-                                        pos_op,
-                                    }),
+                // This error should be impossible to trigger. The parser
+                // prevents a dynamic field access where the field name is not syntactically
+                // a string.
+                let Some(StringBody(id)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
+
+                let Some(RecordBody(record)) = value2.as_record() else {
+                    // Not using mk_type_error! because of a non-uniform message
+                    return self.throw_with_ctxt(EvalErrorData::TypeError {
+                        expected: String::from("Record"),
+                        message: String::from("field access only makes sense for records"),
+                        orig_pos: snd_pos,
+                        term: value2,
+                    });
+                };
+
+                // We have to apply potential pending contracts. Right now, this
+                // means that repeated field access will re-apply the contract again
+                // and again, which is not optimal. The same thing happens with array
+                // contracts. There are several way to improve this, but this is left
+                // as future work.
+                let ident = LocIdent::from(id);
+                match record
+                    .get_value_with_ctrs(&ident)
+                    .map_err(|missing_field_err| {
+                        self.err_with_ctxt(missing_field_err.into_eval_err(pos2, pos_op))
+                    })? {
+                    Some(value) => {
+                        self.call_stack
+                            .enter_field(ident, pos2, value.pos_idx(), pos_op);
+                        Ok(Closure { value, env: env2 })
+                    }
+                    None => match record.sealed_tail.as_ref() {
+                        Some(t) if t.has_dyn_field(id) => {
+                            self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                                action: IllegalPolymorphicTailAction::FieldAccess {
+                                    field: id.to_string(),
                                 },
-                            }
-                        } else {
-                            // Not using mk_type_error! because of a non-uniform message
-                            Err(EvalErrorData::TypeError {
-                                expected: String::from("Record"),
-                                message: String::from("field access only makes sense for records"),
-                                orig_pos: snd_pos,
-                                term: NickelValue {
-                                    term: t2,
-                                    pos: pos2,
-                                },
+                                evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
+                                label: t.label.clone(),
+                                call_stack: std::mem::take(&mut self.call_stack),
                             })
                         }
-                    }
-                    // This error should be impossible to trigger. The parser
-                    // prevents a dynamic field access where the field name is not syntactically
-                    // a string.
-                    _ => mk_type_error!("String", 1, t1, pos1),
-                })
+                        _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                            id: ident,
+                            field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
+                            operator: String::from("(.$)"),
+                            pos_record: pos2,
+                            pos_op,
+                        }),
+                    },
+                }
             }
             BinaryOp::RecordInsert {
                 metadata,
@@ -2286,376 +2282,370 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ext_kind,
                 op_kind,
             } => {
-                if let Term::Str(id) = &*t1 {
-                    match_sharedterm!(match (t2) {
-                        Term::Record(record) => {
-                            let mut fields = record.fields;
+                let Some(StringBody(id)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
 
-                            // If a defined value is expected for this field, it must be
-                            // provided as an additional argument, so we pop it from the stack
-                            let value = if let RecordExtKind::WithValue = ext_kind {
-                                let (value_closure, _) =
-                                    self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                                        EvalErrorData::NotEnoughArgs(
-                                            3,
-                                            String::from("insert"),
-                                            pos_op,
-                                        )
-                                    })?;
+                let mut value2 = value2;
 
-                                let closurized = value_closure
-                                    .body
-                                    .closurize(&mut self.context.cache, value_closure.env);
-                                Some(closurized)
-                            } else {
-                                None
-                            };
+                if value2.is_empty_record() {
+                    // We are going to insert in the record, so we make sure that it's an allocated
+                    // block and not an inline empty record.
+                    value2 = NickelValue::empty_record_block(pos2);
+                }
 
-                            match fields.insert(
-                                LocIdent::from(id),
-                                Field {
-                                    value,
-                                    metadata: *metadata,
-                                    pending_contracts,
-                                },
-                            ) {
-                                Some(t)
-                                    if matches!(op_kind, RecordOpKind::ConsiderAllFields)
-                                        || !t.is_empty_optional() =>
-                                {
-                                    Err(EvalErrorData::Other(
-                                        format!(
-                                            "record/insert: \
+                let ValueContentRefMut::Record(RecordBody(record)) = value2.content_make_mut()
+                else {
+                    return mk_type_error!("Record", 2, value2);
+                };
+
+                // If a defined value is expected for this field, it must be
+                // provided as an additional argument, so we pop it from the stack
+                let value = if let RecordExtKind::WithValue = ext_kind {
+                    let (value_closure, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
+                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                            3,
+                            String::from("insert"),
+                            pos_op,
+                        ))
+                    })?;
+
+                    let closurized = value_closure
+                        .value
+                        .closurize(&mut self.context.cache, value_closure.env);
+                    Some(closurized)
+                } else {
+                    None
+                };
+
+                match record.fields.insert(
+                    LocIdent::from(id),
+                    Field {
+                        value,
+                        metadata: *metadata,
+                        pending_contracts,
+                    },
+                ) {
+                    Some(t)
+                        if matches!(op_kind, RecordOpKind::ConsiderAllFields)
+                            || !t.is_empty_optional() =>
+                    {
+                        self.throw_with_ctxt(EvalErrorData::Other(
+                            format!(
+                                "record/insert: \
                                             tried to extend a record with the field {id}, \
                                             but it already exists"
-                                        ),
-                                        pos_op,
-                                    ))
-                                }
-                                _ => Ok(Closure {
-                                    // Insertion preserves the frozenness
-                                    body: Term::Record(RecordData { fields, ..record }).into(),
-                                    env: env2,
-                                }),
-                            }
-                        }
-                        _ => mk_type_error!(op_name = "record/insert", "Record", 2, t2, pos2),
-                    })
-                } else {
-                    mk_type_error!(op_name = "record/insert", "String", 1, t1, pos1)
+                            ),
+                            pos_op,
+                        ))
+                    }
+                    _ => Ok(Closure {
+                        // Insertion preserves the frozenness
+                        value: value2,
+                        env: env2,
+                    }),
                 }
             }
-            BinaryOp::RecordRemove(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => match_sharedterm!(match (t2) {
-                    Term::Record(record) => {
-                        let mut fields = record.fields;
-                        let fetched = fields.swap_remove(&LocIdent::from(&id));
-                        if fetched.is_none()
-                            || matches!(
-                                (op_kind, fetched),
-                                (
-                                    RecordOpKind::IgnoreEmptyOpt,
-                                    Some(Field {
-                                        value: None,
-                                        metadata: FieldMetadata { opt: true, .. },
-                                        ..
-                                    })
-                                )
-                            )
-                        {
-                            match record.sealed_tail.as_ref() {
-                                Some(t) if t.has_dyn_field(&id) => {
-                                    Err(EvalErrorData::IllegalPolymorphicTailAccess {
-                                        action: IllegalPolymorphicTailAction::FieldRemove {
-                                            field: id.to_string(),
-                                        },
-                                        evaluated_arg: t
-                                            .label
-                                            .get_evaluated_arg(&self.context.cache),
-                                        label: t.label.clone(),
-                                        call_stack: std::mem::take(&mut self.call_stack),
-                                    })
-                                }
-                                _ => {
-                                    // We reconstruct the record's data to have access to
-                                    // `data.field_names()`
-                                    let record = RecordData { fields, ..record };
+            BinaryOp::RecordRemove(op_kind) => {
+                let Some(StringBody(id)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
 
-                                    Err(EvalErrorData::FieldMissing {
-                                        id: id.into(),
-                                        field_names: record.field_names(op_kind),
-                                        operator: String::from("record/remove"),
-                                        pos_record: pos2,
-                                        pos_op,
-                                    })
-                                }
-                            }
-                        } else {
-                            Ok(Closure {
-                                body: NickelValue::new(
-                                    // Removal preserves the frozenness
-                                    Term::Record(RecordData { fields, ..record }),
-                                    pos_op_inh,
-                                ),
-                                env: env2,
+                let mut value2 = value2;
+
+                if value2.is_empty_record() {
+                    // We are going to insert in the record, so we make sure that it's an allocated
+                    // block and not an inline empty record.
+                    value2 = NickelValue::empty_record_block(pos2);
+                }
+
+                let ValueContentRefMut::Record(RecordBody(record)) = value2.content_make_mut()
+                else {
+                    return mk_type_error!("Record", 2, value2);
+                };
+
+                let fetched = record.fields.swap_remove(&LocIdent::from(id));
+
+                if fetched.is_none()
+                    || matches!(
+                        (op_kind, fetched),
+                        (
+                            RecordOpKind::IgnoreEmptyOpt,
+                            Some(Field {
+                                value: None,
+                                metadata: FieldMetadata { opt: true, .. },
+                                ..
+                            })
+                        )
+                    )
+                {
+                    match record.sealed_tail.as_ref() {
+                        Some(t) if t.has_dyn_field(&id) => {
+                            self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                                action: IllegalPolymorphicTailAction::FieldRemove {
+                                    field: id.to_string(),
+                                },
+                                evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
+                                label: t.label.clone(),
+                                call_stack: std::mem::take(&mut self.call_stack),
                             })
                         }
-                    }
-                    _ => mk_type_error!("Record", 2, t2, pos2),
-                }),
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
-            BinaryOp::RecordHasField(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => {
-                    if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(matches!(
-                                record.fields.get(&LocIdent::from(id.into_inner())),
-                                Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
-                            )),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Record", 2, t2, pos2)
-                    }
-                }
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
-            BinaryOp::RecordFieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => {
-                    if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Bool(matches!(
-                                record.fields.get(&LocIdent::from(id.into_inner())),
-                                Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
-                            )),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Record", 2, t2, pos2)
-                    }
-                }
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
-            BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
-                Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
-                    Term::Array(ts2, attrs2) => {
-                        let mut ts1 = ts1;
-                        // NOTE: the [eval_closure] function in [eval] should've made sure
-                        // that the array is closurized. We leave a debug_assert! here just
-                        // in case something goes wrong in the future. If the assert failed,
-                        // you may need to map closurize over `ts1` and `ts2`.
-                        debug_assert!(
-                            attrs1.closurized,
-                            "the left-hand side of ArrayConcat (@) is not closurized."
-                        );
-                        debug_assert!(
-                            attrs2.closurized,
-                            "the right-hand side of ArrayConcat (@) is not closurized."
-                        );
-
-                        // We have two sets of contracts from the LHS and RHS arrays.
-                        // - Common contracts between the two sides can be put into
-                        // `pending_contracts` of the resulting concatenation as they're
-                        // shared by all elements: we don't have to apply them just yet.
-                        // - Contracts thats are specific to the LHS or the RHS have to
-                        // applied because we don't have a way of tracking which elements
-                        // should take which contracts.
-
-                        // Separate contracts between the parts that aren't common, and
-                        // must be applied right away, and the common part, which can be
-                        // kept lazy.
-                        let mut ctrs_left = attrs1.pending_contracts;
-                        // We use a vector of `Option` so that we can set the elements to
-                        // remove to `None` and make a single pass at the end
-                        // to retain the remaining ones.
-                        let mut ctrs_right_sieve: Vec<_> =
-                            attrs2.pending_contracts.into_iter().map(Some).collect();
-                        let mut ctrs_common = Vec::new();
-
-                        // We basically compute the intersection (`ctr_common`),
-                        // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                        let ctrs_left_dedup: Vec<_> = ctrs_left
-                            .into_iter()
-                            .filter(|ctr| {
-                                // We don't deduplicate polymorphic contracts, because
-                                // they're not idempotent.
-                                if ctr.can_have_poly_ctrs() {
-                                    return true;
-                                }
-
-                                // We check if there is a remaining contract in
-                                // `ctrs_right_sieve` which matches `ctr`: in this case,
-                                // `twin_index` will hold its index.
-                                let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
-                                    other_ctr.as_ref().is_some_and(|other_ctr| {
-                                        contract_eq(
-                                            &ctr.contract,
-                                            &env1,
-                                            &other_ctr.contract,
-                                            &env2,
-                                        )
-                                    })
-                                });
-
-                                if let Some(index) = twin_index {
-                                    // unwrap(): we know that the contract at this index is
-                                    // `Some`, because all elements are initially some when
-                                    // creating `ctrs_right_sieve` and then we don't
-                                    // consider `None` values when computing a new `index`
-                                    // in the `position` above.
-                                    let common = ctrs_right_sieve[index].take().unwrap();
-                                    ctrs_common.push(common);
-                                    false
-                                } else {
-                                    true
-                                }
-                            })
-                            .collect();
-
-                        let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
-                        let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
-
-                        let ctrs_left_empty = ctrs_left_dedup.is_empty();
-
-                        let arr = if ctrs_right_empty && ctrs_left_empty {
-                            ts1.extend(ts2);
-                            ts1
-                        } else if ctrs_left_empty {
-                            ts1.extend(ts2.into_iter().map(|t| {
-                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
-                                    .closurize(&mut self.context.cache, env1.clone())
-                            }));
-                            ts1
-                        } else {
-                            let mut ts = Array::default();
-
-                            ts.extend(ts1.into_iter().map(|t| {
-                                RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
-                                    .closurize(&mut self.context.cache, env1.clone())
-                            }));
-
-                            ts.extend(ts2.into_iter().map(|t| {
-                                RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
-                                    .closurize(&mut self.context.cache, env2.clone())
-                            }));
-
-                            ts
-                        };
-
-                        let attrs = ArrayAttrs {
-                            closurized: true,
-                            pending_contracts: ctrs_common,
-                        };
-
-                        Ok(Closure {
-                            body: NickelValue::new(Term::Array(arr, attrs), pos_op_inh),
-                            env: Environment::new(),
-                        })
-                    }
-                    _ => {
-                        mk_type_error!("Array", 2, t2, pos2)
-                    }
-                }),
-                _ => {
-                    mk_type_error!("Array", 1, t1, pos1)
-                }
-            }),
-            BinaryOp::ArrayAt => match (&*t1, &*t2) {
-                (Term::Array(ts, attrs), Term::Num(n)) => {
-                    let Ok(n_as_usize) = usize::try_from(n) else {
-                        return Err(EvalErrorData::Other(
-                            format!(
-                                "array/at expects its second argument to be a \
-                                positive integer smaller than {}, got {n}",
-                                usize::MAX
-                            ),
+                        _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                            id: id.into(),
+                            field_names: record.field_names(op_kind),
+                            operator: String::from("record/remove"),
+                            pos_record: pos2,
                             pos_op,
-                        ));
-                    };
-
-                    if n_as_usize >= ts.len() {
-                        return Err(EvalErrorData::Other(
-                            format!(
-                                "array/at: index out of bounds. \
-                                Expected an index between 0 and {}, got {}",
-                                ts.len(),
-                                n
-                            ),
-                            pos_op,
-                        ));
-                    }
-
-                    let elem_with_ctr = RuntimeContract::apply_all(
-                        ts.get(n_as_usize).unwrap().clone(),
-                        attrs.pending_contracts.iter().cloned(),
-                        pos1.into_inherited(),
-                    );
-
-                    Ok(Closure {
-                        value: elem_with_ctr,
-                        env: env1,
-                    })
-                }
-                (Term::Array(..), _) => mk_type_error!("Number", 2, t2, pos2),
-                (_, _) => mk_type_error!("Array", 1, t1, pos1),
-            },
-            BinaryOp::Merge(merge_label) => merge::merge(
-                &mut self.context.cache,
-                NickelValue {
-                    term: t1,
-                    pos: pos1,
-                },
-                env1,
-                NickelValue {
-                    term: t2,
-                    pos: pos2,
-                },
-                env2,
-                pos_op,
-                MergeMode::Standard(merge_label),
-                &mut self.call_stack,
-            ),
-            BinaryOp::Hash => {
-                let mk_err_fst =
-                    |t1| mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, t1, pos1);
-
-                if let Term::Enum(id) = &*t1 {
-                    if let Term::Str(s) = &*t2 {
-                        let result = match id.as_ref() {
-                            "Md5" => {
-                                let mut hasher = md5::Md5::new();
-                                hasher.update(s.as_ref());
-                                format!("{:x}", hasher.finalize())
-                            }
-                            "Sha1" => {
-                                let mut hasher = sha1::Sha1::new();
-                                hasher.update(s.as_ref());
-                                format!("{:x}", hasher.finalize())
-                            }
-                            "Sha256" => {
-                                let mut hasher = sha2::Sha256::new();
-                                hasher.update(s.as_ref());
-                                format!("{:x}", hasher.finalize())
-                            }
-                            "Sha512" => {
-                                let mut hasher = sha2::Sha512::new();
-                                hasher.update(s.as_ref());
-                                format!("{:x}", hasher.finalize())
-                            }
-                            _ => return mk_err_fst(t1),
-                        };
-
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Str(result.into()),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("String", 2, t2, pos2)
+                        }),
                     }
                 } else {
-                    mk_err_fst(t1)
+                    Ok(Closure {
+                        value: value2,
+                        env: env2,
+                    })
                 }
+            }
+            BinaryOp::RecordHasField(op_kind) => {
+                let Some(StringBody(id)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
+
+                let Some(RecordBody(record)) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
+                };
+
+                Ok(NickelValue::bool_value(matches!(
+                            record.fields.get(&LocIdent::from(id.into_inner())),
+                            Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                        ),
+                    self.pos_table.make_inline(pos_op_inh)
+                ).into())
+            }
+            BinaryOp::RecordFieldIsDefined(op_kind) => {
+                let Some(StringBody(id)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
+                };
+
+                let Some(RecordBody(record)) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
+                };
+
+                Ok(NickelValue::bool_value(
+                        matches!(
+                            record.fields.get(&LocIdent::from(id.into_inner())),
+                            Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                        ),
+                        self.pos_table.make_inline(pos_op_inh),
+                ).into())
+            }
+            BinaryOp::ArrayConcat => {
+                let ValueContentRefMut::Array(array_data1) = value1.content_make_mut() else {
+                    return mk_type_error!("Array", 1, value1);
+                };
+
+                let Some(array_data2) = value2.as_array() else {
+                    return mk_type_error!("Array", 2, value2);
+                };
+
+                let mut array1 = array_data1.array;
+                //TODO[seen at RFC007]: this is unsound, because it might change the order in which
+                //contracts are applied (common contracts are delayed), but the order of
+                //application might be relied upon by the users.
+                //
+                // We have two sets of contracts from the LHS and RHS arrays.
+                // - Common contracts between the two sides can be put into
+                // `pending_contracts` of the resulting concatenation as they're
+                // shared by all elements: we don't have to apply them just yet.
+                // - Contracts thats are specific to the LHS or the RHS have to
+                // applied because we don't have a way of tracking which elements
+                // should take which contracts.
+
+                // Separate contracts between the parts that aren't common, and
+                // must be applied right away, and the common part, which can be
+                // kept lazy.
+                let ctrs_left = array_data1.pending_contracts;
+                // We use a vector of `Option` so that we can set the elements to
+                // remove to `None` and make a single pass at the end
+                // to retain the remaining ones.
+                let mut ctrs_right_sieve: Vec<_> =
+                    array_data2.pending_contracts.iter().map(Some).collect();
+                let mut ctrs_common = Vec::new();
+
+                // We basically compute the intersection (`ctr_common`),
+                // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
+                let ctrs_left_dedup: Vec<_> = ctrs_left
+                    .into_iter()
+                    .filter(|ctr| {
+                        // We don't deduplicate polymorphic contracts, because
+                        // they're not idempotent.
+                        if ctr.can_have_poly_ctrs() {
+                            return true;
+                        }
+
+                        // We check if there is a remaining contract in
+                        // `ctrs_right_sieve` which matches `ctr`: in this case,
+                        // `twin_index` will hold its index.
+                        let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
+                            other_ctr.as_ref().is_some_and(|other_ctr| {
+                                contract_eq(&ctr.contract, &env1, &other_ctr.contract, &env2)
+                            })
+                        });
+
+                        if let Some(index) = twin_index {
+                            // unwrap(): we know that the contract at this index is
+                            // `Some`, because all elements are initially some when
+                            // creating `ctrs_right_sieve` and then we don't
+                            // consider `None` values when computing a new `index`
+                            // in the `position` above.
+                            let common = ctrs_right_sieve[index].take().unwrap().clone();
+                            ctrs_common.push(common);
+                            false
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+
+                let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
+                let ctrs_left_empty = ctrs_left_dedup.is_empty();
+                let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten().cloned();
+
+                let result = if ctrs_right_empty && ctrs_left_empty {
+                    array1.extend(array_data2.array.iter().cloned());
+
+                    array1
+                } else if ctrs_left_empty {
+                    array1.extend(array_data2.array.iter().cloned().map(|t| {
+                        RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
+                            .closurize(&mut self.context.cache, env1.clone())
+                    }));
+
+                    array1
+                } else {
+                    let mut array = Array::default();
+
+                    array.extend(array1.into_iter().map(|t| {
+                        RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
+                            .closurize(&mut self.context.cache, env1.clone())
+                    }));
+
+                    array.extend(array_data2.array.into_iter().map(|t| {
+                        RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                            .closurize(&mut self.context.cache, env2.clone())
+                    }));
+
+                    array
+                };
+
+                Ok(NickelValue::array_force_pos(
+                    &mut self.pos_table,
+                    result,
+                    ctrs_common,
+                    pos_op_inh,
+                )
+                .into())
+            }
+            BinaryOp::ArrayAt => {
+                let Some(array_data) = value1.as_array() else {
+                    return mk_type_error!("Array", 1, value1);
+                };
+
+                let Some(NumberBody(n)) = value2.as_number() else {
+                    return mk_type_error!("Number", 2, value2);
+                };
+
+                let Ok(n_as_usize) = usize::try_from(n) else {
+                    return self.throw_with_ctxt(EvalErrorData::Other(
+                        format!(
+                            "array/at expects its second argument to be a \
+                                positive integer smaller than {}, got {n}",
+                            usize::MAX
+                        ),
+                        pos_op,
+                    ));
+                };
+
+                if n_as_usize >= array_data.array.len() {
+                    return self.throw_with_ctxt(EvalErrorData::Other(
+                        format!(
+                            "array/at: index out of bounds. \
+                                Expected an index between 0 and {}, got {}",
+                            array_data.array.len(),
+                            n
+                        ),
+                        pos_op,
+                    ));
+                }
+
+                let elem_with_ctr = RuntimeContract::apply_all(
+                    array_data.array.get(n_as_usize).unwrap().clone(),
+                    array_data.pending_contracts.iter().cloned(),
+                    pos1.into_inherited(),
+                );
+
+                Ok(Closure {
+                    value: elem_with_ctr,
+                    env: env1,
+                })
+            }
+            BinaryOp::Merge(merge_label) => todo!("after having updated merge::merge"),
+            // merge::merge(
+            //     &mut self.context.cache,
+            //     NickelValue {
+            //         term: t1,
+            //         pos: pos1,
+            //     },
+            //     env1,
+            //     NickelValue {
+            //         term: t2,
+            //         pos: pos2,
+            //     },
+            //     env2,
+            //     pos_op,
+            //     MergeMode::Standard(merge_label),
+            //     &mut self.call_stack,
+            // ),
+            BinaryOp::Hash => {
+                let mk_err_fst =
+                    || mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, value1);
+
+                let Some(enum_data) = value1.as_enum_variant() else {
+                    return mk_err_fst();
+                };
+
+                if enum_data.arg.is_some() {
+                    return mk_err_fst();
+                }
+
+                let Some(StringBody(s)) = value2.as_string() else {
+                    return mk_type_error!("String", 2, value2);
+                };
+
+                let result = match enum_data.tag.as_ref() {
+                    "Md5" => {
+                        let mut hasher = md5::Md5::new();
+                        hasher.update(s.as_ref());
+                        format!("{:x}", hasher.finalize())
+                    }
+                    "Sha1" => {
+                        let mut hasher = sha1::Sha1::new();
+                        hasher.update(s.as_ref());
+                        format!("{:x}", hasher.finalize())
+                    }
+                    "Sha256" => {
+                        let mut hasher = sha2::Sha256::new();
+                        hasher.update(s.as_ref());
+                        format!("{:x}", hasher.finalize())
+                    }
+                    "Sha512" => {
+                        let mut hasher = sha2::Sha512::new();
+                        hasher.update(s.as_ref());
+                        format!("{:x}", hasher.finalize())
+                    }
+                    _ => return mk_err_fst(),
+                };
+
+                Ok(NickelValue::string(result.into(), pos_op_inh).into())
             }
             BinaryOp::Serialize => {
                 let mk_err_fst = |t1| mk_type_error!("[| 'Json, 'Yaml, 'Toml |]", 1, t1, pos1);
