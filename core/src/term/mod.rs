@@ -14,7 +14,7 @@ use crate::{
     bytecode::value::{self, Array, NickelValue},
     cache::InputFormat,
     combine::Combine,
-    error::{EvalError, ParseError},
+    error::{EvalErrorData, ParseError},
     eval::{cache::CacheIndex, contract_eq, Environment},
     files::FileId,
     identifier::{Ident, LocIdent},
@@ -209,7 +209,7 @@ pub enum Term {
     /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
     /// evaluated, will raise a proper missing field definition error. This is precisely the
     /// behavior of `RuntimeError` behaves.
-    RuntimeError(EvalError),
+    RuntimeError(EvalErrorData),
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
