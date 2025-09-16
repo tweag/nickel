@@ -313,19 +313,19 @@ pub struct TypeVarData {
     pub polarity: Polarity,
 }
 
-// impl From<&TypeVarData> for NickelValue {
-//     fn from(value: &TypeVarData) -> Self {
-//         NickelValue::record(RecordData {
-//             fields: [(
-//                 LocIdent::new("polarity"),
-//                 Field::from(NickelValue::from(Term::from(value.polarity))),
-//             )]
-//             .into(),
-//             attrs: Default::default(),
-//             sealed_tail: None,
-//         }, todo!()).unwrap()
-//     }
-// }
+impl From<&TypeVarData> for NickelValue {
+    fn from(value: &TypeVarData) -> Self {
+        NickelValue::record_posless(RecordData {
+            fields: [(
+                LocIdent::new("polarity"),
+                Field::from(NickelValue::from(value.polarity)),
+            )]
+            .into(),
+            attrs: Default::default(),
+            sealed_tail: None,
+        })
+    }
+}
 
 /// A polarity. See [`Label`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,19 +420,33 @@ impl Label {
         self.arg_idx.clone().map(|idx| cache.get(idx).value)
     }
 
-    /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
-    /// erase the previous value.
-    ///
-    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
-    pub fn with_diagnostic_message(mut self, message: impl Into<String>) -> Self {
+    /// Same as [`with_diagnostic_message`], but mutate `self` in place.
+    pub fn set_diagnostic_message(&mut self, message: impl Into<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
             current.message = Some(message.into());
         } else {
             self.diagnostics
                 .push(ContractDiagnostic::new().with_message(message));
         };
+    }
 
+    /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
+    /// erase the previous value.
+    ///
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
+    pub fn with_diagnostic_message(mut self, message: impl Into<String>) -> Self {
+        self.set_diagnostic_message(message);
         self
+    }
+
+    /// Same as [`with_diagnostic_notes`], but mutate `self` in place.
+    pub fn set_diagnostic_notes(&mut self, notes: Vec<String>) {
+        if let Some(current) = self.diagnostics.last_mut() {
+            current.notes = notes;
+        } else {
+            self.diagnostics
+                .push(ContractDiagnostic::new().with_notes(notes));
+        };
     }
 
     /// Set the notes of the current diagnostic (the last diagnostic of the stack). Potentially
@@ -440,13 +454,7 @@ impl Label {
     ///
     /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
     pub fn with_diagnostic_notes(mut self, notes: Vec<String>) -> Self {
-        if let Some(current) = self.diagnostics.last_mut() {
-            current.notes = notes;
-        } else {
-            self.diagnostics
-                .push(ContractDiagnostic::new().with_notes(notes));
-        };
-
+        self.set_diagnostic_notes(notes);
         self
     }
 
