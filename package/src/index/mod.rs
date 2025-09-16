@@ -302,8 +302,7 @@ impl<T: LockType> PackageIndex<T> {
             let tmp_dir = tempdir_in(parent_dir).with_path(parent_dir)?;
             let _tree_id = nickel_lang_git::fetch(&Spec::commit(url, *commit), tmp_dir.path())?;
 
-            let tmp_dir = tmp_dir.into_path();
-            std::fs::rename(tmp_dir, target_dir).with_path(target_dir)?;
+            std::fs::rename(tmp_dir.keep(), target_dir).with_path(target_dir)?;
         }
 
         Ok(())

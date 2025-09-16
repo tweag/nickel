@@ -84,7 +84,7 @@ impl IndexLock<Exclusive> {
             // point at the root path.
             std::fs::remove_dir_all(&config.index_dir).with_path(&config.index_dir)?;
         }
-        std::fs::rename(tree_path.into_path(), &config.index_dir).with_path(&config.index_dir)?;
+        std::fs::rename(tree_path.keep(), &config.index_dir).with_path(&config.index_dir)?;
         info!("done!");
         Ok(())
     }

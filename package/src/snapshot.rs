@@ -222,7 +222,7 @@ impl Snapshot {
             // Unwrap: the result of `Precise::local_path` always has a parent directory.
             let parent_dir = path.parent().unwrap();
             std::fs::create_dir_all(parent_dir).with_path(parent_dir)?;
-            std::fs::rename(tmp_dir.into_path(), &path).with_path(path)?;
+            std::fs::rename(tmp_dir.keep(), &path).with_path(path)?;
         }
 
         self.git.insert(git.clone(), id);
