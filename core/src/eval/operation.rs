@@ -19,13 +19,14 @@ use super::{
 use crate::nix_ffi;
 
 use crate::{
-    cache::InputFormat,
     bytecode::value::{
         Array, ArrayBody, EnumVariantBody, InlineValue, LabelBody, NickelValue, NumberBody,
         RecordBody, StringBody, TermBody, TypeBody, ValueContent, ValueContentRef,
         ValueContentRefMut,
     },
+    cache::InputFormat,
     closurize::Closurize,
+    combine::Combine,
     error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
     label::{Polarity, TypeVarData, ty_path},
@@ -99,6 +100,10 @@ pub enum OperationCont {
                                  of arguments yet to be evaluated */
     },
 }
+
+/// A string represention of the type of the first argument of serialization-related primitive
+/// operations. This is a Nickel enum of the supported serialization formats.
+static ENUM_FORMAT: &'static str = "[| 'Json, 'Yaml, 'Toml |]";
 
 impl std::fmt::Debug for OperationCont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -470,7 +475,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     },
                                     evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
                                     label: t.label.clone(),
-                                    call_stack: std::mem::take(&mut self.call_stack),
                                 })
                             }
                             _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
@@ -663,7 +667,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     action: IllegalPolymorphicTailAction::Map,
                                     evaluated_arg: label.get_evaluated_arg(&self.context.trace),
                                     label,
-                                    call_stack: std::mem::take(&mut self.call_stack),
                                 },
                             );
                         }
@@ -1234,7 +1237,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     action: IllegalPolymorphicTailAction::Freeze,
                                     evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                                     label,
-                                    call_stack: std::mem::take(&mut self.call_stack),
                                 },
                             );
                         }
@@ -2263,7 +2265,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 },
                                 evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
                                 label: t.label.clone(),
-                                call_stack: std::mem::take(&mut self.call_stack),
                             })
                         }
                         _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
@@ -2387,7 +2388,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 },
                                 evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
                                 label: t.label.clone(),
-                                call_stack: std::mem::take(&mut self.call_stack),
                             })
                         }
                         _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
@@ -2439,6 +2439,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ).into())
             }
             BinaryOp::ArrayConcat => {
+                if value1.is_empty_array() {
+                    // We are going to insert in the array, so we make sure that it's an allocated
+                    // block and not an inline empty array.
+                    value1 = NickelValue::empty_array_block(pos1);
+                }
+
                 let ValueContentRefMut::Array(array_data1) = value1.content_make_mut() else {
                     return mk_type_error!("Array", 1, value1);
                 };
@@ -2580,7 +2586,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let elem_with_ctr = RuntimeContract::apply_all(
                     array_data.array.get(n_as_usize).unwrap().clone(),
                     array_data.pending_contracts.iter().cloned(),
-                    pos1.into_inherited(),
+                    pos1.to_inherited_block(&mut self.pos_table),
                 );
 
                 Ok(Closure {
@@ -2648,362 +2654,341 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::string(result.into(), pos_op_inh).into())
             }
             BinaryOp::Serialize => {
-                let mk_err_fst = |t1| mk_type_error!("[| 'Json, 'Yaml, 'Toml |]", 1, t1, pos1);
+                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1);
 
-                if let Term::Enum(ref id) = t1.as_ref() {
-                    // Serialization needs all variables term to be fully substituted
-                    let initial_env = Environment::new();
-                    let rt2 = subst(
-                        &self.context.cache,
-                        NickelValue {
-                            term: t2,
-                            pos: pos2,
-                        },
-                        &initial_env,
-                        &env2,
-                    );
+                let Some(enum_data) = value1.as_enum_variant() else {
+                    return mk_err_fst();
+                };
 
-                    let format = match id.to_string().as_str() {
-                        "Json" => ExportFormat::Json,
-                        "Yaml" => ExportFormat::Yaml,
-                        "Toml" => ExportFormat::Toml,
-                        _ => return mk_err_fst(t1),
-                    };
-
-                    serialize::validate(format, &rt2)?;
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Str(serialize::to_string(format, &rt2)?.into()),
-                        pos_op_inh,
-                    )))
-                } else {
-                    mk_err_fst(t1)
+                if enum_data.arg.is_some() {
+                    return mk_err_fst();
                 }
+
+                // Serialization needs all variables term to be fully substituted
+                let initial_env = Environment::new();
+                let v2_subst = subst(&self.cache, value2, &initial_env, &env2);
+
+                let format = match enum_data.tag.to_string().as_str() {
+                    "Json" => ExportFormat::Json,
+                    "Yaml" => ExportFormat::Yaml,
+                    "Toml" => ExportFormat::Toml,
+                    _ => return mk_err_fst(),
+                };
+
+                serialize::validate(format, &v2_subst)
+                    .map_err(|err| self.err_with_ctxt(err.into()))?;
+
+                Ok(NickelValue::string(
+                    serialize::to_string(format, &v2_subst)
+                        .map_err(|err| self.err_with_ctxt(err.into()))?
+                        .into(),
+                    pos_op_inh,
+                )
+                .into())
             }
             BinaryOp::Deserialize => {
-                let mk_err_fst = |t1| mk_type_error!("[| 'Json, 'Yaml, 'Toml |]", 1, t1, pos1);
+                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1);
 
-                if let Term::Enum(id) = &*t1 {
-                    if let Term::Str(s) = &*t2 {
-                        let rt: NickelValue = match id.as_ref() {
-                            "Json" => serde_json::from_str(s).map_err(|err| {
-                                EvalErrorData::DeserializationError(
-                                    String::from("json"),
-                                    format!("{err}"),
-                                    pos_op,
-                                )
-                            })?,
-                            // TODO: we could try to generate better error positions here,
-                            // but it will be some work.
-                            //
-                            // We pass `None` to `load_yaml` (so it produces a position-less
-                            // `NickelValue`) even if we have a position for `s`, because `s` is
-                            // likely not at offset zero in its file and so `load_yaml` will give
-                            // the wrong error locations. Were it just a matter of offsetting the
-                            // error location, this would be easy to fix. Unfortunately getting the
-                            // locations right would involve handling location shifts caused by
-                            // escape sequences and interpolation.
-                            "Yaml" => {
-                                crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
-                                    EvalError::DeserializationErrorWithInner {
-                                        format: InputFormat::Yaml,
-                                        inner: err,
-                                        pos: pos_op,
-                                    }
-                                })?
-                            }
-                            "Toml" => toml::from_str(s).map_err(|err| {
-                                EvalErrorData::DeserializationError(
-                                    String::from("toml"),
-                                    format!("{err}"),
-                                    pos_op,
-                                )
-                            })?,
-                            _ => return mk_err_fst(t1),
-                        };
+                let Some(enum_data) = value1.as_enum_variant() else {
+                    return mk_err_fst();
+                };
 
-                        Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
-                    } else {
-                        mk_type_error!("String", 2, t2, pos2)
-                    }
-                } else {
-                    mk_err_fst(t1)
+                if enum_data.arg.is_some() {
+                    return mk_err_fst();
                 }
+
+                let Some(StringBody(s)) = value1.as_string() else {
+                    return mk_type_error!("String", 2, value2);
+                };
+
+                let deser: NickelValue = match enum_data.tag.label() {
+                    "Json" => serde_json::from_str(s).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::DeserializationError(
+                            String::from("json"),
+                            format!("{err}"),
+                            pos_op,
+                        ))
+                    })?,
+                    // TODO: we could try to generate better error positions here,
+                    // but it will be some work.
+                    //
+                    // We pass `None` to `load_yaml` (so it produces a position-less
+                    // `NickelValue`) even if we have a position for `s`, because `s` is
+                    // likely not at offset zero in its file and so `load_yaml` will give
+                    // the wrong error locations. Were it just a matter of offsetting the
+                    // error location, this would be easy to fix. Unfortunately getting the
+                    // locations right would involve handling location shifts caused by
+                    // escape sequences and interpolation.
+                    "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::DeserializationErrorWithInner {
+                            format: InputFormat::Yaml,
+                            inner: err,
+                            pos: pos_op,
+                        })
+                    })?,
+                    "Toml" => toml::from_str(s).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::DeserializationError(
+                            String::from("toml"),
+                            format!("{err}"),
+                            pos_op,
+                        ))
+                    })?,
+                    _ => return mk_err_fst(),
+                };
+
+                Ok(deser.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
             }
-            BinaryOp::StringSplit => match (&*t1, &*t2) {
-                (Term::Str(input), Term::Str(separator)) => {
-                    let result = input.split(separator);
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Array(result, ArrayAttrs::new().closurized()),
+            BinaryOp::StringSplit => self.binary_string_fn(
+                |input, sep| {
+                    NickelValue::array_force_pos(
+                        &mut self.pos_table,
+                        input.split(sep),
+                        Vec::new(),
                         pos_op_inh,
-                    )))
-                }
-                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
-                (_, _) => mk_type_error!("String", 1, t1, pos1),
-            },
-            BinaryOp::StringContains => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => {
-                    let result = s1.contains(s2.as_str());
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Bool(result),
-                        pos_op_inh,
-                    )))
-                }
-                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
-                (_, _) => mk_type_error!("String", 1, t1, pos1),
-            },
-            BinaryOp::StringCompare => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => {
-                    use std::cmp::Ordering;
-                    Ok(Closure::atomic_closure(NickelValue::new(
-                        Term::Enum(LocIdent::new_with_pos(
-                            match s1.cmp(s2) {
-                                Ordering::Less => "Lesser",
-                                Ordering::Equal => "Equal",
-                                Ordering::Greater => "Greater",
-                            },
+                    )
+                },
+                value1,
+                value2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
+            BinaryOp::StringContains => {
+                let pos_op_inline = self.pos_table.make_inline(pos_op_inh);
+
+                self.binary_string_fn(
+                    |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inline),
+                    value1,
+                    value2,
+                    pos_op_inh,
+                    b_op.to_string(),
+                )
+            }
+            BinaryOp::StringCompare => {
+                let as_term_pos = self.pos_table.get(pos_op_inh);
+
+                self.binary_string_fn(
+                    |s1, s2| {
+                        use std::cmp::Ordering;
+
+                        NickelValue::enum_tag(
+                            LocIdent::new_with_pos(
+                                match s1.cmp(s2) {
+                                    Ordering::Less => "Lesser",
+                                    Ordering::Equal => "Equal",
+                                    Ordering::Greater => "Greater",
+                                },
+                                as_term_pos,
+                            ),
                             pos_op_inh,
-                        )),
-                        pos_op_inh,
-                    )))
-                }
-                (Term::Str(_), _) => mk_type_error!("String", 2, t2, pos2),
-                (_, _) => mk_type_error!("String", 1, t1, pos1),
-            },
+                        )
+                    },
+                    value1,
+                    value2,
+                    pos_op_inh,
+                    b_op.to_string(),
+                )
+            }
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(3, String::from("contract/array_lazy_app"), pos_op)
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                        3,
+                        String::from("contract/array_lazy_app"),
+                        pos_op,
+                    ))
                 })?;
 
                 let Closure {
-                    value: rt3,
-                    env: env3,
+                    value: ctr_val,
+                    env: env_ctr,
                 } = ctr;
 
                 // FIXME: use match?
-                let lbl = match_sharedterm!(match (t1) {
-                    Term::Lbl(lbl) => lbl,
-                    _ => return mk_type_error!("Label", 1, t1, pos1),
-                });
+                let Some(LabelBody(label)) = value1.as_label() else {
+                    return mk_type_error!("Label", 1, value1);
+                };
 
-                match_sharedterm!(match (t2) {
-                    Term::Array(ts, attrs) => {
-                        let mut attrs = attrs;
-                        let mut final_env = env2;
+                if value2.is_empty_array() {
+                    // We are going to insert in the array, so we make sure that it's an allocated
+                    // block and not an inline empty array.
+                    value2 = NickelValue::empty_array_block(pos2);
+                }
 
-                        // Preserve the environment of the contract in the resulting array.
-                        let contract = rt3.closurize(&mut self.context.cache, env3);
-                        RuntimeContract::push_dedup(
-                            &mut attrs.pending_contracts,
-                            &final_env,
-                            RuntimeContract::new(contract, lbl),
-                            &final_env,
-                        );
+                let ValueContentRefMut::Array(array_data) = value2.content_make_mut() else {
+                    return mk_type_error!("Array", 2, value2);
+                };
 
-                        let array_with_ctr = Closure {
-                            body: NickelValue::new(Term::Array(ts, attrs), pos2),
-                            env: final_env,
-                        };
+                // Preserve the environment of the contract in the resulting array.
+                let contract = ctr_val.closurize(&mut self.cache, env_ctr);
+                RuntimeContract::push_dedup(
+                    &mut array_data.pending_contracts,
+                    &env2,
+                    RuntimeContract::new(contract, label.clone()),
+                    &Environment::new(),
+                );
 
-                        Ok(array_with_ctr)
-                    }
-                    _ => mk_type_error!("Array", 2, t2, pos2),
-                })
+                let array_with_ctr = Closure {
+                    value: value2,
+                    env: env2,
+                };
+
+                Ok(array_with_ctr)
             }
             BinaryOp::ContractRecordLazyApp => {
                 // The contract is expected to be of type `String -> Contract`: it takes the name
                 // of the field as a parameter, and returns a contract.
                 let (
                     Closure {
-                        value: contract_term,
-                        env: contract_env,
+                        value: ctr_val,
+                        env: ctr_env,
                     },
                     _,
                 ) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    EvalErrorData::NotEnoughArgs(
+                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
                         3,
                         String::from("contract/record_lazy_app"),
                         pos_op,
-                    )
+                    ))
                 })?;
 
-                let label = match_sharedterm!(match (t1) {
-                    Term::Lbl(label) => label,
-                    _ => return mk_type_error!("Label", 1, t1, pos1),
-                });
+                let Some(LabelBody(label)) = value1.as_label() else {
+                    return mk_type_error!("Label", 1, value1);
+                };
 
-                match_sharedterm!(match (t2) {
-                    Term::Record(record_data) => {
-                        // due to a limitation of `match_sharedterm`: see the macro's
-                        // documentation
-                        let mut record_data = record_data;
+                let Some(RecordBody(record_data)) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
+                };
 
-                        // Applying a lazy contract unfreezes a record, as frozen record are
-                        // expected to have all their contracts applied and thus an empty list of
-                        // pending contracts.
-                        record_data.attrs.frozen = false;
+                let mut record_data = record_data.clone();
+                // Applying a lazy contract unfreezes a record, as frozen record are
+                // expected to have all their contracts applied and thus an empty list of
+                // pending contracts.
+                record_data.attrs.frozen = false;
 
-                        let mut contract_at_field = |id: LocIdent| {
-                            let pos = contract_term.pos;
-                            mk_app!(
-                                contract_term.clone(),
-                                NickelValue::new(Term::Str(id.into()), id.pos)
-                            )
-                            .with_pos(pos)
-                            .closurize(&mut self.context.cache, contract_env.clone())
-                        };
+                let mut contract_at_field = |id: LocIdent| {
+                    let pos = ctr_val.pos_idx();
+                    mk_app!(
+                        ctr_val.clone(),
+                        NickelValue::string(id, self.pos_table.push_block(id.pos))
+                    )
+                    .closurize(&mut self.context.cache, ctr_env.clone())
+                };
 
-                        for (id, field) in record_data.fields.iter_mut() {
-                            let runtime_ctr = RuntimeContract {
-                                contract: contract_at_field(*id),
-                                label: label.clone(),
-                            };
+                for (id, field) in record_data.fields.iter_mut() {
+                    let runtime_ctr = RuntimeContract {
+                        contract: contract_at_field(*id),
+                        label: label.clone(),
+                    };
 
-                            RuntimeContract::push_dedup(
-                                &mut field.pending_contracts,
-                                &env2,
-                                runtime_ctr,
-                                &contract_env,
-                            );
-                        }
+                    RuntimeContract::push_dedup(
+                        &mut field.pending_contracts,
+                        &env2,
+                        runtime_ctr,
+                        &ctr_env,
+                    );
+                }
 
-                        // IMPORTANT: here, we revert the record back to a `RecRecord`. The
-                        // reason is that applying a contract over fields might change the
-                        // value of said fields (the typical example is adding a value to a
-                        // subrecord via the default value of a contract).
-                        //
-                        // We want recursive occurrences of fields to pick this new value as
-                        // well: hence, we need to recompute the fixpoint, which is done by
-                        // `fixpoint::revert`.
-                        let reverted =
-                            super::fixpoint::revert(&mut self.context.cache, record_data);
+                // IMPORTANT: here, we revert the record back to a `RecRecord`. The
+                // reason is that applying a contract over fields might change the
+                // value of said fields (the typical example is adding a value to a
+                // subrecord via the default value of a contract).
+                //
+                // We want recursive occurrences of fields to pick this new value as
+                // well: hence, we need to recompute the fixpoint, which is done by
+                // `fixpoint::revert`.
+                let reverted = super::fixpoint::revert(&mut self.context.cache, record_data);
 
-                        Ok(Closure {
-                            body: NickelValue::new(reverted, pos2),
-                            env: Environment::new(),
-                        })
-                    }
-                    _ => mk_type_error!("Record", 2, t2, pos2),
-                })
+                Ok(NickelValue::term(reverted, pos2).into())
             }
             BinaryOp::LabelWithMessage => {
-                let t1 = t1.into_owned();
-                let t2 = t2.into_owned();
-
-                let Term::Str(message) = t1 else {
-                    return mk_type_error!("String", 1, t1.into(), pos1);
+                let Some(StringBody(message)) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
                 };
 
-                let Term::Lbl(label) = t2 else {
-                    return mk_type_error!("String", 2, t2.into(), pos2);
+                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Lbl(label.with_diagnostic_message(message.into_inner())),
-                    pos_op_inh,
-                )))
+                label.set_diagnostic_message(message.into_inner());
+                Ok(value2.into())
             }
             BinaryOp::LabelWithNotes => {
-                let t2 = t2.into_owned();
-
                 // We need to extract plain strings from a Nickel array, which most likely
                 // contains at least generated variables.
                 // As for serialization, we thus fully substitute all variables first.
-                let t1_subst = subst(
-                    &self.context.cache,
-                    NickelValue {
-                        term: t1,
-                        pos: pos1,
-                    },
-                    &Environment::new(),
-                    &env1,
-                );
-                let t1 = t1_subst.term.into_owned();
+                let val1_subst = subst(&self.context.cache, value1, &Environment::new(), &env1);
 
-                let Term::Array(array, _) = t1 else {
-                    return mk_type_error!("Array", 1, t1.into(), pos1);
+                let Some(array_data) = value1.as_array() else {
+                    return mk_type_error!("Array", 1, value1);
                 };
 
-                let notes = array
-                    .into_iter()
+                let notes = array_data
+                    .array
+                    .iter()
                     .map(|element| {
-                        let term = element.term.into_owned();
-
-                        if let Term::Str(s) = term {
+                        if let Some(StringBody(s)) = element.as_string() {
                             Ok(s.into_inner())
                         } else {
-                            mk_type_error!("String", 1, term.into(), element.pos)
+                            mk_type_error!("String", 1, element.clone())
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                let Term::Lbl(label) = t2 else {
-                    return mk_type_error!("Label", 2, t2.into(), pos2);
+                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Lbl(label.with_diagnostic_notes(notes)),
-                    pos_op_inh,
-                )))
+                Ok(value2.into())
             }
             BinaryOp::LabelAppendNote => {
-                let t1 = t1.into_owned();
-                let t2 = t2.into_owned();
-
-                let Term::Str(note) = t1 else {
-                    return mk_type_error!("String", 1, t1.into(), pos1);
+                let Some(note) = value1.as_string() else {
+                    return mk_type_error!("String", 1, value1);
                 };
 
-                let Term::Lbl(label) = t2 else {
-                    return mk_type_error!("Label", 2, t2.into(), pos2);
+                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Lbl(label.append_diagnostic_note(note.into_inner())),
-                    pos2.into_inherited(),
-                )))
+                Ok(value2.into())
             }
             BinaryOp::LabelLookupTypeVar => {
-                let t1 = t1.into_owned();
-                let t2 = t2.into_owned();
-
-                let Term::SealingKey(key) = t1 else {
-                    return mk_type_error!("SealingKey", 1, t1.into(), pos1);
+                let Some(key) = value1.as_sealing_key() else {
+                    return mk_type_error!("SealingKey", 1, value1);
                 };
 
-                let Term::Lbl(label) = t2 else {
-                    return mk_type_error!("Label", 2, t2.into(), pos2);
+                let Some(LabelBody(label)) = value2.as_label() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    label.type_environment.get(&key).unwrap().into(),
-                    pos_op_inh,
-                )))
+                Ok(
+                    NickelValue::from(label.type_environment.get(&key.0).unwrap())
+                        .with_pos_idx(&mut self.pos_table, pos_op_inh)
+                        .into(),
+                )
             }
             BinaryOp::RecordSplitPair => {
-                let t1 = t1.into_owned();
-                let t2 = t2.into_owned();
-
-                let Term::Record(record1) = t1 else {
-                    return mk_type_error!("Record", 1, t1.into(), pos1);
+                // We could take the record out as owned value, but it's not clear what we gain:
+                // most of the content is `NickelValue`s, which are cheap to clone.
+                let Some(RecordBody(record1)) = value1.as_record() else {
+                    return mk_type_error!("Record", 1, value1);
                 };
 
-                let Term::Record(record2) = t2 else {
-                    return mk_type_error!("Record", 2, t2.into(), pos2);
+                let Some(RecordBody(record2)) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
                 };
 
                 let split::SplitResult {
                     left,
                     center,
                     right,
-                } = split::split(record1.fields, record2.fields);
+                } = split::split(record1.fields.clone(), record2.fields.clone());
 
-                let left_only = Term::Record(RecordData {
+                let left_only = NickelValue::record_posless(RecordData {
                     fields: left,
                     sealed_tail: record1.sealed_tail,
                     attrs: record1.attrs,
                 });
 
-                let right_only = Term::Record(RecordData {
+                let right_only = NickelValue::record_posless(RecordData {
                     fields: right,
                     sealed_tail: record2.sealed_tail,
                     attrs: record2.attrs,
@@ -3015,20 +3000,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .map(|(id, (left, right))| ((id, left), (id, right)))
                         .unzip();
 
-                let left_center = Term::Record(RecordData {
+                let left_center = NickelValue::record_posless(RecordData {
                     fields: center1,
                     sealed_tail: None,
-                    attrs: RecordAttrs::default().closurized(),
+                    attrs: RecordAttrs::default(),
                 });
 
-                let right_center = Term::Record(RecordData {
+                let right_center = NickelValue::record_posless(RecordData {
                     fields: center2,
                     sealed_tail: None,
-                    attrs: RecordAttrs::default().closurized(),
+                    attrs: RecordAttrs::default(),
                 });
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Record(RecordData {
+                Ok(NickelValue::record_force_pos(
+                    &mut self.pos_table,
+                    RecordData {
                         fields: IndexMap::from([
                             (
                                 LocIdent::from("left_only"),
@@ -3047,22 +3033,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 Field::from(NickelValue::from(right_only)),
                             ),
                         ]),
-                        attrs: RecordAttrs::default().closurized(),
+                        attrs: RecordAttrs::default(),
                         sealed_tail: None,
-                    }),
+                    },
                     pos_op_inh,
-                )))
+                )
+                .into())
             }
             BinaryOp::RecordDisjointMerge => {
-                let t1 = t1.into_owned();
-                let t2 = t2.into_owned();
-
-                let Term::Record(mut record1) = t1 else {
-                    return mk_type_error!("Record", 1, t1.into(), pos1);
+                let ValueContentRefMut::Record(RecordBody(record1)) = value1.content_make_mut()
+                else {
+                    return mk_type_error!("Record", 1, value1);
                 };
 
-                let Term::Record(record2) = t2 else {
-                    return mk_type_error!("Record", 2, t2.into(), pos2);
+                let Some(RecordBody(record2)) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
                 };
 
                 // As for merge, we refuse to combine two records if one of them has a sealed tail.
@@ -3073,14 +3058,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // implementation of builtin contracts to combine an unsealed tail with the
                 // original body of the record. In that case, the unsealed tail might have an
                 // additional sealed tail itself (tail can be sealed multiple times in a nested
-                // way), and the right behavior is to just keep it.
+                // way), and the right behavior (tm) is to just keep it.
                 let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
-                        return Err(EvalErrorData::IllegalPolymorphicTailAccess {
+                        return self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
-                            call_stack: std::mem::take(&mut self.call_stack),
                         });
                     }
                     (tail1, tail2) => tail1.or(tail2),
@@ -3090,18 +3074,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // of each record are already closurized, so we don't really care about
                 // environments. Should that invariant change, we might get into trouble (trouble
                 // meaning undue `UnboundIdentifier` errors).
-                debug_assert!(record1.attrs.closurized && record2.attrs.closurized);
                 record1.fields.extend(record2.fields);
-                record1.attrs.open = record1.attrs.open || record2.attrs.open;
+                record1.attrs = Combine::combine(record1.attrs, record2.attrs);
+                record1.sealed_tail = sealed_tail;
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Record(RecordData {
-                        fields: record1.fields,
-                        attrs: record1.attrs,
-                        sealed_tail,
-                    }),
-                    pos_op_inh,
-                )))
+                Ok(value1.with_pos_idx(&mut self.pos_table, pos_op_inh).into())
             }
         }
     }
@@ -3158,9 +3135,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         )
     }
 
-    fn binary_number_fn<Op>(
+    fn binary_number_fn<F>(
         &mut self,
-        op: Op,
+        f: F,
         value1: NickelValue,
         pos1: PosIdx,
         value2: NickelValue,
@@ -3169,7 +3146,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         op_name: String,
     ) -> Result<Closure, EvalError>
     where
-        Op: Fn(&Number, &Number) -> NickelValue,
+        F: Fn(&Number, &Number) -> NickelValue,
     {
         let Some(n1) = value1.as_number() else {
             return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
@@ -3196,7 +3173,43 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let n1 = &n1.0;
         let n2 = &n2.0;
 
-        Ok(op(n1, n2).into())
+        Ok(f(n1, n2).into())
+    }
+
+    fn binary_string_fn<F>(
+        &mut self,
+        f: F,
+        value1: NickelValue,
+        value2: NickelValue,
+        pos_op: PosIdx,
+        op_name: String,
+    ) -> Result<Closure, EvalError>
+    where
+        F: Fn(&NickelString, &NickelString) -> NickelValue,
+    {
+        let Some(StringBody(s1)) = value1.as_string() else {
+            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+                primop: op_name,
+                expected: "String".to_owned(),
+                arg_number: 1,
+                pos_arg: value1.pos_idx(),
+                arg_evaluated: value1,
+                pos_op,
+            });
+        };
+
+        let Some(StringBody(s2)) = value2.as_string() else {
+            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+                primop: op_name,
+                expected: "String".to_owned(),
+                arg_number: 2,
+                pos_arg: value2.pos_idx(),
+                arg_evaluated: value2,
+                pos_op,
+            });
+        };
+
+        Ok(f(s1, s2).into())
     }
 
     /// Evaluate a n-ary operation.
@@ -3929,17 +3942,18 @@ fn eq<C: Cache>(
 
 /// Eta-expands a unary operator into a (lazy) function.
 ///
-/// Regex-based primitive operations are evaluatedt to a function that captures the compiled
-/// regexp, to avoid recompiling it at each call. [eta_expand] builds such a closure: given a
-/// primary (in practice, regex) operator `%op1%`, [eta_expand] will return the expression `fun x
-/// => %op1% x`. Each intermediate term is given the position index `pos_op`.
+/// Regex-based primitive operations are evaluated to a function that captures the compiled regexp,
+/// to avoid recompiling it at each call. [eta_expand] builds such a closure: given a primary (in
+/// practice, regex) operator `%op1%`, [eta_expand] will return the expression `fun x => %op1% x`.
+/// Each intermediate term is given the position index `pos_op`.
 fn eta_expand(op: UnaryOp, pos_op: PosIdx) -> Term {
     let param = LocIdent::fresh();
+
     Term::Fun(
         param,
         NickelValue::term(
-            Term::Op1(op, NickelValue::new(Term::Var(param), pos_op)),
-            pos_op_inh,
+            Term::Op1(op, NickelValue::term(Term::Var(param), pos_op)),
+            pos_op,
         ),
     )
 }
