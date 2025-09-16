@@ -16,6 +16,7 @@ mod background;
 mod codespan_lsp;
 mod command;
 mod config;
+mod contracts;
 mod diagnostic;
 mod error;
 mod field_walker;
