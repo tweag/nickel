@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -19,9 +20,8 @@ const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
 /// The evaluation data that gets sent to the background worker.
 #[derive(Debug, Serialize, Deserialize)]
 struct Eval {
-    /// All contents of in-lsp-memory files that are needed for the evaluation. (Including
-    /// the contents of the actual file to evaluate.)
-    contents: Vec<(Url, String)>,
+    /// All file contents that are needed for the evaluation.
+    contents: Vec<(Url, Arc<str>)>,
     /// The url of the file to evaluate.
     eval: Url,
 }
@@ -59,7 +59,7 @@ pub fn worker_main() -> anyhow::Result<()> {
         bincode::config::standard(),
     )?;
     for (uri, text) in eval.contents {
-        world.add_file(uri, text)?;
+        world.add_file(uri, text.to_string())?;
     }
 
     let Ok(path) = uri_to_path(&eval.eval) else {
@@ -240,9 +240,9 @@ impl BackgroundJobs {
         }
     }
 
-    fn contents(&self, uri: &Url, world: &World) -> Option<Vec<(Url, String)>> {
+    fn contents(&self, uri: &Url, world: &World) -> Option<Vec<(Url, Arc<str>)>> {
         let file_id = world.file_id(uri).ok()??;
-        let mut contents: Vec<(Url, String)> = world
+        let mut contents: Vec<(Url, Arc<str>)> = world
             .import_data
             .transitive_imports(file_id)
             .into_iter()
@@ -250,11 +250,11 @@ impl BackgroundJobs {
                 world
                     .file_uris
                     .get(&dep_id)
-                    .map(|uri| (uri.clone(), world.sources.source(dep_id).to_string()))
+                    .map(|uri| (uri.clone(), world.sources.clone_source(dep_id)))
             })
             .collect();
 
-        contents.push((uri.clone(), world.sources.source(file_id).to_string()));
+        contents.push((uri.clone(), world.sources.clone_source(file_id)));
 
         Some(contents)
     }

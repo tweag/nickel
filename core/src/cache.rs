@@ -42,6 +42,7 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
     result::Result,
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -404,6 +405,13 @@ impl SourceCache {
     /// Panics if the file id is invalid.
     pub fn source(&self, id: FileId) -> &str {
         self.files.source(id)
+    }
+
+    /// Returns a cloned Arc to the content of the file
+    ///
+    /// Panics if the file id is invalid.
+    pub fn clone_source(&self, id: FileId) -> Arc<str> {
+        self.files.clone_source(id)
     }
 
     /// Loads a new source as a string and add it to the name-id table.

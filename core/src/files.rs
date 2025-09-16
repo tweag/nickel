@@ -4,6 +4,7 @@ use std::{
     ffi::{OsStr, OsString},
     path::PathBuf,
     rc::Rc,
+    sync::Arc,
 };
 
 use codespan::ByteIndex;
@@ -26,13 +27,13 @@ struct File {
     /// The name of the file.
     name: OsString,
     /// The source code of the file.
-    source: Rc<str>,
+    source: Arc<str>,
     /// The byte index of the start of each line. The first element of this array is always 0.
     line_starts: Rc<[ByteIndex]>,
 }
 
 impl File {
-    fn new(name: impl Into<OsString>, source: impl Into<Rc<str>>) -> Self {
+    fn new(name: impl Into<OsString>, source: impl Into<Arc<str>>) -> Self {
         let source = source.into();
         let line_starts: Vec<_> = std::iter::once(ByteIndex(0))
             .chain(
@@ -104,7 +105,7 @@ impl Files {
     ///
     /// The name does not need to be unique, and this method does not affect any other files
     /// with the same name.
-    pub fn add(&mut self, name: impl Into<OsString>, source: impl Into<Rc<str>>) -> FileId {
+    pub fn add(&mut self, name: impl Into<OsString>, source: impl Into<Arc<str>>) -> FileId {
         let file_id = FileId(self.files.len() as u32);
         self.files.push(File::new(name, source));
         file_id
@@ -113,7 +114,7 @@ impl Files {
     /// Updates a source file in place.
     ///
     /// Panics if `file_id` is invalid.
-    pub fn update(&mut self, file_id: FileId, source: impl Into<Rc<str>>) {
+    pub fn update(&mut self, file_id: FileId, source: impl Into<Arc<str>>) {
         // This implementation would be a little nicer if `Vector` supported mutable access.
         // unwrap: we're allowed to panic if file_id is invalid
         let mut old = self.get(file_id).unwrap().clone();
@@ -145,6 +146,11 @@ impl Files {
     /// Returns a source's contents.
     pub fn source(&self, id: FileId) -> &str {
         self.get(id).unwrap().source.as_ref()
+    }
+
+    /// Returns a cloned reference to the source's contents
+    pub fn clone_source(&self, id: FileId) -> Arc<str> {
+        self.get(id).unwrap().source.clone()
     }
 
     /// Returns a slice of the source's contents.
