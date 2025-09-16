@@ -10,7 +10,7 @@ fn test_creates_output_files(command: &[&str]) {
     let nickel_bin = env!("CARGO_BIN_EXE_nickel");
     let output = tempdir()
         .expect("should be able to make a temporary directory")
-        .into_path()
+        .keep()
         .join("output");
     let mut nickel = Command::new(nickel_bin)
         .args(command)
