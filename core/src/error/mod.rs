@@ -230,7 +230,6 @@ pub enum EvalErrorData {
         action: IllegalPolymorphicTailAction,
         evaluated_arg: Option<NickelValue>,
         label: label::Label,
-        call_stack: CallStack,
     },
     /// Two non-equatable terms of the same type (e.g. functions) were compared for equality.
     IncomparableValues {
@@ -1657,13 +1656,12 @@ impl IntoDiagnostics for EvalError {
                 action,
                 label: contract_label,
                 evaluated_arg,
-                call_stack,
             } => blame_error::blame_diagnostics(
                 &pos_table,
                 files,
                 contract_label,
                 evaluated_arg,
-                &call_stack,
+                &self.ctxt.call_stack,
                 &format!(": {}", &action.message()),
             ),
             EvalErrorData::UnaryPrimopTypeError {
