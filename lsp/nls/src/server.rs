@@ -98,8 +98,8 @@ impl Server {
         Server {
             connection,
             last_diagnostics: HashMap::new(),
-            world: World::new(),
-            background_jobs: BackgroundJobs::new(config.eval_config),
+            background_jobs: BackgroundJobs::new(config.eval_config.clone()),
+            world: World::new(config),
         }
     }
 

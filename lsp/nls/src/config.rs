@@ -3,14 +3,16 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
-/// Limits to apply to the LSP background evaluator. If an evaluation reaches one of these limits,
-/// it will be canceled and the offending file will be temporarily blacklisted.
-#[derive(Debug, Deserialize, Serialize)]
+/// Limits to apply to evaluation in the LSP.
+///
+/// If a background evaluation reaches one of these limits, it will be canceled
+/// and the offending file will be temporarily blacklisted.
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LspEvalLimits {
     /// Time out at which to cancel the background evaluation
     pub timeout: Duration,
-    /// The maximum recursion level to allow in the background evaluator
+    /// The maximum recursion level to allow during evaluation
     pub recursion_limit: usize,
 }
 impl Default for LspEvalLimits {
@@ -23,7 +25,7 @@ impl Default for LspEvalLimits {
 }
 
 /// The configuration of the LSP evaluator
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LspEvalConfig {
     /// Disable background evaluation altogether.

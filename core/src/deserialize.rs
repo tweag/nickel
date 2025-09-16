@@ -45,6 +45,8 @@ pub enum EvalOrDeserError {
     Deser(RustDeserializationError),
 }
 
+impl std::error::Error for EvalOrDeserError {}
+
 impl std::fmt::Debug for EvalOrDeserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -56,6 +58,26 @@ impl std::fmt::Debug for EvalOrDeserError {
                     .finish()
             }
             Self::Deser(arg0) => f.debug_tuple("Deser").field(arg0).finish(),
+        }
+    }
+}
+
+impl std::fmt::Display for EvalOrDeserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalOrDeserError::Nickel { error, files } => {
+                let mut files = files.clone().unwrap_or_default();
+                write!(
+                    f,
+                    "{}",
+                    crate::error::report::report_as_str(
+                        &mut files,
+                        error.clone(),
+                        error::report::ColorOpt::Never
+                    )
+                )
+            }
+            EvalOrDeserError::Deser(e) => e.fmt(f),
         }
     }
 }
