@@ -214,7 +214,7 @@ pub enum EvalErrorData {
     /// An unbound identifier was referenced.
     UnboundIdentifier(LocIdent, TermPos),
     /// An element in the evaluation Cache was entered during its own update.
-    InfiniteRecursion(CallStack, TermPos),
+    InfiniteRecursion(CallStack, PosIdx),
     /// A serialization error occurred during a call to the builtin `serialize`.
     SerializationError(ExportError),
     /// A parse error occurred during a call to the builtin `deserialize`.
