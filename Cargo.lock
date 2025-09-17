@@ -3454,6 +3454,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-lang"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "indexmap 2.11.3",
+ "malachite",
+ "nickel-lang-core",
+ "nickel-lang-vector",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+]
+
+[[package]]
 name = "nickel-lang-cli"
 version = "1.13.0"
 dependencies = [
