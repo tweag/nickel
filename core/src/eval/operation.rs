@@ -2732,43 +2732,42 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 if let Term::Enum(id) = &*t1 {
                     if let Term::Str(s) = &*t2 {
-                        let rt: RichTerm = match id.as_ref() {
-                            "Json" => serde_json::from_str(s).map_err(|err| {
-                                EvalError::DeserializationError(
-                                    String::from("json"),
-                                    format!("{err}"),
-                                    pos_op,
-                                )
-                            })?,
-                            // TODO: we could try to generate better error positions here,
-                            // but it will be some work.
-                            //
-                            // We pass `None` to `load_yaml` (so it produces a position-less
-                            // `RichTerm`) even if we have a position for `s`,
-                            // because `s` is likely not at offset zero in its file and so
-                            // `load_yaml` will give the wrong error locations. Were it just
-                            // a matter of offsetting the error location, this would be
-                            // easy to fix. Unfortunately getting the locations right would
-                            // involve handling location shifts caused by escape sequences and
-                            // interpolation.
-                            "Yaml" => {
-                                crate::serialize::yaml::load_yaml(s, None).map_err(|err| {
-                                    EvalError::DeserializationErrorWithInner {
+                        let rt: RichTerm =
+                            match id.as_ref() {
+                                "Json" => serde_json::from_str(s).map_err(|err| {
+                                    EvalError::DeserializationError(
+                                        String::from("json"),
+                                        format!("{err}"),
+                                        pos_op,
+                                    )
+                                })?,
+                                // TODO: we could try to generate better error positions here,
+                                // but it will be some work.
+                                //
+                                // We pass `None` to `load_yaml_term` (so it produces a position-less
+                                // `RichTerm`) even if we have a position for `s`,
+                                // because `s` is likely not at offset zero in its file and so
+                                // `load_yaml` will give the wrong error locations. Were it just
+                                // a matter of offsetting the error location, this would be
+                                // easy to fix. Unfortunately getting the locations right would
+                                // involve handling location shifts caused by escape sequences and
+                                // interpolation.
+                                "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(
+                                    |err| EvalError::DeserializationErrorWithInner {
                                         format: InputFormat::Yaml,
                                         inner: err,
                                         pos: pos_op,
-                                    }
-                                })?
-                            }
-                            "Toml" => toml::from_str(s).map_err(|err| {
-                                EvalError::DeserializationError(
-                                    String::from("toml"),
-                                    format!("{err}"),
-                                    pos_op,
-                                )
-                            })?,
-                            _ => return mk_err_fst(t1),
-                        };
+                                    },
+                                )?,
+                                "Toml" => toml::from_str(s).map_err(|err| {
+                                    EvalError::DeserializationError(
+                                        String::from("toml"),
+                                        format!("{err}"),
+                                        pos_op,
+                                    )
+                                })?,
+                                _ => return mk_err_fst(t1),
+                            };
 
                         Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                     } else {

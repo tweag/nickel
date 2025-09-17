@@ -6,22 +6,25 @@
 //! without passing through `saphyr`'s in-memory `Yaml` structure.
 //! (Also, this lets us support recursive aliases.)
 
-use std::{borrow::Cow, collections::BTreeMap, num::NonZeroUsize};
+use std::{borrow::Cow, collections::BTreeMap, convert::Infallible, num::NonZeroUsize};
 
 use codespan::ByteIndex;
-use indexmap::IndexMap;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
+    bytecode::ast::{
+        self,
+        compat::ToMainline,
+        record::{FieldMetadata, FieldPathElem},
+        Ast, AstAlloc,
+    },
     error::ParseError,
     files::FileId,
     identifier::{Ident, LocIdent},
+    match_sharedterm,
     position::{RawSpan, TermPos},
-    term::{
-        array::{Array, ArrayAttrs},
-        record::{Field, RecordAttrs, RecordData},
-        LetAttrs, Number, RichTerm, Term,
-    },
+    term::{Number, RichTerm, Term},
+    traverse::Traverse,
 };
 
 fn mk_pos(file_id: Option<FileId>, start: usize, end: usize) -> TermPos {
@@ -37,20 +40,20 @@ fn mk_pos(file_id: Option<FileId>, start: usize, end: usize) -> TermPos {
 }
 
 #[derive(Clone, Debug)]
-enum Node {
+enum Node<'ast> {
     Array {
-        array: Array,
+        array: Vec<Ast<'ast>>,
         pos: TermPos,
     },
     Map {
-        map: IndexMap<LocIdent, Field>,
+        map: Vec<ast::record::FieldDef<'ast>>,
         cur_key: Option<LocIdent>,
         pos: TermPos,
     },
-    Scalar(RichTerm),
+    Scalar(Ast<'ast>),
 }
 
-impl Node {
+impl<'ast> Node<'ast> {
     fn pos(&self) -> &TermPos {
         match self {
             Node::Array { pos, .. } | Node::Map { pos, .. } => pos,
@@ -58,23 +61,20 @@ impl Node {
         }
     }
 
-    fn finish(self) -> RichTerm {
+    fn finish(self, alloc: &'ast AstAlloc) -> Ast<'ast> {
         match self {
-            Node::Array { array, pos } => {
-                RichTerm::new(Term::Array(array, ArrayAttrs::default()), pos)
-            }
+            Node::Array { array, pos } => Ast {
+                node: alloc.array(array),
+                pos,
+            },
             Node::Map { map, cur_key, pos } => {
                 debug_assert!(cur_key.is_none());
-                RichTerm::new(
-                    Term::Record(RecordData {
-                        fields: map,
-                        attrs: RecordAttrs::default(),
-                        sealed_tail: None,
-                    }),
+                Ast {
+                    node: ast::Node::Record(alloc.record_data([], map, false)),
                     pos,
-                )
+                }
             }
-            Node::Scalar(rt) => rt,
+            Node::Scalar(ast) => ast,
         }
     }
 
@@ -127,11 +127,11 @@ impl Node {
 /// This could be changed in the future, but the current behavior is nice
 /// because we can do it all in one pass.
 #[derive(Default)]
-struct AnchorMap {
-    map: BTreeMap<NonZeroUsize, (Ident, RichTerm)>,
+struct AnchorMap<'ast> {
+    map: BTreeMap<NonZeroUsize, (Ident, Ast<'ast>)>,
 }
 
-impl AnchorMap {
+impl<'ast> AnchorMap<'ast> {
     /// Assign a unique variable name to this anchor id.
     ///
     /// This should be called when opening a container (i.e. an array or map),
@@ -139,35 +139,36 @@ impl AnchorMap {
     /// be available to any children that reference the parent.
     fn reserve(&mut self, anchor_id: Option<NonZeroUsize>) {
         if let Some(aid) = anchor_id {
-            self.map.insert(aid, (Ident::fresh(), Term::Null.into()));
+            self.map
+                .insert(aid, (Ident::fresh(), ast::Node::Null.into()));
         }
     }
 
-    fn var(&self, anchor_id: NonZeroUsize) -> RichTerm {
-        Term::Var(self.map[&anchor_id].0.into()).into()
+    fn var(&self, anchor_id: NonZeroUsize) -> Ast<'ast> {
+        ast::Node::Var(self.map[&anchor_id].0.into()).into()
     }
 
     /// If a `RichTerm` has an anchor id, replace it with a `Term::Var`.
     ///
     /// (The original `RichTerm` will get hoisted up to the top-level recursive let block.)
-    fn anchorify(&mut self, anchor_id: Option<NonZeroUsize>, rt: RichTerm) -> RichTerm {
+    fn anchorify(&mut self, anchor_id: Option<NonZeroUsize>, ast: Ast<'ast>) -> Ast<'ast> {
         if let Some(aid) = anchor_id {
             let (ident, slot) = self
                 .map
                 .entry(aid)
-                .or_insert((Ident::fresh(), Term::Null.into()));
-            *slot = rt;
-            Term::Var((*ident).into()).into()
+                .or_insert((Ident::fresh(), ast::Node::Null.into()));
+            *slot = ast;
+            ast::Node::Var((*ident).into()).into()
         } else {
-            rt
+            ast
         }
     }
 }
 
-#[derive(Default)]
-struct YamlLoader {
+struct YamlLoader<'ast> {
+    alloc: &'ast AstAlloc,
     /// Keeps track of the anchors we've encountered so far.
-    anchor_map: AnchorMap,
+    anchor_map: AnchorMap<'ast>,
     /// The stack of incomplete containers, and their anchor ids.
     ///
     /// The top of the stack is the container currently being filled;
@@ -176,9 +177,9 @@ struct YamlLoader {
     /// There is one situation in which a non-container `Node` will
     /// be on the stack: if the document contains nothing but a single
     /// scalar.
-    doc_stack: Vec<(Node, Option<NonZeroUsize>)>,
+    doc_stack: Vec<(Node<'ast>, Option<NonZeroUsize>)>,
     /// All the docs that we've already finished loading.
-    docs: Vec<RichTerm>,
+    docs: Vec<Ast<'ast>>,
     /// If the input came from a file, here is it's id.
     file_id: Option<FileId>,
     /// Saphyr errors early when it encounters a YAML parse error, but it
@@ -189,12 +190,14 @@ struct YamlLoader {
     err: Option<ParseError>,
 }
 
-impl YamlLoader {
-    fn push_node(&mut self, node: Node, anchor_id: Option<NonZeroUsize>) {
+impl<'ast> YamlLoader<'ast> {
+    fn push_node(&mut self, node: Node<'ast>, anchor_id: Option<NonZeroUsize>) {
         if let Some((parent, _)) = self.doc_stack.last_mut() {
             match parent {
                 Node::Array { array, pos: _ } => {
-                    let node = self.anchor_map.anchorify(anchor_id, node.finish());
+                    let node = self
+                        .anchor_map
+                        .anchorify(anchor_id, node.finish(self.alloc));
                     array.push(node);
                 }
                 Node::Map {
@@ -203,8 +206,15 @@ impl YamlLoader {
                     pos: _,
                 } => {
                     if let Some(key) = cur_key.take() {
-                        let node = self.anchor_map.anchorify(anchor_id, node.finish());
-                        map.insert(key, node.into());
+                        let node = self
+                            .anchor_map
+                            .anchorify(anchor_id, node.finish(self.alloc));
+                        map.push(ast::record::FieldDef {
+                            path: FieldPathElem::single_ident_path(self.alloc, key),
+                            metadata: FieldMetadata::default(),
+                            value: Some(node),
+                            pos: TermPos::default(),
+                        });
                     } else {
                         self.err = Some(ParseError::ExternalFormatError(
                             "yaml".into(),
@@ -225,7 +235,7 @@ impl YamlLoader {
 
     fn push_scalar_with_err(
         &mut self,
-        value: Cow<'_, str>,
+        value: &str,
         style: ScalarStyle,
         anchor_id: Option<NonZeroUsize>,
         tag: Option<&Cow<'_, Tag>>,
@@ -236,7 +246,7 @@ impl YamlLoader {
         //
         // The motivation here is that we want an error on ".inf" instead of silently treating
         // it as a string.
-        let parse_float = |v: &str| -> Result<Option<Term>, ParseError> {
+        let parse_float = |v: &str| -> Result<Option<ast::Node<'ast>>, ParseError> {
             match v {
                 ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" | "-.inf" | "-.Inf"
                 | "-.INF" | ".nan" | ".NaN" | ".NAN" => Err(ParseError::ExternalFormatError(
@@ -249,38 +259,41 @@ impl YamlLoader {
                 _ if v.as_bytes().iter().any(u8::is_ascii_digit) => {
                     let f = v.parse::<f64>().ok();
                     // unwrap: we've already checked for inf and nan
-                    Ok(f.map(|f| Term::Num(Number::try_from_float_simplest(f).unwrap())))
+                    Ok(f.map(|f| {
+                        self.alloc
+                            .number(Number::try_from_float_simplest(f).unwrap())
+                    }))
                 }
                 _ => Ok(None),
             }
         };
 
         // Parse a YAML scalar, inferring the type from the value itself.
-        let parse = |v: Cow<'_, str>| -> Result<Term, ParseError> {
+        let parse = |v: &str| -> Result<ast::Node<'ast>, ParseError> {
             if let Some(number) = v.strip_prefix("0x") {
                 if let Ok(i) = i64::from_str_radix(number, 16) {
-                    return Ok(Term::Num(i.into()));
+                    return Ok(self.alloc.number(i.into()));
                 }
             } else if let Some(number) = v.strip_prefix("0o") {
                 if let Ok(i) = i64::from_str_radix(number, 8) {
-                    return Ok(Term::Num(i.into()));
+                    return Ok(self.alloc.number(i.into()));
                 }
             } else if let Some(number) = v.strip_prefix('+') {
                 if let Ok(i) = number.parse::<i64>() {
-                    return Ok(Term::Num(i.into()));
+                    return Ok(self.alloc.number(i.into()));
                 }
             }
-            match &*v {
-                "~" | "null" | "Null" | "NULL" => Ok(Term::Null),
-                "true" | "True" | "TRUE" => Ok(Term::Bool(true)),
-                "false" | "False" | "FALSE" => Ok(Term::Bool(false)),
+            match v {
+                "~" | "null" | "Null" | "NULL" => Ok(ast::Node::Null),
+                "true" | "True" | "TRUE" => Ok(ast::Node::Bool(true)),
+                "false" | "False" | "FALSE" => Ok(ast::Node::Bool(false)),
                 _ => {
                     if let Ok(i) = v.parse::<i64>() {
-                        Ok(Term::Num(i.into()))
-                    } else if let Some(f) = parse_float(&v)? {
+                        Ok(self.alloc.number(i.into()))
+                    } else if let Some(f) = parse_float(v)? {
                         Ok(f)
                     } else {
-                        Ok(Term::Str(v.into()))
+                        Ok(self.alloc.string(v))
                     }
                 }
             }
@@ -288,24 +301,24 @@ impl YamlLoader {
 
         let t = if style != ScalarStyle::Plain {
             // Any quoted scalar is a string.
-            Term::Str(value.into())
+            ast::Node::String(self.alloc.alloc_str(value))
         } else if let Some(tag) = tag.map(Cow::as_ref) {
             if tag.is_yaml_core_schema() {
                 let t = match tag.suffix.as_ref() {
                     "bool" => value
                         .parse::<bool>()
-                        .map(Term::Bool)
+                        .map(ast::Node::Bool)
                         .map_err(|_| "invalid bool scalar"),
                     "int" => value
                         .parse::<i64>()
-                        .map(|i| Term::Num(i.into()))
+                        .map(|i| self.alloc.number(i.into()))
                         .map_err(|_| "invalid int scalar"),
-                    "float" => parse_float(&value)?.ok_or_else(|| "invalid float scalar"),
-                    "null" => match value.as_ref() {
-                        "~" | "null" => Ok(Term::Null),
+                    "float" => parse_float(value)?.ok_or("invalid float scalar"),
+                    "null" => match value {
+                        "~" | "null" => Ok(ast::Node::Null),
                         _ => Err("invalid null scalar"),
                     },
-                    "str" => Ok(Term::Str(value.into())),
+                    "str" => Ok(ast::Node::String(self.alloc.alloc_str(value))),
                     _ => Err("unknown tag"),
                 };
                 t.map_err(|msg| {
@@ -320,14 +333,14 @@ impl YamlLoader {
             parse(value)?
         };
 
-        let node = Node::Scalar(RichTerm::new(t, pos));
+        let node = Node::Scalar(Ast { node: t, pos });
         self.push_node(node, anchor_id);
         Ok(())
     }
 
     fn push_scalar(
         &mut self,
-        value: Cow<'_, str>,
+        value: &str,
         style: ScalarStyle,
         anchor_id: Option<NonZeroUsize>,
         tag: Option<&Cow<'_, Tag>>,
@@ -371,7 +384,7 @@ impl YamlLoader {
     }
 }
 
-impl<'input> SpannedEventReceiver<'input> for YamlLoader {
+impl<'input, 'ast> SpannedEventReceiver<'input> for YamlLoader<'ast> {
     fn on_event(&mut self, ev: saphyr_parser::Event<'input>, span: saphyr_parser::Span) {
         // saphyr-parser doesn't provide a way for the loader to signal an
         // error. So we store an error in our internal state and just refuse to
@@ -386,8 +399,11 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
             DocumentStart(_) | Nothing | StreamStart | StreamEnd => {}
             DocumentEnd => {
                 let doc = match self.doc_stack.len() {
-                    0 => RichTerm::new(Term::Null, pos),
-                    1 => self.doc_stack.pop().unwrap().0.finish(),
+                    0 => Ast {
+                        node: ast::Node::Null,
+                        pos,
+                    },
+                    1 => self.doc_stack.pop().unwrap().0.finish(self.alloc),
                     _ => unreachable!(),
                 };
                 self.docs.push(doc);
@@ -404,14 +420,14 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
                     *key_slot = Some(key);
                 } else {
                     let aid = NonZeroUsize::new(anchor_id);
-                    self.push_scalar(value, style, aid, tag.as_ref(), pos);
+                    self.push_scalar(&value, style, aid, tag.as_ref(), pos);
                 }
             }
             SequenceStart(anchor_id, _tag) => {
                 let anchor_id = NonZeroUsize::new(anchor_id);
                 self.anchor_map.reserve(anchor_id);
                 let node = Node::Array {
-                    array: Array::default(),
+                    array: Vec::new(),
                     pos,
                 };
                 self.doc_stack.push((node, anchor_id));
@@ -420,7 +436,7 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
                 let anchor_id = NonZeroUsize::new(anchor_id);
                 self.anchor_map.reserve(anchor_id);
                 let node = Node::Map {
-                    map: IndexMap::default(),
+                    map: Vec::new(),
                     cur_key: None,
                     pos,
                 };
@@ -439,10 +455,18 @@ impl<'input> SpannedEventReceiver<'input> for YamlLoader {
 /// Parse a YAML string and convert it to a [`RichTerm`].
 ///
 /// If `file_id` is provided, the `RichTerm` will have its positions filled out.
-pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
+pub fn load_yaml<'ast>(
+    alloc: &'ast AstAlloc,
+    s: &str,
+    file_id: Option<FileId>,
+) -> Result<Ast<'ast>, ParseError> {
     let mut loader = YamlLoader {
         file_id,
-        ..YamlLoader::default()
+        alloc,
+        anchor_map: Default::default(),
+        doc_stack: Default::default(),
+        docs: Default::default(),
+        err: Default::default(),
     };
     let mut parser = Parser::new(BufferedInput::new(s.chars()));
     parser
@@ -454,14 +478,17 @@ pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseErro
     let mut yaml = loader.docs;
 
     let main_term = if yaml.is_empty() {
-        RichTerm::new(Term::Null, mk_pos(file_id, 0, 0))
+        Ast {
+            node: ast::Node::Null,
+            pos: mk_pos(file_id, 0, 0),
+        }
     } else if yaml.len() == 1 {
         yaml.pop().unwrap()
     } else {
-        RichTerm::new(
-            Term::Array(yaml.into_iter().collect(), ArrayAttrs::default()),
-            mk_pos(file_id, 0, s.len()),
-        )
+        Ast {
+            node: alloc.array(yaml),
+            pos: mk_pos(file_id, 0, s.len()),
+        }
     };
 
     if loader.anchor_map.map.is_empty() {
@@ -471,18 +498,34 @@ pub fn load_yaml(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseErro
             .anchor_map
             .map
             .into_values()
-            .map(|(id, rt)| (LocIdent::from(id), rt))
-            .collect();
-        Ok(Term::Let(
-            bindings,
-            main_term,
-            LetAttrs {
-                rec: true,
-                ..Default::default()
-            },
-        )
-        .into())
+            .map(|(id, value)| ast::LetBinding {
+                pattern: ast::pattern::Pattern::any(id.into()),
+                metadata: Default::default(),
+                value,
+            });
+        Ok(alloc.let_block(bindings, main_term, true).into())
     }
+}
+
+pub fn load_yaml_term(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
+    let alloc = AstAlloc::new();
+    let rt: RichTerm = load_yaml(&alloc, s, file_id)?.to_mainline();
+
+    // The mainline conversion creates RecRecords, but since they came from YAML we know they're
+    // just normal Records. This is important for std.deserialize, since it expects deserialized
+    // data to be evaluated.
+    Ok(rt
+        .traverse::<_, Infallible>(
+            &mut |rt: RichTerm| {
+                match_sharedterm!(match (rt.term) {
+                    Term::RecRecord(record, ..) => Ok(RichTerm::new(Term::Record(record), rt.pos)),
+                    _ => Ok(rt),
+                })
+            },
+            crate::traverse::TraverseOrder::BottomUp,
+        )
+        // unwrap: our traversal is infallible
+        .unwrap())
 }
 
 #[cfg(test)]
@@ -491,18 +534,17 @@ mod tests {
 
     use super::*;
 
-    // Turn a YAML string into a Nickel string, by converting to RichTerm
-    // and pretty-printing. This is more convenient for testing than
-    // comparing RichTerms, because there are annoying differences between
-    // StrChunks/String and RecRecord/Record.
+    // Turn a YAML string into a Nickel string, by converting to Ast
+    // and pretty-printing. This is more convenient for testing than comparing Asts.
     fn yaml_to_ncl(s: &str) -> String {
-        load_yaml(s, None).unwrap().to_string()
+        let alloc = AstAlloc::new();
+        load_yaml(&alloc, s, None).unwrap().to_string()
     }
 
     #[test]
     fn basic_yaml_loading() {
         assert_eq!(&yaml_to_ncl("[1, 2]"), "[ 1, 2 ]");
-        assert_eq!(&yaml_to_ncl("{a: 1, b: 2}"), "{ a = 1, b = 2, }");
+        assert_eq!(&yaml_to_ncl("{a: 1, b: 2}"), "{ a = 1, b = 2 }");
         assert_eq!(&yaml_to_ncl(""), "null");
 
         // Multiple yaml documents get turned into a list.
@@ -531,7 +573,7 @@ baz: *ref
 "#;
         assert_eq!(
             &yaml_to_censored_ncl(basic_ref),
-            "let rec %gen = [ 1, 2 ] in { bar = %gen, baz = %gen, }"
+            "let rec %gen = [ 1, 2 ] in { bar = %gen, baz = %gen }"
         );
 
         let recursive_ref = r#"
@@ -541,7 +583,7 @@ foo: &ref
 "#;
         assert_eq!(
             &yaml_to_censored_ncl(recursive_ref),
-            "let rec %gen = [ 1, { bar = %gen, } ] in { foo = %gen, }"
+            "let rec %gen = [ 1, { bar = %gen } ] in { foo = %gen }"
         );
     }
 }
