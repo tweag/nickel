@@ -1,4 +1,4 @@
-//! Implementation of primitive operations.
+//! Implementation of primitive operatPosIdxions.
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
 //! for the strict evaluation of the operands is mainly handled by [crate::eval], and marginally in
@@ -21,7 +21,7 @@ use crate::nix_ffi;
 use crate::{
     bytecode::value::{
         Array, ArrayBody, EnumVariantBody, InlineValue, LabelBody, NickelValue, NumberBody,
-        RecordBody, StringBody, TermBody, TypeBody, ValueContent, ValueContentRef,
+        RecordBody, SealingKeyBody, StringBody, TermBody, TypeBody, ValueContent, ValueContentRef,
         ValueContentRefMut,
     },
     cache::InputFormat,
@@ -183,7 +183,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let Closure { value, env } = clos;
         let pos = value.pos_idx();
-        let pos_op_inh = pos_op;
+        let pos_op_inh = pos_op.to_inherited_block(&mut self.pos_table);
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
@@ -1598,12 +1598,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         increment!(format!("primop:{b_op}"));
 
         let Closure {
-            value: value1,
+            value: mut value1,
             env: env1,
         } = fst_clos;
 
         let Closure {
-            value: value2,
+            value: mut value2,
             env: env2,
         } = clos;
 
@@ -1915,8 +1915,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // which need to sit underneath the value and the label (they will be run after
                 // the contract application is evaluated). We'll just push the value and the
                 // label back on the stack at the end.
-                let (idx, stack_value_pos) =
-                    self.stack.pop_arg_as_idx(&mut self.context.cache).ok_or_else(|| {
+                let (idx, stack_value_pos) = self
+                    .stack
+                    .pop_arg_as_idx(&mut self.context.cache)
+                    .ok_or_else(|| {
                         self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
                             3,
                             String::from("contract/apply"),
@@ -1925,9 +1927,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     })?;
 
                 // We update the label and convert it back to a term form that can be cheaply cloned
-                label.arg_pos = self
-                    .pos_table
-                    .get(self.context.cache.get_then(idx.clone(), |c| c.value.pos_idx()));
+                label.arg_pos = self.pos_table.get(
+                    self.context
+                        .cache
+                        .get_then(idx.clone(), |c| c.value.pos_idx()),
+                );
                 label.arg_idx = Some(idx.clone());
                 let new_label = NickelValue::label(label, pos2);
 
@@ -2143,7 +2147,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: env2,
                 };
 
-                match eq(&mut self.context.cache, c1, c2, pos_op_inh)? {
+                match eq(
+                    &mut self.context.cache,
+                    &mut self.pos_table,
+                    c1,
+                    c2,
+                    pos_op_inh,
+                )
+                .map_err(|err| self.err_with_ctxt(err))?
+                {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -2303,13 +2315,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // If a defined value is expected for this field, it must be
                 // provided as an additional argument, so we pop it from the stack
                 let value = if let RecordExtKind::WithValue = ext_kind {
-                    let (value_closure, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                            3,
-                            String::from("insert"),
-                            pos_op,
-                        ))
-                    })?;
+                    let (value_closure, _) =
+                        self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
+                            self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                                3,
+                                String::from("insert"),
+                                pos_op,
+                            ))
+                        })?;
 
                     let closurized = value_closure
                         .value
@@ -2594,23 +2607,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: env1,
                 })
             }
-            BinaryOp::Merge(merge_label) => todo!("after having updated merge::merge"),
-            // merge::merge(
-            //     &mut self.context.cache,
-            //     NickelValue {
-            //         term: t1,
-            //         pos: pos1,
-            //     },
-            //     env1,
-            //     NickelValue {
-            //         term: t2,
-            //         pos: pos2,
-            //     },
-            //     env2,
-            //     pos_op,
-            //     MergeMode::Standard(merge_label),
-            //     &mut self.call_stack,
-            // ),
+            BinaryOp::Merge(merge_label) => merge::merge(
+                &mut self.context.cache,
+                value1,
+                env1,
+                value2,
+                env2,
+                pos_op,
+                MergeMode::Standard(merge_label),
+            ),
             BinaryOp::Hash => {
                 let mk_err_fst =
                     || mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, value1);
@@ -3224,19 +3229,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<Closure, EvalError> {
         increment!(format!("primop:{n_op}"));
 
-        let pos_op_inh = pos_op.into_inherited();
+        let pos_op_inh = pos_op.to_inherited_block(&mut self.pos_table);
 
-        let mk_type_error = |expected: &str,
+        let mk_type_error = |this: &mut VirtualMachine<R, C>,
+                             expected: &str,
                              arg_number: usize,
-                             arg_pos: TermPos,
-                             term: SharedTerm,
-                             pos: TermPos| {
-            Err(EvalErrorData::NAryPrimopTypeError {
+                             pos_arg: PosIdx,
+                             arg_evaluated: NickelValue| {
+            this.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
                 primop: n_op.to_string(),
                 expected: expected.to_owned(),
                 arg_number,
-                pos_arg: arg_pos,
-                arg_evaluated: NickelValue { term, pos },
+                pos_arg,
+                arg_evaluated: arg_evaluated,
                 pos_op,
             })
         };
@@ -3247,64 +3252,67 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             NAryOp::StringReplace | NAryOp::StringReplaceRegex => {
                 let mut args_wo_env = args
                     .into_iter()
-                    .map(|(clos, pos)| (clos.value.term, clos.value.pos, pos));
-                let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
-                let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
-                let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+                    .map(|(arg, pos)| (arg.value, arg.value.pos_idx(), pos));
+                let (arg1, pos1, arg_pos1) = args_wo_env.next().unwrap();
+                let (arg2, pos2, arg_pos2) = args_wo_env.next().unwrap();
+                let (arg3, pos3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
-                match (&*fst, &*snd, &*thd) {
-                    (Term::Str(s), Term::Str(from), Term::Str(to)) => {
-                        let result = if let NAryOp::StringReplace = n_op {
-                            s.replace(from.as_str(), to.as_str())
-                        } else {
-                            let re = regex::Regex::new(from)
-                                .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
+                let Some(StringBody(s)) = arg1.as_string() else {
+                    return mk_type_error(self, "String", 1, arg_pos1, arg1);
+                };
 
-                            s.replace_regex(&CompiledRegex(re), to)
-                        };
+                let Some(StringBody(from)) = arg2.as_string() else {
+                    return mk_type_error(self, "String", 2, arg_pos2, arg2);
+                };
 
-                        Ok(Closure::atomic_closure(NickelValue::new(
-                            Term::Str(result),
-                            pos_op_inh,
-                        )))
-                    }
-                    (Term::Str(_), Term::Str(_), _) => {
-                        mk_type_error("String", 3, thd_pos, thd, pos3)
-                    }
-                    (Term::Str(_), _, _) => mk_type_error("String", 2, snd_pos, snd, pos2),
-                    (_, _, _) => mk_type_error("String", 1, fst_pos, fst, pos1),
-                }
+                let Some(StringBody(to)) = arg3.as_string() else {
+                    return mk_type_error(self, "String", 3, arg_pos3, arg3);
+                };
+
+                let result = if let NAryOp::StringReplace = n_op {
+                    s.replace(from.as_str(), to.as_str())
+                } else {
+                    let re = regex::Regex::new(from).map_err(|err| {
+                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
+                    })?;
+
+                    s.replace_regex(&CompiledRegex(re), to)
+                };
+
+                Ok(NickelValue::string(result, pos_op_inh).into())
             }
             NAryOp::StringSubstr => {
                 let mut args_wo_env = args
                     .into_iter()
-                    .map(|(clos, pos)| (clos.value.term, clos.value.pos, pos));
-                let (fst, pos1, fst_pos) = args_wo_env.next().unwrap();
-                let (snd, pos2, snd_pos) = args_wo_env.next().unwrap();
-                let (thd, pos3, thd_pos) = args_wo_env.next().unwrap();
+                    .map(|(arg, pos)| (arg.value, arg.value.pos_idx(), pos));
+                let (arg1, pos1, arg_pos1) = args_wo_env.next().unwrap();
+                let (arg2, pos2, arg_pos2) = args_wo_env.next().unwrap();
+                let (arg3, pos3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
-                match (&*fst, &*snd, &*thd) {
-                    (Term::Str(s), Term::Num(start), Term::Num(end)) => s
-                        .substring(start, end)
-                        .map(|substr| {
-                            Closure::atomic_closure(NickelValue::new(Term::Str(substr), pos_op_inh))
-                        })
-                        .map_err(|e| EvalErrorData::Other(format!("{e}"), pos_op)),
-                    (Term::Str(_), Term::Num(_), _) => {
-                        mk_type_error("Number", 3, thd_pos, thd, pos3)
-                    }
-                    (Term::Str(_), _, _) => mk_type_error("Number", 2, snd_pos, snd, pos2),
-                    (_, _, _) => mk_type_error("String", 1, fst_pos, fst, pos1),
-                }
+                let Some(StringBody(s)) = arg1.as_string() else {
+                    return mk_type_error(self, "String", 1, arg_pos1, arg1);
+                };
+
+                let Some(NumberBody(start)) = arg2.as_number() else {
+                    return mk_type_error(self, "Number", 2, arg_pos2, arg2);
+                };
+
+                let Some(NumberBody(end)) = arg3.as_number() else {
+                    return mk_type_error(self, "Number", 3, arg_pos3, arg3);
+                };
+
+                s.substring(start, end)
+                    .map(|substr| NickelValue::string(substr, pos_op_inh).into())
+                    .map_err(|e| self.err_with_ctxt(EvalErrorData::Other(format!("{e}"), pos_op)))
             }
             NAryOp::MergeContract => {
                 let mut args_iter = args.into_iter();
 
                 let (
                     Closure {
-                        value: NickelValue { term: t1, pos: _ },
+                        value: arg1,
                         env: _,
                     },
                     _,
@@ -3312,11 +3320,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: t2,
-                                pos: pos2,
-                            },
+                        value: arg2,
                         env: env2,
                     },
                     _,
@@ -3324,11 +3328,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: t3,
-                                pos: pos3,
-                            },
+                        value: arg3,
                         env: env3,
                     },
                     _,
@@ -3336,297 +3336,257 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args_iter.next().is_none());
 
-                match_sharedterm!(match (t1) {
-                    Term::Lbl(lbl) => {
-                        merge::merge(
-                            &mut self.context.cache,
-                            NickelValue {
-                                term: t2,
-                                pos: pos2,
-                            },
-                            env2,
-                            NickelValue {
-                                term: t3,
-                                pos: pos3,
-                            },
-                            env3,
-                            pos_op,
-                            MergeMode::Contract(lbl),
-                            &mut self.call_stack,
-                        )
-                    }
-                    _ => Err(EvalErrorData::InternalError(
+                let Some(LabelBody(label)) = arg1.as_label() else {
+                    return self.throw_with_ctxt(EvalErrorData::InternalError(
                         format!(
                             "The {n_op} operator was expecting \
                                 a first argument of type Label, got {}",
-                            t1.type_of()
-                                .unwrap_or_else(|| String::from("<unevaluated>"))
+                            arg1.type_of().unwrap_or("<unevaluated>")
                         ),
-                        pos_op
-                    )),
-                })
+                        pos_op,
+                    ));
+                };
+
+                merge::merge(
+                    &mut self.cache,
+                    arg2,
+                    env2,
+                    arg3,
+                    env3,
+                    pos_op,
+                    MergeMode::Contract(label.clone()),
+                    &mut self.call_stack,
+                )
             }
             NAryOp::RecordSealTail => {
                 let mut args = args.into_iter();
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a1,
-                                pos: pos1,
-                            },
-                        ..
+                        value: arg1,
+                        env: _,
                     },
-                    fst_pos,
+                    arg_pos1,
                 ) = args.next().unwrap();
+
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a2,
-                                pos: pos2,
-                            },
-                        ..
+                        value: arg2,
+                        env: _,
                     },
-                    snd_pos,
+                    arg_pos2,
                 ) = args.next().unwrap();
+
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a3,
-                                pos: pos3,
-                            },
+                        value: mut arg3,
                         env: env3,
                     },
-                    thd_pos,
+                    arg_pos3,
                 ) = args.next().unwrap();
+
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a4,
-                                pos: pos4,
-                            },
+                        value: arg4,
                         env: env4,
                     },
-                    frth_pos,
+                    arg_pos4,
                 ) = args.next().unwrap();
+
                 debug_assert!(args.next().is_none());
 
-                match (&*a1, &*a2, &*a3, &*a4) {
-                    (
-                        Term::SealingKey(s),
-                        Term::Lbl(label),
-                        Term::Record(r),
-                        Term::Record(tail),
-                    ) => {
-                        let mut r = r.clone();
+                let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
+                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
+                };
 
-                        let tail_closurized = NickelValue::from(Term::Record(tail.clone()))
-                            .closurize(&mut self.context.cache, env4);
-                        let fields = tail.fields.keys().map(|s| s.ident()).collect();
-                        r.sealed_tail = Some(record::SealedTail::new(
-                            *s,
-                            label.clone(),
-                            tail_closurized,
-                            fields,
-                        ));
+                let Some(LabelBody(label)) = arg2.as_label() else {
+                    return mk_type_error(self, "Label", 2, arg_pos2, arg2);
+                };
 
-                        let body = NickelValue::from(Term::Record(r));
-                        Ok(Closure {
-                            value: body,
-                            env: env3,
-                        })
-                    }
-                    (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
-                        mk_type_error("Record", 4, frth_pos, a4, pos4)
-                    }
-                    (Term::SealingKey(_), Term::Lbl(_), _, _) => {
-                        mk_type_error("Record", 3, thd_pos, a3, pos3)
-                    }
-                    (Term::SealingKey(_), _, _, _) => mk_type_error("Label", 2, snd_pos, a2, pos2),
-                    (_, _, _, _) => mk_type_error("SealingKey", 1, fst_pos, a1, pos1),
+                if arg3.is_empty_record() {
+                    // We are going to insert in the record, so we make sure that it's an allocated
+                    // block and not an inline empty record.
+                    arg3 = NickelValue::empty_record_block(arg3.pos_idx());
                 }
+
+                let ValueContentRefMut::Record(RecordBody(r)) = arg3.content_make_mut() else {
+                    return mk_type_error(self, "Record", 3, arg_pos3, arg3);
+                };
+
+                let Some(RecordBody(tail)) = arg4.as_record() else {
+                    return mk_type_error(self, "Record", 4, arg_pos4, arg4);
+                };
+
+                let tail_closurized =
+                    NickelValue::record_posless(tail.clone()).closurize(&mut self.cache, env4);
+                let fields = tail.fields.keys().map(|s| s.ident()).collect();
+                r.sealed_tail = Some(record::SealedTail::new(
+                    *s,
+                    label.clone(),
+                    tail_closurized,
+                    fields,
+                ));
+
+                Ok(Closure {
+                    value: arg3,
+                    env: env3,
+                })
             }
             NAryOp::RecordUnsealTail => {
                 let mut args = args.into_iter();
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a1,
-                                pos: pos1,
-                            },
-                        ..
+                        value: arg1,
+                        env: _,
                     },
-                    fst_pos,
+                    arg_pos1,
                 ) = args.next().unwrap();
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a2,
-                                pos: pos2,
-                            },
-                        ..
+                        value: arg2,
+                        env: _,
                     },
-                    snd_pos,
+                    arg_pos2,
                 ) = args.next().unwrap();
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: a3,
-                                pos: pos3,
-                            },
+                        value: arg3,
                         env: env3,
                     },
-                    thd_pos,
+                    arg_pos3,
                 ) = args.next().unwrap();
+
                 debug_assert!(args.next().is_none());
 
-                match (&*a1, &*a2, &*a3) {
-                    (Term::SealingKey(s), Term::Lbl(l), Term::Record(r)) => r
-                        .clone()
-                        .sealed_tail
-                        .and_then(|t| t.unseal(s).cloned())
-                        .ok_or_else(|| EvalErrorData::BlameError {
-                            evaluated_arg: l.get_evaluated_arg(&self.context.cache),
-                            label: l.clone(),
-                            call_stack: std::mem::take(&mut self.call_stack),
+                let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
+                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
+                };
+
+                let Some(LabelBody(label)) = arg2.as_label() else {
+                    return mk_type_error(self, "Label", 2, arg_pos2, arg2);
+                };
+
+                let Some(RecordBody(r)) = arg3.as_record() else {
+                    return mk_type_error(self, "Record", 3, arg_pos3, arg3);
+                };
+
+                r.sealed_tail
+                    .and_then(|tail| tail.unseal(s).cloned())
+                    .ok_or_else(|| {
+                        self.err_with_ctxt(EvalErrorData::BlameError {
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            label: label.clone(),
                         })
-                        .map(|t| Closure {
-                            value: t,
-                            env: env3,
-                        }),
-                    (Term::SealingKey(_), Term::Lbl(_), _) => {
-                        mk_type_error("Record", 3, thd_pos, a3, pos3)
-                    }
-                    (Term::SealingKey(_), _, _) => mk_type_error("Label", 2, snd_pos, a2, pos2),
-                    (_, _, _) => mk_type_error("SealingKey", 1, fst_pos, a1, pos1),
-                }
+                    })
+                    .map(|tail_unsealed| Closure {
+                        value: tail_unsealed,
+                        env: env3,
+                    })
             }
             NAryOp::LabelInsertTypeVar => {
                 let mut args = args.into_iter();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: key,
-                                pos: key_pos,
-                            },
-                        ..
+                        value: arg1,
+                        env: _,
                     },
-                    pos1,
+                    arg_pos1,
                 ) = args.next().unwrap();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: polarity,
-                                pos: polarity_pos,
-                            },
-                        ..
+                        value: arg2,
+                        env: _,
                     },
-                    pos2,
+                    arg_pos2,
                 ) = args.next().unwrap();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: label,
-                                pos: label_pos,
-                            },
-                        ..
+                        value: mut arg3,
+                        env: _,
                     },
-                    pos3,
+                    arg_pos3,
                 ) = args.next().unwrap();
+
                 debug_assert!(args.next().is_none());
 
-                let Term::SealingKey(key) = *key else {
-                    return mk_type_error("SealingKey", 1, key_pos, key, pos1);
+                let Some(SealingKeyBody(key)) = arg1.as_sealing_key() else {
+                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
                 };
 
-                let Ok(polarity) = Polarity::try_from(polarity.as_ref()) else {
-                    return mk_type_error("Polarity", 2, polarity_pos, polarity, pos2);
+                let Ok(polarity) = Polarity::try_from(&arg2) else {
+                    return mk_type_error(self, "Polarity", 2, arg_pos2, arg2);
                 };
 
-                let Term::Lbl(label) = &*label else {
-                    return mk_type_error("Label", 3, label_pos, label, pos3);
+                let ValueContentRefMut::Label(LabelBody(label)) = arg3.content_make_mut() else {
+                    return mk_type_error(self, "Label", 3, arg_pos3, arg3);
                 };
 
-                let mut new_label = label.clone();
-                new_label
+                label
                     .type_environment
-                    .insert(key, TypeVarData { polarity });
+                    .insert(*key, TypeVarData { polarity });
 
-                Ok(Closure::atomic_closure(NickelValue::new(
-                    Term::Lbl(new_label),
-                    pos2.into_inherited(),
-                )))
+                Ok(arg3
+                    .try_with_pos_idx(arg_pos3.to_inherited_block(&mut self.pos_table))
+                    // unwrap(): arg3 is a label, which is a value block, so `try_with_pos_idx`
+                    // cannot fail
+                    .unwrap()
+                    .into())
             }
             NAryOp::ArraySlice => {
                 let mut args = args.into_iter();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: t1,
-                                pos: pos1,
-                            },
-                        ..
+                        value: arg1,
+                        env: _,
                     },
-                    fst_pos,
+                    arg_pos1,
                 ) = args.next().unwrap();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ..
+                        value: arg2,
+                        env: _,
                     },
-                    snd_pos,
+                    arg_pos2,
                 ) = args.next().unwrap();
 
                 let (
                     Closure {
-                        value:
-                            NickelValue {
-                                term: t3,
-                                pos: pos3,
-                            },
+                        value: mut arg3,
                         env: env3,
                     },
-                    third_pos,
+                    arg_pos3,
                 ) = args.next().unwrap();
+
                 debug_assert!(args.next().is_none());
 
-                let Term::Num(ref start) = &*t1 else {
-                    return mk_type_error("Number", 1, fst_pos, t1, pos1);
+                let Some(NumberBody(start)) = arg1.as_number() else {
+                    return mk_type_error(self, "Number", 1, arg_pos1, arg1);
                 };
 
-                let Term::Num(ref end) = &*t2 else {
-                    return mk_type_error("Number", 2, snd_pos, t2, pos2);
+                let Some(NumberBody(end)) = arg2.as_number() else {
+                    return mk_type_error(self, "Number", 2, arg_pos2, arg2);
                 };
 
-                let t3_owned = t3.into_owned();
+                if arg3.is_empty_array() {
+                    // We are going to insert in the array, so we make sure that it's an allocated
+                    // block and not an inline empty array.
+                    arg3 = NickelValue::empty_array_block(arg3.pos_idx());
+                }
 
-                let Term::Array(mut array, attrs) = t3_owned else {
-                    return mk_type_error("Array", 3, third_pos, t3_owned.into(), pos3);
+                let ValueContentRefMut::Array(ArrayBody { mut array, .. }) =
+                    arg3.content_make_mut()
+                else {
+                    return mk_type_error(self, "Array", 3, arg_pos3, arg3);
                 };
 
                 let Ok(start_as_usize) = usize::try_from(start) else {
-                    return Err(EvalErrorData::Other(
+                    return self.throw_with_ctxt(EvalErrorData::Other(
                         format!(
-                            "array/slice expects its first argument (start) to be a \
+                            "{n_op} expects its first argument (start) to be a \
                             positive integer smaller than {}, got {start}",
                             usize::MAX
                         ),
@@ -3635,9 +3595,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Ok(end_as_usize) = usize::try_from(end) else {
-                    return Err(EvalErrorData::Other(
+                    return self.throw_with_ctxt(EvalErrorData::Other(
                         format!(
-                            "array/slice expects its second argument (end) to be a \
+                            "{n_op} expects its second argument (end) to be a \
                             positive integer smaller than {}, got {end}",
                             usize::MAX
                         ),
@@ -3646,9 +3606,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if end_as_usize < start_as_usize || end_as_usize > array.len() {
-                    return Err(EvalErrorData::Other(
+                    return self.throw_with_ctxt(EvalErrorData::Other(
                         format!(
-                            "array/slice: index out of bounds. Expected `start <= end <= {}`, but \
+                            "{n_op}: index out of bounds. Expected `start <= end <= {}`, but \
                             got `start={start}` and `end={end}`.",
                             array.len()
                         ),
@@ -3657,8 +3617,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 array.slice(start_as_usize, end_as_usize);
+
                 Ok(Closure {
-                    value: NickelValue::new(Term::Array(array, attrs), pos_op_inh),
+                    value: arg3.with_pos_idx(&mut self.pos_table, pos_op_inh),
                     env: env3,
                 })
             }
@@ -3727,22 +3688,18 @@ fn type_tag(v: &NickelValue) -> &'static str {
 /// reasons, at least right now, not because we can't).
 fn eq<C: Cache>(
     cache: &mut C,
+    pos_table: &mut PosTable,
     c1: Closure,
     c2: Closure,
     pos_op: PosIdx,
-) -> Result<EqResult, EvalError> {
+) -> Result<EqResult, EvalErrorData> {
     let Closure {
-        value: NickelValue {
-            term: t1,
-            pos: pos1,
-        },
+        value: value1,
         env: env1,
     } = c1;
+
     let Closure {
-        value: NickelValue {
-            term: t2,
-            pos: pos2,
-        },
+        value: value2,
         env: env2,
     } = c2;
 
@@ -3757,56 +3714,76 @@ fn eq<C: Cache>(
     where
         I: Iterator<Item = (NickelValue, NickelValue)>,
     {
-        if let Some((t1, t2)) = it.next() {
+        if let Some((v1, v2)) = it.next() {
             let eqs = it
-                .map(|(t1, t2)| {
+                .map(|(v1, v2)| {
                     (
                         Closure {
-                            value: t1,
+                            value: v1,
                             env: env1.clone(),
                         },
                         Closure {
-                            value: t2,
+                            value: v2,
                             env: env2.clone(),
                         },
                     )
                 })
                 .collect();
 
-            EqResult::Eqs(t1.closurize(cache, env1), t2.closurize(cache, env2), eqs)
+            EqResult::Eqs(v1.closurize(cache, env1), v2.closurize(cache, env2), eqs)
         } else {
             EqResult::Bool(true)
         }
     }
 
-    match (t1.into_owned(), t2.into_owned()) {
-        (Term::Null, Term::Null) => Ok(EqResult::Bool(true)),
-        (Term::Bool(b1), Term::Bool(b2)) => Ok(EqResult::Bool(b1 == b2)),
-        (Term::Num(n1), Term::Num(n2)) => Ok(EqResult::Bool(n1 == n2)),
-        (Term::Str(s1), Term::Str(s2)) => Ok(EqResult::Bool(s1 == s2)),
-        (Term::Lbl(l1), Term::Lbl(l2)) => Ok(EqResult::Bool(l1 == l2)),
-        (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
-        (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1.ident() == id2.ident())),
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                ..
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                ..
-            },
-        ) if tag1.ident() == tag2.ident() => {
-            Ok(gen_eqs(cache, std::iter::once((arg1, arg2)), env1, env2))
+    match (value1.content_ref(), value2.content_ref()) {
+        (ValueContentRef::Inline(inl_v1), ValueContentRef::Inline(inl_v2)) => {
+            Ok(EqResult::Bool(inl_v1 == inl_v2))
         }
-        (Term::Record(r1), Term::Record(r2)) => {
+        (ValueContentRef::Number(NumberBody(n1)), ValueContentRef::Number(NumberBody(n2))) => {
+            Ok(EqResult::Bool(n1 == n2))
+        }
+        (ValueContentRef::String(StringBody(s1)), ValueContentRef::String(StringBody(s2))) => {
+            Ok(EqResult::Bool(s1 == s2))
+        }
+        (ValueContentRef::Label(LabelBody(l1)), ValueContentRef::Label(LabelBody(l2))) => {
+            Ok(EqResult::Bool(l1 == l2))
+        }
+        (
+            ValueContentRef::SealingKey(SealingKeyBody(k1)),
+            ValueContentRef::SealingKey(SealingKeyBody(k2)),
+        ) => Ok(EqResult::Bool(k1 == k2)),
+        (
+            ValueContentRef::EnumVariant(EnumVariantBody {
+                tag: tag1,
+                arg: None,
+            }),
+            ValueContentRef::EnumVariant(EnumVariantBody {
+                tag: tag2,
+                arg: None,
+            }),
+        ) => Ok(EqResult::Bool(tag1.ident() == tag2.ident())),
+        (
+            ValueContentRef::EnumVariant(EnumVariantBody {
+                tag: tag1,
+                arg: Some(arg1),
+            }),
+            ValueContentRef::EnumVariant(EnumVariantBody {
+                tag: tag2,
+                arg: Some(arg2),
+            }),
+        ) if tag1.ident() == tag2.ident() => Ok(gen_eqs(
+            cache,
+            std::iter::once((arg1.clone(), arg2.clone())),
+            env1,
+            env2,
+        )),
+        (ValueContentRef::Record(RecordBody(r1)), ValueContentRef::Record(RecordBody(r2))) => {
             let merge::split::SplitResult {
                 left,
                 center,
                 right,
-            } = merge::split::split(r1.fields, r2.fields);
+            } = merge::split::split(r1.fields.clone(), r2.fields.clone());
 
             // As for other record operations, we ignore optional fields without a definition.
             if !left.values().all(Field::is_empty_optional)
@@ -3834,8 +3811,8 @@ fn eq<C: Cache>(
                                 ..
                             },
                         ) => {
-                            let pos1 = value1.pos;
-                            let pos2 = value2.pos;
+                            let pos1 = value1.pos_idx();
+                            let pos2 = value2.pos_idx();
 
                             let value1_with_ctr =
                                 RuntimeContract::apply_all(value1, pending_contracts1, pos1);
@@ -3846,7 +3823,7 @@ fn eq<C: Cache>(
                         (Field { value: None, .. }, Field { value: None, .. }) => None,
                         (
                             Field {
-                                value: value1 @ None,
+                                value: v1 @ None,
                                 metadata,
                                 ..
                             },
@@ -3854,7 +3831,7 @@ fn eq<C: Cache>(
                         )
                         | (
                             Field {
-                                value: value1 @ Some(_),
+                                value: v1 @ Some(_),
                                 ..
                             },
                             Field {
@@ -3863,7 +3840,11 @@ fn eq<C: Cache>(
                                 ..
                             },
                         ) => {
-                            let pos_record = if value1.is_none() { pos1 } else { pos2 };
+                            let pos_record = if v1.is_none() {
+                                value1.pos_idx()
+                            } else {
+                                value2.pos_idx()
+                            };
 
                             Some(Err(EvalErrorData::MissingFieldDef {
                                 id,
@@ -3878,64 +3859,64 @@ fn eq<C: Cache>(
                 Ok(gen_eqs(cache, eqs?.into_iter(), env1, env2))
             }
         }
-        (Term::Array(l1, a1), Term::Array(l2, a2)) if l1.len() == l2.len() => {
+        (ValueContentRef::Array(array_data1), ValueContentRef::Array(array_data2))
+            if array_data1.array.len() == array_data2.array.len() =>
+        {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
 
             // We should apply all contracts here, otherwise we risk having wrong values, think
             // record contracts with default values, wrapped terms, etc.
 
-            let mut eqs = l1
-                .into_iter()
-                .map(|t| {
-                    let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, env1.clone())
+            let mut eqs = array_data1
+                .array
+                .iter()
+                .cloned()
+                .map(|elt| {
+                    let pos = elt.pos_idx().to_inherited_block(pos_table);
+                    RuntimeContract::apply_all(
+                        elt,
+                        array_data1.pending_contracts.iter().cloned(),
+                        pos,
+                    )
+                    .closurize(cache, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
-                .zip(l2.into_iter().map(|t| {
-                    let pos = t.pos.into_inherited();
-                    RuntimeContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, env2.clone())
+                .zip(array_data2.array.iter().cloned().map(|elt| {
+                    let pos = elt.pos_idx().to_inherited_block(pos_table);
+                    RuntimeContract::apply_all(
+                        elt,
+                        array_data2.pending_contracts.iter().cloned(),
+                        pos,
+                    )
+                    .closurize(cache, env2.clone())
                 }))
                 .collect::<Vec<_>>();
 
             match eqs.pop() {
                 None => Ok(EqResult::Bool(true)),
-                Some((t1, t2)) => {
+                Some((v1, v2)) => {
                     let eqs = eqs
                         .into_iter()
-                        .map(|(t1, t2)| {
-                            (
-                                Closure {
-                                    value: t1,
-                                    env: Environment::new(),
-                                },
-                                Closure {
-                                    value: t2,
-                                    env: Environment::new(),
-                                },
-                            )
-                        })
-                        .collect::<Vec<_>>();
+                        .map(|(v1, v2)| (v1.into(), v2.into()))
+                        .collect::<Vec<(Closure, Closure)>>();
 
-                    Ok(EqResult::Eqs(t1, t2, eqs))
+                    Ok(EqResult::Eqs(v1, v2, eqs))
                 }
             }
         }
-        // Function-like terms and foreign id can't be compared together.
-        (
-            t1 @ (Term::Fun(..) | Term::Match(_) | Term::CustomContract(_)),
-            t2 @ (Term::Fun(..) | Term::Match(_) | Term::CustomContract(_)),
-        )
-        | (t1 @ Term::ForeignId(_), t2 @ Term::ForeignId(_)) => {
-            Err(EvalErrorData::IncomparableValues {
-                eq_pos: pos_op,
-                left: NickelValue::new(t1, pos1),
-                right: NickelValue::new(t2, pos2),
-            })
-        }
+        // Function-like terms and foreign ids can't be compared together.
+        (ValueContentRef::ForeignId(_), ValueContentRef::ForeignId(_))
+        | (ValueContentRef::CustomContract(_), ValueContentRef::CustomContract(_))
+        | (
+            ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..))),
+            ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..))),
+        ) => Err(EvalErrorData::IncomparableValues {
+            eq_pos: pos_op,
+            left: value1,
+            right: value2,
+        }),
         (_, _) => Ok(EqResult::Bool(false)),
     }
 }
@@ -3995,7 +3976,7 @@ where
                 let value = field
                     .value
                     .map(|value| {
-                        let pos = value.pos;
+                        let pos = value.pos_idx();
                         let value_with_ctrs = RuntimeContract::apply_all(
                             value,
                             field.pending_contracts.iter().cloned(),
@@ -4027,7 +4008,7 @@ mod tests {
     use crate::{
         cache::resolvers::DummyResolver,
         error::NullReporter,
-        eval::{cache::CacheImpl, Environment, VmContext},
+        eval::{Environment, VmContext, cache::CacheImpl},
     };
 
     // Initialize a VM with a default context
@@ -4135,7 +4116,6 @@ mod tests {
             };
 
             vm.stack.push_op_cont(cont, 0, TermPos::None);
-            clos = vm.continuate_operation(clos).unwrap();
 
             assert_eq!(
                 clos,
