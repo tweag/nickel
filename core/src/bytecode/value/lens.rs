@@ -149,7 +149,7 @@ pub enum TermContent {
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
     ParseError(ValueLens<ParseError>),
-    RuntimeError(ValueLens<EvalError>),
+    RuntimeError(ValueLens<EvalErrorData>),
 }
 
 impl TermContent {
