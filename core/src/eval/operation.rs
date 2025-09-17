@@ -1,4 +1,4 @@
-//! Implementation of primitive operatPosIdxions.
+//! Implementation of primitive operations.
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
 //! for the strict evaluation of the operands is mainly handled by [crate::eval], and marginally in
