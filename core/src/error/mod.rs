@@ -976,7 +976,7 @@ impl ParseError {
         )
     }
 
-    pub fn from_yaml(error: saphyr::ScanError, file_id: Option<FileId>) -> Self {
+    pub fn from_yaml(error: saphyr_parser::ScanError, file_id: Option<FileId>) -> Self {
         use codespan::{ByteIndex, ByteOffset};
 
         let start = ByteIndex::from(error.marker().index() as u32);

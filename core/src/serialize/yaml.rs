@@ -10,8 +10,7 @@ use std::{borrow::Cow, collections::BTreeMap, num::NonZeroUsize};
 
 use codespan::ByteIndex;
 use indexmap::IndexMap;
-use saphyr::{Scalar, ScalarStyle, Tag};
-use saphyr_parser::{BufferedInput, Parser, SpannedEventReceiver};
+use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
     error::ParseError,
@@ -232,24 +231,95 @@ impl YamlLoader {
         tag: Option<&Cow<'_, Tag>>,
         pos: TermPos,
     ) -> Result<(), ParseError> {
-        let scalar = Scalar::parse_from_cow_and_metadata(value, style, tag).ok_or_else(|| {
-            ParseError::ExternalFormatError("yaml".into(), "invalid scalar".into(), pos.into_opt())
-        })?;
-        let t = match scalar {
-            Scalar::Null => Term::Null,
-            Scalar::Boolean(b) => Term::Bool(b),
-            Scalar::Integer(i) => Term::Num(i.into()),
-            Scalar::FloatingPoint(f) => Term::Num(
-                Number::try_from_float_simplest(f.into_inner()).map_err(|_| {
-                    ParseError::ExternalFormatError(
-                        "yaml".into(),
-                        "Nickel numbers cannot be inf or NaN".into(),
-                        pos.into_opt(),
-                    )
-                })?,
-            ),
-            Scalar::String(s) => Term::Str(s.into_owned().into()),
+        // Returns Ok(Some(f)) if it succeeds, Ok(None) if the argument wasn't a float, or
+        // Err it it was a float that Nickel doesn't support (i.e. inf or nan).
+        //
+        // The motivation here is that we want an error on ".inf" instead of silently treating
+        // it as a string.
+        let parse_float = |v: &str| -> Result<Option<Term>, ParseError> {
+            match v {
+                ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" | "-.inf" | "-.Inf"
+                | "-.INF" | ".nan" | ".NaN" | ".NAN" => Err(ParseError::ExternalFormatError(
+                    "yaml".into(),
+                    "Nickel numbers cannot be inf or NaN".into(),
+                    pos.into_opt(),
+                )),
+                // `f64::from_str` will succeed on "NaN" and "inf". Since those aren't
+                // valid YAML floats, we want to skip them.
+                _ if v.as_bytes().iter().any(u8::is_ascii_digit) => {
+                    let f = v.parse::<f64>().ok();
+                    // unwrap: we've already checked for inf and nan
+                    Ok(f.map(|f| Term::Num(Number::try_from_float_simplest(f).unwrap())))
+                }
+                _ => Ok(None),
+            }
         };
+
+        // Parse a YAML scalar, inferring the type from the value itself.
+        let parse = |v: Cow<'_, str>| -> Result<Term, ParseError> {
+            if let Some(number) = v.strip_prefix("0x") {
+                if let Ok(i) = i64::from_str_radix(number, 16) {
+                    return Ok(Term::Num(i.into()));
+                }
+            } else if let Some(number) = v.strip_prefix("0o") {
+                if let Ok(i) = i64::from_str_radix(number, 8) {
+                    return Ok(Term::Num(i.into()));
+                }
+            } else if let Some(number) = v.strip_prefix('+') {
+                if let Ok(i) = number.parse::<i64>() {
+                    return Ok(Term::Num(i.into()));
+                }
+            }
+            match &*v {
+                "~" | "null" | "Null" | "NULL" => Ok(Term::Null),
+                "true" | "True" | "TRUE" => Ok(Term::Bool(true)),
+                "false" | "False" | "FALSE" => Ok(Term::Bool(false)),
+                _ => {
+                    if let Ok(i) = v.parse::<i64>() {
+                        Ok(Term::Num(i.into()))
+                    } else if let Some(f) = parse_float(&v)? {
+                        Ok(f)
+                    } else {
+                        Ok(Term::Str(v.into()))
+                    }
+                }
+            }
+        };
+
+        let t = if style != ScalarStyle::Plain {
+            // Any quoted scalar is a string.
+            Term::Str(value.into())
+        } else if let Some(tag) = tag.map(Cow::as_ref) {
+            if tag.is_yaml_core_schema() {
+                let t = match tag.suffix.as_ref() {
+                    "bool" => value
+                        .parse::<bool>()
+                        .map(Term::Bool)
+                        .map_err(|_| "invalid bool scalar"),
+                    "int" => value
+                        .parse::<i64>()
+                        .map(|i| Term::Num(i.into()))
+                        .map_err(|_| "invalid int scalar"),
+                    "float" => parse_float(&value)?.ok_or_else(|| "invalid float scalar"),
+                    "null" => match value.as_ref() {
+                        "~" | "null" => Ok(Term::Null),
+                        _ => Err("invalid null scalar"),
+                    },
+                    "str" => Ok(Term::Str(value.into())),
+                    _ => Err("unknown tag"),
+                };
+                t.map_err(|msg| {
+                    ParseError::ExternalFormatError("yaml".into(), msg.into(), pos.into_opt())
+                })?
+            } else {
+                // If it isn't a core schema tag, try to infer the type.
+                parse(value)?
+            }
+        } else {
+            // If there's no tag, try to infer the type.
+            parse(value)?
+        };
+
         let node = Node::Scalar(RichTerm::new(t, pos));
         self.push_node(node, anchor_id);
         Ok(())
