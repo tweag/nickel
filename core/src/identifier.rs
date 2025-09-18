@@ -282,12 +282,12 @@ mod interner {
     /// The interner, which serves a double purpose: it pre-allocates space
     /// so that [Ident](super::Ident) labels are created faster
     /// and it makes it so that labels are stored only once, saving space.
-    pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
+    pub(crate) struct Interner(RwLock<InnerInterner>);
 
-    impl Interner<'_> {
+    impl Interner {
         /// Creates an empty [Interner].
         pub(crate) fn new() -> Self {
-            Self(RwLock::new(InnerInterner::new()))
+            Self(RwLock::new(InnerInterner::empty()))
         }
 
         /// Stores a string inside the [Interner] if it does not exists, and returns the
@@ -301,63 +301,71 @@ mod interner {
         /// This operation cannot fail since the only way to have a [Symbol] is to have
         /// [interned](Interner::intern) the corresponding string first.
         pub(crate) fn lookup(&self, sym: Symbol) -> &str {
-            // SAFETY: We are making the returned &str lifetime the same as our struct,
-            // which is okay here since the InnerInterner uses a typed_arena which prevents
-            // deallocations, so the reference will be valid while the InnerInterner exists,
-            // hence while the struct exists.
-            unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
+            // SAFETY: Here we are transmuting the reference lifetime: &'lock str -> &'slf str.
+            // This is okay because InnerInterner::lookup guarantees stable references, and we
+            // never replace our InnerInterner.
+            unsafe { std::mem::transmute::<&'_ str, &'_ str>(self.0.read().unwrap().lookup(sym)) }
         }
     }
 
     /// The main part of the Interner.
-    struct InnerInterner<'a> {
+    #[ouroboros::self_referencing]
+    struct InnerInterner {
         /// Preallocates space where strings are stored.
         arena: Mutex<Arena<u8>>,
 
         /// Prevents the arena from creating different [Symbols](Symbol) for the same string.
-        map: HashMap<&'a str, Symbol>,
+        #[borrows(arena)]
+        #[covariant]
+        map: HashMap<&'this str, Symbol>,
 
         /// Allows retrieving a string from a [Symbol].
-        vec: Vec<&'a str>,
+        #[borrows(arena)]
+        #[covariant]
+        vec: Vec<&'this str>,
     }
 
-    impl<'a> InnerInterner<'a> {
+    impl InnerInterner {
         /// Creates an empty [InnerInterner].
-        fn new() -> Self {
-            Self {
-                arena: Mutex::new(Arena::new()),
-                map: HashMap::new(),
-                vec: Vec::new(),
-            }
+        fn empty() -> Self {
+            Self::new(
+                Mutex::new(Arena::new()),
+                |_arena| HashMap::new(),
+                |_arena| Vec::new(),
+            )
         }
 
         /// Stores a string inside the [InnerInterner] if it does not exists, and returns the
         /// corresponding [Symbol].
         fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
-            if let Some(sym) = self.map.get(string.as_ref()) {
+            if let Some(sym) = self.borrow_map().get(string.as_ref()) {
                 return *sym;
             }
-            // SAFETY: Here we are transmuting the reference lifetime: &'arena str -> &'self str
-            // This is okay since the lifetime of the arena is identical to the one of the struct.
-            // It is also okay to use it from inside the mutex, since typed_arena does not allow
-            // deallocation, so references are valid until the arena drop, which is tied to the
-            // struct drop.
+            // SAFETY: Here we are transmuting the reference lifetime: &'lock str -> &'slf str.
+            // This is okay because references to data in the arena are valid until the arena
+            // is destroyed.
             let in_string = unsafe {
-                std::mem::transmute::<&'_ str, &'a str>(
-                    self.arena.lock().unwrap().alloc_str(string.as_ref()),
+                std::mem::transmute::<&'_ str, &'_ str>(
+                    self.borrow_arena()
+                        .lock()
+                        .unwrap()
+                        .alloc_str(string.as_ref()),
                 )
             };
-            let sym = Symbol(self.vec.len() as u32);
-            self.vec.push(in_string);
-            self.map.insert(in_string, sym);
+            let sym = Symbol(self.borrow_vec().len() as u32);
+            self.with_vec_mut(|v| v.push(in_string));
+            self.with_map_mut(|m| m.insert(in_string, sym));
             sym
         }
         /// Looks up for the stored string corresponding to the [Symbol].
         ///
-        /// This operation cannot fails since the only way to have a [Symbol]
+        /// This operation cannot fail since the only way to have a [Symbol]
         /// is to have [interned](InnerInterner::intern) the corresponding string first.
+        ///
+        /// References returned by this method are valid until this `InnerInterner` is
+        /// destroyed: they won't be invalidated by, for example, [`Self::intern`].
         fn lookup(&self, sym: Symbol) -> &str {
-            self.vec[sym.0 as usize]
+            self.borrow_vec()[sym.0 as usize]
         }
     }
 
@@ -398,16 +406,16 @@ mod interner {
                 let sym = interner.intern(&i);
                 assert_eq!(i, interner.lookup(sym));
             }
-            assert_eq!(10000, interner.0.read().unwrap().map.len());
-            assert_eq!(10000, interner.0.read().unwrap().vec.len());
+            assert_eq!(10000, interner.0.read().unwrap().borrow_map().len());
+            assert_eq!(10000, interner.0.read().unwrap().borrow_vec().len());
             // doing the same a second time should not add anything to the interner
             for i in 0..10000 {
                 let i = i.to_string();
                 let sym = interner.intern(&i);
                 assert_eq!(i, interner.lookup(sym));
             }
-            assert_eq!(10000, interner.0.read().unwrap().map.len());
-            assert_eq!(10000, interner.0.read().unwrap().vec.len());
+            assert_eq!(10000, interner.0.read().unwrap().borrow_map().len());
+            assert_eq!(10000, interner.0.read().unwrap().borrow_vec().len());
         }
     }
 }
