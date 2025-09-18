@@ -48,11 +48,7 @@ fn record_insert() -> BinaryOp {
 /// `%record/insert% "<id>" bindings_id value_id`
 fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> RichTerm {
     mk_app!(
-        make::op2(
-            record_insert(),
-            Term::Str(id.label().into()),
-            Term::Var(bindings_id)
-        ),
+        make::op2(record_insert(), Term::Enum(id), Term::Var(bindings_id)),
         Term::Var(value_id)
     )
 }
