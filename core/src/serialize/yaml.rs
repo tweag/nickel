@@ -2,7 +2,7 @@
 //!
 //! We use the `saphyr` crate because it looks like the best-maintained
 //! option right now, and it supports reporting locations. We use their
-//! lower-level API so that we can convert direction to a `RichTerm`
+//! lower-level API so that we can convert directly to an `Ast`
 //! without passing through `saphyr`'s in-memory `Yaml` structure.
 //! (Also, this lets us support recursive aliases.)
 
@@ -148,9 +148,9 @@ impl<'ast> AnchorMap<'ast> {
         ast::Node::Var(self.map[&anchor_id].0.into()).into()
     }
 
-    /// If a `RichTerm` has an anchor id, replace it with a `Term::Var`.
+    /// If an `Ast` has an anchor id, replace it with a `Node::Var`.
     ///
-    /// (The original `RichTerm` will get hoisted up to the top-level recursive let block.)
+    /// (The original `Ast` will get hoisted up to the top-level recursive let block.)
     fn anchorify(&mut self, anchor_id: Option<NonZeroUsize>, ast: Ast<'ast>) -> Ast<'ast> {
         if let Some(aid) = anchor_id {
             let (ident, slot) = self
@@ -246,7 +246,11 @@ impl<'ast> YamlLoader<'ast> {
         //
         // The motivation here is that we want an error on ".inf" instead of silently treating
         // it as a string.
-        let parse_float = |v: &str| -> Result<Option<ast::Node<'ast>>, ParseError> {
+        fn parse_float<'a>(
+            v: &str,
+            pos: TermPos,
+            alloc: &'a AstAlloc,
+        ) -> Result<Option<ast::Node<'a>>, ParseError> {
             match v {
                 ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" | "-.inf" | "-.Inf"
                 | "-.INF" | ".nan" | ".NaN" | ".NAN" => Err(ParseError::ExternalFormatError(
@@ -259,28 +263,29 @@ impl<'ast> YamlLoader<'ast> {
                 _ if v.as_bytes().iter().any(u8::is_ascii_digit) => {
                     let f = v.parse::<f64>().ok();
                     // unwrap: we've already checked for inf and nan
-                    Ok(f.map(|f| {
-                        self.alloc
-                            .number(Number::try_from_float_simplest(f).unwrap())
-                    }))
+                    Ok(f.map(|f| alloc.number(Number::try_from_float_simplest(f).unwrap())))
                 }
                 _ => Ok(None),
             }
-        };
+        }
 
         // Parse a YAML scalar, inferring the type from the value itself.
-        let parse = |v: &str| -> Result<ast::Node<'ast>, ParseError> {
+        fn parse<'a>(
+            v: &str,
+            pos: TermPos,
+            alloc: &'a AstAlloc,
+        ) -> Result<ast::Node<'a>, ParseError> {
             if let Some(number) = v.strip_prefix("0x") {
                 if let Ok(i) = i64::from_str_radix(number, 16) {
-                    return Ok(self.alloc.number(i.into()));
+                    return Ok(alloc.number(i.into()));
                 }
             } else if let Some(number) = v.strip_prefix("0o") {
                 if let Ok(i) = i64::from_str_radix(number, 8) {
-                    return Ok(self.alloc.number(i.into()));
+                    return Ok(alloc.number(i.into()));
                 }
             } else if let Some(number) = v.strip_prefix('+') {
                 if let Ok(i) = number.parse::<i64>() {
-                    return Ok(self.alloc.number(i.into()));
+                    return Ok(alloc.number(i.into()));
                 }
             }
             match v {
@@ -289,20 +294,21 @@ impl<'ast> YamlLoader<'ast> {
                 "false" | "False" | "FALSE" => Ok(ast::Node::Bool(false)),
                 _ => {
                     if let Ok(i) = v.parse::<i64>() {
-                        Ok(self.alloc.number(i.into()))
-                    } else if let Some(f) = parse_float(v)? {
+                        Ok(alloc.number(i.into()))
+                    } else if let Some(f) = parse_float(v, pos, alloc)? {
                         Ok(f)
                     } else {
-                        Ok(self.alloc.string(v))
+                        Ok(alloc.string(v))
                     }
                 }
             }
-        };
+        }
 
         let t = if style != ScalarStyle::Plain {
             // Any quoted scalar is a string.
             ast::Node::String(self.alloc.alloc_str(value))
         } else if let Some(tag) = tag.map(Cow::as_ref) {
+            // TODO: once we switch to edition 2024, see if this test can be folded into the `if let`
             if tag.is_yaml_core_schema() {
                 let t = match tag.suffix.as_ref() {
                     "bool" => value
@@ -313,7 +319,7 @@ impl<'ast> YamlLoader<'ast> {
                         .parse::<i64>()
                         .map(|i| self.alloc.number(i.into()))
                         .map_err(|_| "invalid int scalar"),
-                    "float" => parse_float(value)?.ok_or("invalid float scalar"),
+                    "float" => parse_float(value, pos, self.alloc)?.ok_or("invalid float scalar"),
                     "null" => match value {
                         "~" | "null" => Ok(ast::Node::Null),
                         _ => Err("invalid null scalar"),
@@ -326,11 +332,11 @@ impl<'ast> YamlLoader<'ast> {
                 })?
             } else {
                 // If it isn't a core schema tag, try to infer the type.
-                parse(value)?
+                parse(value, pos, self.alloc)?
             }
         } else {
             // If there's no tag, try to infer the type.
-            parse(value)?
+            parse(value, pos, self.alloc)?
         };
 
         let node = Node::Scalar(Ast { node: t, pos });
@@ -452,9 +458,9 @@ impl<'input, 'ast> SpannedEventReceiver<'input> for YamlLoader<'ast> {
     }
 }
 
-/// Parse a YAML string and convert it to a [`RichTerm`].
+/// Parse a YAML string and convert it to an [`Ast`].
 ///
-/// If `file_id` is provided, the `RichTerm` will have its positions filled out.
+/// If `file_id` is provided, the `Ast` will have its positions filled out.
 pub fn load_yaml<'ast>(
     alloc: &'ast AstAlloc,
     s: &str,
