@@ -5,7 +5,7 @@ use super::{
 };
 
 use crate::{
-    error::{EvalError, ParseError},
+    error::{EvalErrorData, ParseError},
     files::FileId,
     identifier::LocIdent,
     label::Label,
@@ -207,6 +207,38 @@ impl TermContent {
 
         // unwrap(): if the lens is a TermContent, then the underlying value must be a term block.
         &value.as_term().unwrap().0
+    }
+
+    /// Unconditionally take the inner `Term` out, ignoring the actual shape of the content.
+    pub fn take(self) -> Term {
+        let value = match self {
+            TermContent::Value(lens) => lens.value,
+            TermContent::StrChunks(lens) => lens.value,
+            TermContent::Fun(lens) => lens.value,
+            TermContent::FunPattern(lens) => lens.value,
+            TermContent::Let(lens) => lens.value,
+            TermContent::LetPattern(lens) => lens.value,
+            TermContent::App(lens) => lens.value,
+            TermContent::Var(lens) => lens.value,
+            TermContent::RecRecord(lens) => lens.value,
+            TermContent::Closurize(lens) => lens.value,
+            TermContent::Match(lens) => lens.value,
+            TermContent::Op1(lens) => lens.value,
+            TermContent::Op2(lens) => lens.value,
+            TermContent::OpN(lens) => lens.value,
+            TermContent::Sealed(lens) => lens.value,
+            TermContent::Annotated(lens) => lens.value,
+            TermContent::Import(lens) => lens.value,
+            TermContent::ResolvedImport(lens) => lens.value,
+            TermContent::ParseError(lens) => lens.value,
+            TermContent::RuntimeError(lens) => lens.value,
+        };
+
+        // Safety: since the value was extracted from `TermContent`, it must a value block with a
+        // term inside.
+        unsafe {
+            ValueLens::<TermBody>::body_lens(value).take().0
+        }
     }
 }
 
@@ -730,7 +762,7 @@ impl ValueLens<ParseError> {
     }
 }
 
-impl ValueLens<EvalError> {
+impl ValueLens<EvalErrorData> {
     /// Creates a new lens extracting [crate::term::Term::RuntimeError].
     ///
     /// # Safety
@@ -745,7 +777,7 @@ impl ValueLens<EvalError> {
     }
 
     /// Extractor for [crate::term::Term::RuntimeError].
-    fn term_runtime_error_extractor(value: NickelValue) -> EvalError {
+    fn term_runtime_error_extractor(value: NickelValue) -> EvalErrorData {
         let term = ValueLens::<TermBody>::body_extractor(value);
 
         if let Term::RuntimeError(err) = term.0 {
