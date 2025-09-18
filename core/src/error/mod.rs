@@ -129,7 +129,7 @@ pub struct EvalError {
 }
 
 /// An error occurring during evaluation.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum EvalErrorData {
     /// A blame occurred: a contract has been broken somewhere.
     BlameError {
