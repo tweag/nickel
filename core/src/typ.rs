@@ -43,7 +43,7 @@
 use crate::{
     bytecode::value::{Array, NickelValue, SealingKeyBody, ValueBlockRc},
     environment::Environment,
-    error::{EvalError, ParseError, ParseErrors, TypecheckError},
+    error::{EvalErrorData, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::Polarity,
@@ -748,11 +748,11 @@ impl Traverse<Type> for EnumRows {
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub LocIdent);
 
-impl From<UnboundTypeVariableError> for EvalError {
+impl From<UnboundTypeVariableError> for EvalErrorData {
     fn from(err: UnboundTypeVariableError) -> Self {
         let UnboundTypeVariableError(id) = err;
         let pos = id.pos;
-        EvalError::UnboundIdentifier(id, pos)
+        EvalErrorData::UnboundIdentifier(id, pos)
     }
 }
 
