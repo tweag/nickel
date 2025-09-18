@@ -47,7 +47,6 @@ cxx = { workspace = true, optional = true }
 logos.workspace = true
 nickel-lang-vector.workspace = true
 ouroboros.workspace = true
-saphyr.workspace = true
 saphyr-parser.workspace = true
 smallvec.workspace = true
 serde = { workspace = true, features = ["derive"] }

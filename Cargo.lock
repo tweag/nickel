@@ -3394,7 +3394,7 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap 2.11.3",
  "metrics",
- "ordered-float 4.6.0",
+ "ordered-float",
  "quanta",
  "radix_trie",
  "rand",
@@ -3527,7 +3527,6 @@ dependencies = [
  "regex",
  "rustyline",
  "rustyline-derive",
- "saphyr",
  "saphyr-parser",
  "serde",
  "serde-wasm-bindgen",
@@ -3776,15 +3775,6 @@ name = "ordered-float"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "ordered-float"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2c1f9f56e534ac6a9b8a4600bdf0f530fb393b5f393e7b4d03489c3cf0c3f01"
 dependencies = [
  "num-traits",
 ]
@@ -4674,19 +4664,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "saphyr"
-version = "0.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3767dfe8889ebb55a21409df2b6f36e66abfbe1eb92d64ff76ae799d3f91016"
-dependencies = [
- "arraydeque",
- "encoding_rs",
- "hashlink",
- "ordered-float 5.0.0",
- "saphyr-parser",
 ]
 
 [[package]]
