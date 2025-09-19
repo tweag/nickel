@@ -1,6 +1,8 @@
+use lsp_types::Url;
 use nickel_lang_utils::project_root::project_root;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+use tempfile::TempDir;
 use test_generator::test_resources;
 
 use lsp_harness::{file_url_from_path, TestFixture, TestHarness};
@@ -89,4 +91,58 @@ fn apply_client_options() {
     // to compute that.
     let diags = harness.wait_for_diagnostics();
     assert!(diags.diagnostics.is_empty());
+}
+
+#[test]
+fn local_config() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("nls.ncl"),
+        r#"{ "**/shallow*.ncl" = { eval_config.eval_limits.recursion_limit = 1 } }"#,
+    )
+    .unwrap();
+
+    let mk_path = |s: &str| Url::from_file_path(dir.path().join(s)).unwrap();
+
+    // Here's a little snippet that fails, but succeeds if the depth is restricted to 1.
+    let code = "{ C = fun n => if n == 0 then String else C (n - 1), res = 2 | C 5 }";
+    let _ = env_logger::try_init();
+    let mut harness = TestHarness::new_with_options(None);
+
+    harness.send_file(mk_path("shallow.ncl"), code);
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+
+    harness.send_file(mk_path("subdir/shallow_foo.ncl"), code);
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+
+    harness.send_file(mk_path("deep.ncl"), code);
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    let diags = harness.wait_for_diagnostics();
+    // This time we should get a failure from the background diagnostics.
+    assert!(!diags.diagnostics.is_empty());
+
+    // If we modify the config file, it should get picked up next time
+    // the code is sent. The file watcher has some debounce, so
+    // we need to wait. This test might have reliability issues because
+    // of the timing (and also the file watching has known issues in
+    // certain circumstances: https://docs.rs/notify/latest/notify/#known-problems
+    std::fs::write(
+        dir.path().join("nls.ncl"),
+        r#"{ "**/shallow*.ncl" = { eval_config.eval_limits.recursion_limit = 5 } }"#,
+    )
+    .unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    harness.send_file(mk_path("shallow.ncl"), code);
+    let diags = harness.wait_for_diagnostics();
+    assert!(diags.diagnostics.is_empty());
+    let diags = harness.wait_for_diagnostics();
+    assert!(!diags.diagnostics.is_empty());
 }

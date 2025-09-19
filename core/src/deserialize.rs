@@ -10,6 +10,7 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 
+use crate::error::report::ColorOpt;
 use crate::error::{self, NullReporter};
 use crate::eval::cache::CacheImpl;
 use crate::identifier::LocIdent;
@@ -77,6 +78,24 @@ impl<E: Into<error::Error>> From<E> for EvalOrDeserError {
         Self::Nickel {
             error: err.into(),
             files: None,
+        }
+    }
+}
+
+impl std::error::Error for EvalOrDeserError {}
+
+impl std::fmt::Display for EvalOrDeserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalOrDeserError::Nickel { error, files } => {
+                let mut files = files.clone().unwrap_or_default();
+                write!(
+                    f,
+                    "{}",
+                    crate::error::report::report_as_str(&mut files, error.clone(), ColorOpt::Never)
+                )
+            }
+            EvalOrDeserError::Deser(e) => e.fmt(f),
         }
     }
 }
