@@ -120,9 +120,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
-    /// argument, starts the evaluation of the second argument, or finally process with the
+    /// argument, starts the evaluation of the second argument, or finally proceed with the
     /// operation if both arguments are evaluated (for binary operators).
-    pub fn continuate_operation(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
+    pub fn continuate_operation(&mut self, mut clos: Closure) -> Result<Closure, EvalErrorData> {
         let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
         self.call_stack.truncate(cs_len);
         match cont {
@@ -168,6 +168,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
         }
     }
+
     /// Evaluate a unary operation.
     ///
     /// The argument is expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
@@ -178,7 +179,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         clos: Closure,
         pos_arg: PosIdx,
         pos_op: PosIdx,
-    ) -> Result<Closure, EvalError> {
+    ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{u_op}"));
 
         let Closure { value, env } = clos;
@@ -187,30 +188,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
-                Err(EvalError {
-                    error: EvalErrorData::UnaryPrimopTypeError {
-                        primop: String::from($op_name),
-                        expected: String::from($expected),
-                        pos_arg,
-                        arg_evaluated: value,
-                    },
-                    ctxt: self.eval_ctxt(),
+                Err(EvalErrorData::UnaryPrimopTypeError {
+                    primop: String::from($op_name),
+                    expected: String::from($expected),
+                    pos_arg,
+                    arg_evaluated: value,
                 })
             };
             ($expected:expr) => {
                 mk_type_error!(op_name = u_op.to_string(), $expected)
             };
             ($expected:expr, $arg_number:expr) => {
-                Err(EvalError {
-                    error: EvalErrorData::NAryPrimopTypeError {
-                        primop: u_op.to_string(),
-                        expected: String::from($expected),
-                        arg_number: $arg_number,
-                        pos_arg,
-                        arg_evaluated: value,
-                        pos_op,
-                    },
-                    ctxt: self.eval_ctxt(),
+                Err(EvalErrorData::NAryPrimopTypeError {
+                    primop: u_op.to_string(),
+                    expected: String::from($expected),
+                    arg_number: $arg_number,
+                    pos_arg,
+                    arg_evaluated: value,
+                    pos_op,
                 })
             };
         }
@@ -230,7 +225,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Ok(if b { fst } else { snd })
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    self.throw_with_ctxt(EvalErrorData::TypeError {
+                    Err(EvalErrorData::TypeError {
                         expected: String::from("Bool"),
                         message: String::from(
                             "the condition in an if expression must have type Bool",
@@ -268,11 +263,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
-                    self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("&&"),
-                        pos_op,
-                    ))
+                    Err(EvalErrorData::NotEnoughArgs(2, String::from("&&"), pos_op))
                 }
             }
             UnaryOp::BoolOr => {
@@ -290,11 +281,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
-                    self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("||"),
-                        pos_op,
-                    ))
+                    Err(EvalErrorData::NotEnoughArgs(2, String::from("||"), pos_op))
                 }
             }
             UnaryOp::BoolNot => {
@@ -310,7 +297,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let ValueContent::Label(lens) = value.content() {
                     let label = lens.take().0;
 
-                    self.throw_with_ctxt(EvalErrorData::BlameError {
+                    Err(EvalErrorData::BlameError {
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                         label,
                     })
@@ -379,14 +366,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env: cases_env,
                         })
                         .or(default)
-                        .ok_or_else(|| EvalError {
-                            error: EvalErrorData::NonExhaustiveEnumMatch {
-                                expected: cases.keys().copied().collect(),
-                                found: NickelValue::enum_variant_posless(enum_body.tag, None)
-                                    .with_pos_idx(&mut self.pos_table, pos),
-                                pos: pos_op_inh,
-                            },
-                            ctxt: self.eval_ctxt(),
+                        .ok_or_else(|| EvalErrorData::NonExhaustiveEnumMatch {
+                            expected: cases.keys().copied().collect(),
+                            found: NickelValue::enum_variant_posless(enum_body.tag, None)
+                                .with_pos_idx(&mut self.pos_table, pos),
+                            pos: pos_op_inh,
                         })
                 } else if let Some(clos) = default {
                     Ok(clos)
@@ -460,7 +444,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // as future work.
                     match record
                         .get_value_with_ctrs(&id)
-                        .map_err(|err| self.err_with_ctxt(err.into_eval_err(pos, pos_op)))?
+                        .map_err(|err| err.into_eval_err(pos, pos_op))?
                     {
                         Some(value) => {
                             self.call_stack
@@ -469,7 +453,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                         None => match record.sealed_tail.as_ref() {
                             Some(t) if t.has_field(&id.ident()) => {
-                                self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                                Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::FieldAccess {
                                         field: id.to_string(),
                                     },
@@ -477,7 +461,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     label: t.label.clone(),
                                 })
                             }
-                            _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                            _ => Err(EvalErrorData::FieldMissing {
                                 id,
                                 field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
                                 operator: String::from("(.)"),
@@ -488,7 +472,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
-                    self.throw_with_ctxt(EvalErrorData::TypeError {
+                    Err(EvalErrorData::TypeError {
                         expected: String::from("Record"),
                         message: String::from("field access only makes sense for records"),
                         orig_pos: pos_arg,
@@ -524,9 +508,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let mut values = record
                         .iter_without_opts()
                         .collect::<Result<Vec<_>, _>>()
-                        .map_err(|miss_def_err| {
-                            self.err_with_ctxt(miss_def_err.into_eval_err(pos, pos_op))
-                        })?;
+                        .map_err(|miss_def_err| miss_def_err.into_eval_err(pos, pos_op))?;
 
                     values.sort_by_key(|(id, _)| *id);
                     let terms = values.into_iter().map(|(_, value)| value).collect();
@@ -548,11 +530,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::ArrayMap => {
                 let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("array/map"),
-                        pos_op,
-                    ))
+                    EvalErrorData::NotEnoughArgs(2, String::from("array/map"), pos_op)
                 })?;
 
                 if let ValueContent::Array(lens) = value.content() {
@@ -590,11 +568,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::ArrayGen => {
                 let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("array/generate"),
-                        pos_op,
-                    ))
+                    EvalErrorData::NotEnoughArgs(2, String::from("array/generate"), pos_op)
                 })?;
 
                 let Some(NumberBody(n)) = value.as_number() else {
@@ -602,16 +576,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if n < &Number::ZERO {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
-                            format!(
-                                "array/generate expects its first argument to be a positive number, got {n}"
-                            ),
-                            pos_op,
+                    return Err(EvalErrorData::Other(
+                        format!(
+                            "array/generate expects its first argument to be a positive number, got {n}"
+                        ),
+                        pos_op,
                     ));
                 }
 
                 let Ok(n_int) = u32::try_from(n) else {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/generate expects its first argument to be an integer \
                             smaller than {}, got {n}",
@@ -645,11 +619,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::RecordMap => {
                 let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("record/map"),
-                        pos_op,
-                    ))
+                    EvalErrorData::NotEnoughArgs(2, String::from("record/map"), pos_op)
                 })?;
 
                 match value.content() {
@@ -662,13 +632,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // decided to prevent this until we have a clearer idea
                         // of potential use-cases.
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return self.throw_with_ctxt(
-                                EvalErrorData::IllegalPolymorphicTailAccess {
-                                    action: IllegalPolymorphicTailAction::Map,
-                                    evaluated_arg: label.get_evaluated_arg(&self.context.trace),
-                                    label,
-                                },
-                            );
+                            return Err(EvalErrorData::IllegalPolymorphicTailAccess {
+                                action: IllegalPolymorphicTailAction::Map,
+                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                                label,
+                            });
                         }
 
                         let f_closure = f.value.closurize(&mut self.context.trace, f.env);
@@ -689,9 +657,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 )
                                 .with_pos(&mut self.pos_table, pos)
                             })
-                            .map_err(|miss_field_err| {
-                                self.err_with_ctxt(miss_field_err.into_eval_err(pos, pos_op))
-                            })?;
+                            .map_err(|miss_field_err| miss_field_err.into_eval_err(pos, pos_op))?;
 
                         // By construction, mapping freezes the record. We set the frozen flag so
                         // that operations that require the record to be frozen don't have to
@@ -716,9 +682,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 .stack
                 .pop_arg(&self.context.cache)
                 .map(|(next, ..)| next)
-                .ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(2, String::from("seq"), pos_op))
-                }),
+                .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("seq"), pos_op)),
             UnaryOp::DeepSeq => {
                 // Build a `NickelValue` that forces a given list of terms, and at the end resumes the
                 // evaluation of the argument on the top of the stack.
@@ -756,7 +720,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .iter_without_opts()
                             .collect::<Result<Vec<_>, _>>()
                             .map_err(|missing_def_err| {
-                                self.err_with_ctxt(missing_def_err.into_eval_err(pos, pos_op))
+                                missing_def_err.into_eval_err(pos, pos_op)
                             })?;
 
                         let terms = defined.into_iter().map(|(_, field)| field);
@@ -793,7 +757,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                             Ok(next)
                         } else {
-                            self.throw_with_ctxt(EvalErrorData::NotEnoughArgs(
+                            Err(EvalErrorData::NotEnoughArgs(
                                 2,
                                 String::from("deep_seq"),
                                 pos_op,
@@ -862,7 +826,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // the remaining string chunks.
                     //
                     // Not using mk_type_error! because of a non-uniform message
-                    self.throw_with_ctxt(EvalErrorData::TypeError {
+                    Err(EvalErrorData::TypeError {
                         expected: String::from("Stringable"),
                         message: String::from(
                             "interpolated values must be Stringable (string, number, boolean, enum tag or null)",
@@ -919,24 +883,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 .to_nickel_string()
                 .map(|s| NickelValue::string(s, pos_op_inh).into())
                 .ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::Other(
+                    EvalErrorData::Other(
                         format!(
                             "to_string: can't convert an argument of type {} to string",
                             value.type_of().unwrap()
                         ),
                         pos,
-                    ))
+                    )
                 }),
             UnaryOp::NumberFromString => {
                 if let Some(s) = value.as_string() {
                     let n = parse_number_sci(&s.0).map_err(|_| {
-                        self.err_with_ctxt(EvalErrorData::Other(
+                        EvalErrorData::Other(
                             format!(
                                 "number/from_string: invalid number literal `{}`",
                                 s.0.as_str()
                             ),
                             pos,
-                        ))
+                        )
                     })?;
 
                     Ok(NickelValue::number(n, pos_op_inh).into())
@@ -953,9 +917,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringIsMatch => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
-                    })?;
+                    let re = regex::Regex::new(&s.0)
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringIsMatchCompiled(re.into()), pos_op_inh);
                     Ok(NickelValue::term(matcher, pos_op_inh).into())
@@ -965,9 +928,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringFind => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
-                    })?;
+                    let re = regex::Regex::new(&s.0)
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringFindCompiled(re.into()), pos_op_inh);
                     Ok(NickelValue::term(matcher, pos_op_inh).into())
@@ -977,9 +939,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringFindAll => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
-                    })?;
+                    let re = regex::Regex::new(&s.0)
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringFindAllCompiled(re.into()), pos_op_inh);
                     Ok(NickelValue::term(matcher, pos_op_inh).into())
@@ -1111,7 +1072,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     value,
                                 )
                             })
-                            .map_err(|e| self.err_with_ctxt(e.into_eval_err(pos, pos_op)))?;
+                            .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
                         let terms = fields.clone().into_values().map(|field| {
                             field.value.expect(
@@ -1232,13 +1193,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // unsealed part. Merging is disallowed on records with tail, so we disallow
                         // freezing as well.
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return self.throw_with_ctxt(
-                                EvalErrorData::IllegalPolymorphicTailAccess {
-                                    action: IllegalPolymorphicTailAction::Freeze,
-                                    evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                                    label,
-                                },
-                            );
+                            return Err(EvalErrorData::IllegalPolymorphicTailAccess {
+                                action: IllegalPolymorphicTailAction::Freeze,
+                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                                label,
+                            });
                         }
 
                         let fields = record
@@ -1290,13 +1249,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 self.stack
                     .pop_arg(&self.context.cache)
                     .map(|(next, ..)| next)
-                    .ok_or_else(|| {
-                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                            2,
-                            String::from("trace"),
-                            pos_op,
-                        ))
-                    })
+                    .ok_or_else(|| EvalErrorData::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
             UnaryOp::LabelPushDiag => match value.content() {
                 ValueContent::Label(lens) => {
@@ -1354,11 +1307,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let (arg_clos, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("enum/make_variant"),
-                        pos,
-                    ))
+                    EvalErrorData::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
                 })?;
                 let arg_pos = arg_clos.value.pos_idx();
                 let arg = NickelValue::thunk(Thunk::new(arg_clos), arg_pos);
@@ -1384,11 +1333,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::PatternBranch => {
                 // The continuation, that we must evaluate in the augmented environment.
                 let (mut cont, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        2,
-                        String::from("with_env"),
-                        pos_op,
-                    ))
+                    EvalErrorData::NotEnoughArgs(2, String::from("with_env"), pos_op)
                 })?;
 
                 match value.content() {
@@ -1553,7 +1498,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         pos_op: PosIdx,
         op_name: &str,
         op: Op,
-    ) -> Result<Closure, EvalError>
+    ) -> Result<Closure, EvalErrorData>
     where
         Op: Fn(f64) -> f64,
     {
@@ -1561,19 +1506,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             let n = &n.0;
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                self.err_with_ctxt(EvalErrorData::Other(
+                EvalErrorData::Other(
                     format!(
                         "invalid arithmetic operation: \
                         {op_name}({n}) returned {result_as_f64}, \
                         but {result_as_f64} isn't representable in Nickel"
                     ),
                     pos_op,
-                ))
+                )
             })?;
 
             Ok(NickelValue::number(result, pos_op.to_inherited_block(&mut self.pos_table)).into())
         } else {
-            self.throw_with_ctxt(EvalErrorData::UnaryPrimopTypeError {
+            Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
                 expected: String::from("Number"),
                 pos_arg: arg_pos,
@@ -1594,7 +1539,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         clos: Closure,
         snd_pos: PosIdx,
         pos_op: PosIdx,
-    ) -> Result<Closure, EvalError> {
+    ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{b_op}"));
 
         let Closure {
@@ -1613,7 +1558,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $arg_evaled:expr) => {
-                self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+                Err(EvalErrorData::NAryPrimopTypeError {
                     primop: String::from($op_name),
                     expected: String::from($expected),
                     arg_number: $arg_number,
@@ -1697,7 +1642,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let n2 = &n2.0;
 
                 if n2 == &Number::ZERO {
-                    self.throw_with_ctxt(EvalErrorData::Other(
+                    Err(EvalErrorData::Other(
                         String::from("division by zero"),
                         pos_op,
                     ))
@@ -1718,7 +1663,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let n2 = &n2.0;
 
                 if n2 == &Number::ZERO {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         String::from("division by zero (%)"),
                         pos2,
                     ));
@@ -1746,14 +1691,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let result_as_f64 = y.atan2(x);
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    self.err_with_ctxt(EvalErrorData::Other(
+                    EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/arctan2({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
-                    ))
+                    )
                 })?;
 
                 Ok(NickelValue::number(result, pos_op_inh).into())
@@ -1781,14 +1726,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                    self.err_with_ctxt(EvalErrorData::Other(
+                    EvalErrorData::Other(
                         format!(
                             "invalid arithmetic operation: \
                             number/log({n1}, {n2}) returned {result_as_f64}, \
                             but {result_as_f64} isn't representable in Nickel"
                         ),
                         pos_op,
-                    ))
+                    )
                 })?;
 
                 Ok(NickelValue::number(result, pos_op_inh).into())
@@ -1823,14 +1768,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
                     // The following conversion fails if the result is NaN or +/-infinity
                     Number::try_from_float_simplest(result_as_f64).map_err(|_| {
-                        self.err_with_ctxt(EvalErrorData::Other(
+                        EvalErrorData::Other(
                             format!(
                                 "invalid arithmetic operation: \
                                         {n1}^{n2} returned {result_as_f64}, \
                                         but {result_as_f64} isn't representable in Nickel"
                             ),
                             pos_op,
-                        ))
+                        )
                     })?
                 };
 
@@ -1919,11 +1864,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .stack
                     .pop_arg_as_idx(&mut self.context.cache)
                     .ok_or_else(|| {
-                        self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                            3,
-                            String::from("contract/apply"),
-                            pos_op,
-                        ))
+                        EvalErrorData::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                     })?;
 
                 // We update the label and convert it back to a term form that can be cheaply cloned
@@ -2055,7 +1996,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We need to extract plain values from a Nickel data structure, which most likely
                 // contains closures at least, even if it's fully evaluated. As for serialization,
                 // we thus need to fully substitute all variables first.
-                let value1 = subst(&self.context.cache, value1, &self.initial_env, &env1);
+                let value1 = subst(
+                    &self.pos_table,
+                    &self.context.cache,
+                    value1,
+                    &self.initial_env,
+                    &env1,
+                );
 
                 let Some(LabelBody(label)) = value2.as_label() else {
                     return mk_type_error!("Label", 2, value2);
@@ -2153,9 +2100,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     c1,
                     c2,
                     pos_op_inh,
-                )
-                .map_err(|err| self.err_with_ctxt(err))?
-                {
+                )? {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -2245,7 +2190,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let Some(RecordBody(record)) = value2.as_record() else {
                     // Not using mk_type_error! because of a non-uniform message
-                    return self.throw_with_ctxt(EvalErrorData::TypeError {
+                    return Err(EvalErrorData::TypeError {
                         expected: String::from("Record"),
                         message: String::from("field access only makes sense for records"),
                         orig_pos: snd_pos,
@@ -2261,9 +2206,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let ident = LocIdent::from(id);
                 match record
                     .get_value_with_ctrs(&ident)
-                    .map_err(|missing_field_err| {
-                        self.err_with_ctxt(missing_field_err.into_eval_err(pos2, pos_op))
-                    })? {
+                    .map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))?
+                {
                     Some(value) => {
                         self.call_stack
                             .enter_field(ident, pos2, value.pos_idx(), pos_op);
@@ -2271,7 +2215,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                     None => match record.sealed_tail.as_ref() {
                         Some(t) if t.has_dyn_field(id) => {
-                            self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                            Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                 action: IllegalPolymorphicTailAction::FieldAccess {
                                     field: id.to_string(),
                                 },
@@ -2279,7 +2223,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 label: t.label.clone(),
                             })
                         }
-                        _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                        _ => Err(EvalErrorData::FieldMissing {
                             id: ident,
                             field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
                             operator: String::from("(.$)"),
@@ -2317,11 +2261,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let value = if let RecordExtKind::WithValue = ext_kind {
                     let (value_closure, _) =
                         self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                            self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                                3,
-                                String::from("insert"),
-                                pos_op,
-                            ))
+                            EvalErrorData::NotEnoughArgs(3, String::from("insert"), pos_op)
                         })?;
 
                     let closurized = value_closure
@@ -2344,7 +2284,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         if matches!(op_kind, RecordOpKind::ConsiderAllFields)
                             || !t.is_empty_optional() =>
                     {
-                        self.throw_with_ctxt(EvalErrorData::Other(
+                        Err(EvalErrorData::Other(
                             format!(
                                 "record/insert: \
                                             tried to extend a record with the field {id}, \
@@ -2395,7 +2335,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 {
                     match record.sealed_tail.as_ref() {
                         Some(t) if t.has_dyn_field(&id) => {
-                            self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                            Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                 action: IllegalPolymorphicTailAction::FieldRemove {
                                     field: id.to_string(),
                                 },
@@ -2403,7 +2343,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 label: t.label.clone(),
                             })
                         }
-                        _ => self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                        _ => Err(EvalErrorData::FieldMissing {
                             id: id.into(),
                             field_names: record.field_names(op_kind),
                             operator: String::from("record/remove"),
@@ -2574,7 +2514,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Ok(n_as_usize) = usize::try_from(n) else {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/at expects its second argument to be a \
                                 positive integer smaller than {}, got {n}",
@@ -2585,7 +2525,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if n_as_usize >= array_data.array.len() {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "array/at: index out of bounds. \
                                 Expected an index between 0 and {}, got {}",
@@ -2671,7 +2611,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 // Serialization needs all variables term to be fully substituted
                 let initial_env = Environment::new();
-                let v2_subst = subst(&self.cache, value2, &initial_env, &env2);
+                let v2_subst = subst(
+                    &self.pos_table,
+                    &self.context.cache,
+                    value2,
+                    &initial_env,
+                    &env2,
+                );
 
                 let format = match enum_data.tag.to_string().as_str() {
                     "Json" => ExportFormat::Json,
@@ -2680,16 +2626,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     _ => return mk_err_fst(),
                 };
 
-                serialize::validate(format, &v2_subst)
-                    .map_err(|err| self.err_with_ctxt(err.into()))?;
+                serialize::validate(format, &v2_subst)?;
 
-                Ok(NickelValue::string(
-                    serialize::to_string(format, &v2_subst)
-                        .map_err(|err| self.err_with_ctxt(err.into()))?
-                        .into(),
-                    pos_op_inh,
+                Ok(
+                    NickelValue::string(
+                        serialize::to_string(format, &v2_subst)?.into(),
+                        pos_op_inh,
+                    )
+                    .into(),
                 )
-                .into())
             }
             BinaryOp::Deserialize => {
                 let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1);
@@ -2708,11 +2653,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let deser: NickelValue = match enum_data.tag.label() {
                     "Json" => serde_json::from_str(s).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::DeserializationError(
+                        EvalErrorData::DeserializationError(
                             String::from("json"),
                             format!("{err}"),
                             pos_op,
-                        ))
+                        )
                     })?,
                     // TODO: we could try to generate better error positions here,
                     // but it will be some work.
@@ -2725,18 +2670,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // locations right would involve handling location shifts caused by
                     // escape sequences and interpolation.
                     "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::DeserializationErrorWithInner {
+                        EvalErrorData::DeserializationErrorWithInner {
                             format: InputFormat::Yaml,
                             inner: err,
                             pos: pos_op,
-                        })
+                        }
                     })?,
                     "Toml" => toml::from_str(s).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::DeserializationError(
+                        EvalErrorData::DeserializationError(
                             String::from("toml"),
                             format!("{err}"),
                             pos_op,
-                        ))
+                        )
                     })?,
                     _ => return mk_err_fst(),
                 };
@@ -2795,11 +2740,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
-                        3,
-                        String::from("contract/array_lazy_app"),
-                        pos_op,
-                    ))
+                    EvalErrorData::NotEnoughArgs(3, String::from("contract/array_lazy_app"), pos_op)
                 })?;
 
                 let Closure {
@@ -2823,7 +2764,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 // Preserve the environment of the contract in the resulting array.
-                let contract = ctr_val.closurize(&mut self.cache, env_ctr);
+                let contract = ctr_val.closurize(&mut self.context.cache, env_ctr);
                 RuntimeContract::push_dedup(
                     &mut array_data.pending_contracts,
                     &env2,
@@ -2848,11 +2789,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     },
                     _,
                 ) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    self.err_with_ctxt(EvalErrorData::NotEnoughArgs(
+                    EvalErrorData::NotEnoughArgs(
                         3,
                         String::from("contract/record_lazy_app"),
                         pos_op,
-                    ))
+                    )
                 })?;
 
                 let Some(LabelBody(label)) = value1.as_label() else {
@@ -2920,7 +2861,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We need to extract plain strings from a Nickel array, which most likely
                 // contains at least generated variables.
                 // As for serialization, we thus fully substitute all variables first.
-                let val1_subst = subst(&self.context.cache, value1, &Environment::new(), &env1);
+                let val1_subst = subst(
+                    &self.pos_table,
+                    &self.context.cache,
+                    value1,
+                    &Environment::new(),
+                    &env1,
+                );
 
                 let Some(array_data) = value1.as_array() else {
                     return mk_type_error!("Array", 1, value1);
@@ -3066,7 +3013,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // way), and the right behavior (tm) is to just keep it.
                 let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
-                        return self.throw_with_ctxt(EvalErrorData::IllegalPolymorphicTailAccess {
+                        return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
@@ -3097,7 +3044,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         pos2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
-    ) -> Result<Closure, EvalError>
+    ) -> Result<Closure, EvalErrorData>
     where
         Op: Fn(&Number, &Number) -> bool,
     {
@@ -3123,7 +3070,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         pos2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
-    ) -> Result<Closure, EvalError>
+    ) -> Result<Closure, EvalErrorData>
     where
         Op: Fn(&Number, &Number) -> Number,
     {
@@ -3149,12 +3096,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         pos2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
-    ) -> Result<Closure, EvalError>
+    ) -> Result<Closure, EvalErrorData>
     where
         F: Fn(&Number, &Number) -> NickelValue,
     {
         let Some(n1) = value1.as_number() else {
-            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+            return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "Number".to_owned(),
                 arg_number: 1,
@@ -3165,7 +3112,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         };
 
         let Some(n2) = value2.as_number() else {
-            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+            return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "Number".to_owned(),
                 arg_number: 2,
@@ -3188,12 +3135,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         value2: NickelValue,
         pos_op: PosIdx,
         op_name: String,
-    ) -> Result<Closure, EvalError>
+    ) -> Result<Closure, EvalErrorData>
     where
         F: Fn(&NickelString, &NickelString) -> NickelValue,
     {
         let Some(StringBody(s1)) = value1.as_string() else {
-            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+            return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "String".to_owned(),
                 arg_number: 1,
@@ -3204,7 +3151,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         };
 
         let Some(StringBody(s2)) = value2.as_string() else {
-            return self.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
+            return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "String".to_owned(),
                 arg_number: 2,
@@ -3226,25 +3173,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         n_op: NAryOp,
         args: Vec<(Closure, PosIdx)>,
         pos_op: PosIdx,
-    ) -> Result<Closure, EvalError> {
+    ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{n_op}"));
 
         let pos_op_inh = pos_op.to_inherited_block(&mut self.pos_table);
 
-        let mk_type_error = |this: &mut VirtualMachine<R, C>,
-                             expected: &str,
-                             arg_number: usize,
-                             pos_arg: PosIdx,
-                             arg_evaluated: NickelValue| {
-            this.throw_with_ctxt(EvalErrorData::NAryPrimopTypeError {
-                primop: n_op.to_string(),
-                expected: expected.to_owned(),
-                arg_number,
-                pos_arg,
-                arg_evaluated: arg_evaluated,
-                pos_op,
-            })
-        };
+        let mk_type_error =
+            |expected: &str, arg_number: usize, pos_arg: PosIdx, arg_evaluated: NickelValue| {
+                Err(EvalErrorData::NAryPrimopTypeError {
+                    primop: n_op.to_string(),
+                    expected: expected.to_owned(),
+                    arg_number,
+                    pos_arg,
+                    arg_evaluated: arg_evaluated,
+                    pos_op,
+                })
+            };
 
         // Currently, for fixed arity primitive operators, the parser must ensure that they get
         // exactly the right number of argument: if it is not the case, this is a bug, and we panic.
@@ -3259,23 +3203,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args_wo_env.next().is_none());
 
                 let Some(StringBody(s)) = arg1.as_string() else {
-                    return mk_type_error(self, "String", 1, arg_pos1, arg1);
+                    return mk_type_error("String", 1, arg_pos1, arg1);
                 };
 
                 let Some(StringBody(from)) = arg2.as_string() else {
-                    return mk_type_error(self, "String", 2, arg_pos2, arg2);
+                    return mk_type_error("String", 2, arg_pos2, arg2);
                 };
 
                 let Some(StringBody(to)) = arg3.as_string() else {
-                    return mk_type_error(self, "String", 3, arg_pos3, arg3);
+                    return mk_type_error("String", 3, arg_pos3, arg3);
                 };
 
                 let result = if let NAryOp::StringReplace = n_op {
                     s.replace(from.as_str(), to.as_str())
                 } else {
-                    let re = regex::Regex::new(from).map_err(|err| {
-                        self.err_with_ctxt(EvalErrorData::Other(err.to_string(), pos_op))
-                    })?;
+                    let re = regex::Regex::new(from)
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     s.replace_regex(&CompiledRegex(re), to)
                 };
@@ -3292,20 +3235,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args_wo_env.next().is_none());
 
                 let Some(StringBody(s)) = arg1.as_string() else {
-                    return mk_type_error(self, "String", 1, arg_pos1, arg1);
+                    return mk_type_error("String", 1, arg_pos1, arg1);
                 };
 
                 let Some(NumberBody(start)) = arg2.as_number() else {
-                    return mk_type_error(self, "Number", 2, arg_pos2, arg2);
+                    return mk_type_error("Number", 2, arg_pos2, arg2);
                 };
 
                 let Some(NumberBody(end)) = arg3.as_number() else {
-                    return mk_type_error(self, "Number", 3, arg_pos3, arg3);
+                    return mk_type_error("Number", 3, arg_pos3, arg3);
                 };
 
                 s.substring(start, end)
                     .map(|substr| NickelValue::string(substr, pos_op_inh).into())
-                    .map_err(|e| self.err_with_ctxt(EvalErrorData::Other(format!("{e}"), pos_op)))
+                    .map_err(|e| EvalErrorData::Other(format!("{e}"), pos_op))
             }
             NAryOp::MergeContract => {
                 let mut args_iter = args.into_iter();
@@ -3337,7 +3280,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args_iter.next().is_none());
 
                 let Some(LabelBody(label)) = arg1.as_label() else {
-                    return self.throw_with_ctxt(EvalErrorData::InternalError(
+                    return Err(EvalErrorData::InternalError(
                         format!(
                             "The {n_op} operator was expecting \
                                 a first argument of type Label, got {}",
@@ -3348,7 +3291,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 merge::merge(
-                    &mut self.cache,
+                    &mut self.context.cache,
                     arg2,
                     env2,
                     arg3,
@@ -3395,11 +3338,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
-                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
+                    return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
                 let Some(LabelBody(label)) = arg2.as_label() else {
-                    return mk_type_error(self, "Label", 2, arg_pos2, arg2);
+                    return mk_type_error("Label", 2, arg_pos2, arg2);
                 };
 
                 if arg3.is_empty_record() {
@@ -3409,15 +3352,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 let ValueContentRefMut::Record(RecordBody(r)) = arg3.content_make_mut() else {
-                    return mk_type_error(self, "Record", 3, arg_pos3, arg3);
+                    return mk_type_error("Record", 3, arg_pos3, arg3);
                 };
 
                 let Some(RecordBody(tail)) = arg4.as_record() else {
-                    return mk_type_error(self, "Record", 4, arg_pos4, arg4);
+                    return mk_type_error("Record", 4, arg_pos4, arg4);
                 };
 
-                let tail_closurized =
-                    NickelValue::record_posless(tail.clone()).closurize(&mut self.cache, env4);
+                let tail_closurized = NickelValue::record_posless(tail.clone())
+                    .closurize(&mut self.context.cache, env4);
                 let fields = tail.fields.keys().map(|s| s.ident()).collect();
                 r.sealed_tail = Some(record::SealedTail::new(
                     *s,
@@ -3458,24 +3401,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
-                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
+                    return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
                 let Some(LabelBody(label)) = arg2.as_label() else {
-                    return mk_type_error(self, "Label", 2, arg_pos2, arg2);
+                    return mk_type_error("Label", 2, arg_pos2, arg2);
                 };
 
                 let Some(RecordBody(r)) = arg3.as_record() else {
-                    return mk_type_error(self, "Record", 3, arg_pos3, arg3);
+                    return mk_type_error("Record", 3, arg_pos3, arg3);
                 };
 
                 r.sealed_tail
                     .and_then(|tail| tail.unseal(s).cloned())
-                    .ok_or_else(|| {
-                        self.err_with_ctxt(EvalErrorData::BlameError {
-                            evaluated_arg: label.get_evaluated_arg(&self.cache),
-                            label: label.clone(),
-                        })
+                    .ok_or_else(|| EvalErrorData::BlameError {
+                        evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                        label: label.clone(),
                     })
                     .map(|tail_unsealed| Closure {
                         value: tail_unsealed,
@@ -3512,15 +3453,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Some(SealingKeyBody(key)) = arg1.as_sealing_key() else {
-                    return mk_type_error(self, "SealingKey", 1, arg_pos1, arg1);
+                    return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
                 let Ok(polarity) = Polarity::try_from(&arg2) else {
-                    return mk_type_error(self, "Polarity", 2, arg_pos2, arg2);
+                    return mk_type_error("Polarity", 2, arg_pos2, arg2);
                 };
 
                 let ValueContentRefMut::Label(LabelBody(label)) = arg3.content_make_mut() else {
-                    return mk_type_error(self, "Label", 3, arg_pos3, arg3);
+                    return mk_type_error("Label", 3, arg_pos3, arg3);
                 };
 
                 label
@@ -3564,11 +3505,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Some(NumberBody(start)) = arg1.as_number() else {
-                    return mk_type_error(self, "Number", 1, arg_pos1, arg1);
+                    return mk_type_error("Number", 1, arg_pos1, arg1);
                 };
 
                 let Some(NumberBody(end)) = arg2.as_number() else {
-                    return mk_type_error(self, "Number", 2, arg_pos2, arg2);
+                    return mk_type_error("Number", 2, arg_pos2, arg2);
                 };
 
                 if arg3.is_empty_array() {
@@ -3580,11 +3521,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let ValueContentRefMut::Array(ArrayBody { mut array, .. }) =
                     arg3.content_make_mut()
                 else {
-                    return mk_type_error(self, "Array", 3, arg_pos3, arg3);
+                    return mk_type_error("Array", 3, arg_pos3, arg3);
                 };
 
                 let Ok(start_as_usize) = usize::try_from(start) else {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "{n_op} expects its first argument (start) to be a \
                             positive integer smaller than {}, got {start}",
@@ -3595,7 +3536,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Ok(end_as_usize) = usize::try_from(end) else {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "{n_op} expects its second argument (end) to be a \
                             positive integer smaller than {}, got {end}",
@@ -3606,7 +3547,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 if end_as_usize < start_as_usize || end_as_usize > array.len() {
-                    return self.throw_with_ctxt(EvalErrorData::Other(
+                    return Err(EvalErrorData::Other(
                         format!(
                             "{n_op}: index out of bounds. Expected `start <= end <= {}`, but \
                             got `start={start}` and `end={end}`.",

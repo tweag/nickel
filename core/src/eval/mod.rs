@@ -666,7 +666,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
             closure = match value.content_ref() {
-                ValueContentRef::Thunk(thunk_body) => todo!(),
+                ValueContentRef::Thunk(thunk_body) => {
+                    self.enter_cache_index(None, thunk_body.0.clone(), pos_idx, env)?
+                }
                 ValueContentRef::Term(TermBody(Term::Value(value))) => Closure {
                     value: value.clone(),
                     env,
@@ -879,7 +881,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let result = match value.clone().content() {
                         lens @ ValueContent::Inline(_) => lens.restore(),
                         ValueContent::Array(lens) => {
-                            let mut array_body = lens.take();
+                            let array_body = lens.take();
 
                             // This *should* make it unnecessary to call closurize in [operation].
                             // See the comment on the `BinaryOp::ArrayConcat` match arm.
@@ -983,11 +985,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         (data.clone(), dyn_fields.clone())
                     };
 
-                    let rec_env = fixpoint::rec_env(
-                        &mut self.context.cache,
-                        static_part.fields.iter(),
-                        todo!("pos_idx"),
-                    );
+                    let rec_env =
+                        fixpoint::rec_env(&mut self.context.cache, static_part.fields.iter(), pos_idx);
 
                     for rt in static_part.fields.values_mut() {
                         fixpoint::patch_field(&mut self.context.cache, rt, &rec_env);
@@ -1137,7 +1136,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
                 ValueContentRef::Term(TermBody(Term::Match(data))) if !has_cont_on_stack => {
-                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.context.cache) {
+                    if let Some((arg, _)) = self.stack.pop_arg(&self.context.cache) {
                         Closure {
                             value: data.clone().compile(
                                 &self.pos_table,
