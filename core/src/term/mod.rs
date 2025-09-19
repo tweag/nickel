@@ -11,11 +11,14 @@ use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
-    bytecode::value::{self, Array, NickelValue},
+    bytecode::value::{
+        self, Array, ArrayBody, CustomContractBody, EnumVariantBody, NickelValue, RecordBody,
+        TermBody, TypeBody, ValueContent, ValueContentRef, lens::TermContent,
+    },
     cache::InputFormat,
     combine::Combine,
     error::{EvalErrorData, ParseError},
-    eval::{cache::CacheIndex, contract_eq, Environment},
+    eval::{Environment, cache::CacheIndex, contract_eq},
     files::FileId,
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
@@ -29,6 +32,7 @@ use crate::{
 use crate::metrics::increment;
 
 pub use malachite::{
+    Integer,
     base::{
         num::{
             basic::traits::Zero,
@@ -37,7 +41,6 @@ pub use malachite::{
         rounding_modes::RoundingMode,
     },
     rational::Rational,
-    Integer,
 };
 
 use serde::{Deserialize, Serialize, Serializer};
@@ -840,19 +843,18 @@ impl Traverse<NickelValue> for TypeAnnotation {
     where
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
-        todo!()
-        // let TypeAnnotation { typ, contracts } = self;
-        //
-        // let contracts = contracts
-        //     .into_iter()
-        //     .map(|labeled_ty| labeled_ty.traverse(f, order))
-        //     .collect::<Result<Vec<_>, _>>()?;
-        //
-        // let typ = typ
-        //     .map(|labeled_ty| labeled_ty.traverse(f, order))
-        //     .transpose()?;
-        //
-        // Ok(TypeAnnotation { typ, contracts })
+        let TypeAnnotation { typ, contracts } = self;
+
+        let contracts = contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let typ = typ
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
+            .transpose()?;
+
+        Ok(TypeAnnotation { typ, contracts })
     }
 
     fn traverse_ref<S, U>(
@@ -860,11 +862,10 @@ impl Traverse<NickelValue> for TypeAnnotation {
         f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
-        todo!()
-        // self.contracts
-        //     .iter()
-        //     .find_map(|c| c.traverse_ref(f, state))
-        //     .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f, state)))
+        self.contracts
+            .iter()
+            .find_map(|c| c.traverse_ref(f, state))
+            .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f, state)))
     }
 }
 
@@ -1878,196 +1879,150 @@ impl fmt::Display for NAryOp {
     }
 }
 
-// impl PrettyPrintCap for RichTerm {}
+impl PrettyPrintCap for NickelValue {}
 
 impl Traverse<NickelValue> for Term {
     /// Traverse through all expressions in the tree.
     ///
     /// This also recurses into the terms that are contained in `Type` subtrees.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<NickelValue, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Term, E>
     where
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
-        todo!()
-        // let rt = match order {
-        //     TraverseOrder::TopDown => f(self)?,
-        //     TraverseOrder::BottomUp => self,
-        // };
-        // let pos = rt.pos;
-        //
-        // let result = match_sharedterm!(match (rt.term) {
-        //     Term::Fun(id, t) => {
-        //         let t = t.traverse(f, order)?;
-        //         RichTerm::new(Term::Fun(id, t), pos)
-        //     }
-        //     Term::FunPattern(pat, t) => {
-        //         let t = t.traverse(f, order)?;
-        //         RichTerm::new(Term::FunPattern(pat, t), pos)
-        //     }
-        //     Term::CustomContract(t) => {
-        //         let t = t.traverse(f, order)?;
-        //         RichTerm::new(Term::CustomContract(t), pos)
-        //     }
-        //     Term::Let(bindings, body, attrs) => {
-        //         let bindings = bindings
-        //             .into_iter()
-        //             .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
-        //             .collect::<Result<_, E>>()?;
-        //         let body = body.traverse(f, order)?;
-        //         RichTerm::new(Term::Let(bindings, body, attrs), pos)
-        //     }
-        //     Term::LetPattern(bindings, body, attrs) => {
-        //         let bindings = bindings
-        //             .into_iter()
-        //             .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
-        //             .collect::<Result<_, E>>()?;
-        //         let body = body.traverse(f, order)?;
-        //         RichTerm::new(Term::LetPattern(bindings, body, attrs), pos)
-        //     }
-        //     Term::App(t1, t2) => {
-        //         let t1 = t1.traverse(f, order)?;
-        //         let t2 = t2.traverse(f, order)?;
-        //         RichTerm::new(Term::App(t1, t2), pos)
-        //     }
-        //     Term::Match(data) => {
-        //         // The annotation on `map_res` use Result's corresponding trait to convert from
-        //         // Iterator<Result> to a Result<Iterator>
-        //         let branches: Result<Vec<MatchBranch>, E> = data
-        //             .branches
-        //             .into_iter()
-        //             // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-        //             .map(
-        //                 |MatchBranch {
-        //                      pattern,
-        //                      guard,
-        //                      body,
-        //                  }| {
-        //                     let guard = guard.map(|cond| cond.traverse(f, order)).transpose()?;
-        //                     let body = body.traverse(f, order)?;
-        //
-        //                     Ok(MatchBranch {
-        //                         pattern,
-        //                         guard,
-        //                         body,
-        //                     })
-        //                 },
-        //             )
-        //             .collect();
-        //
-        //         RichTerm::new(
-        //             Term::Match(MatchData {
-        //                 branches: branches?,
-        //             }),
-        //             pos,
-        //         )
-        //     }
-        //     Term::Op1(op, t) => {
-        //         let t = t.traverse(f, order)?;
-        //         RichTerm::new(Term::Op1(op, t), pos)
-        //     }
-        //     Term::Op2(op, t1, t2) => {
-        //         let t1 = t1.traverse(f, order)?;
-        //         let t2 = t2.traverse(f, order)?;
-        //         RichTerm::new(Term::Op2(op, t1, t2), pos)
-        //     }
-        //     Term::OpN(op, ts) => {
-        //         let ts_res: Result<Vec<RichTerm>, E> =
-        //             ts.into_iter().map(|t| t.traverse(f, order)).collect();
-        //         RichTerm::new(Term::OpN(op, ts_res?), pos)
-        //     }
-        //     Term::Sealed(i, t1, lbl) => {
-        //         let t1 = t1.traverse(f, order)?;
-        //         RichTerm::new(Term::Sealed(i, t1, lbl), pos)
-        //     }
-        //     Term::Record(record) => {
-        //         // The annotation on `fields_res` uses Result's corresponding trait to convert from
-        //         // Iterator<Result> to a Result<Iterator>
-        //         let fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-        //             .fields
-        //             .into_iter()
-        //             // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-        //             .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-        //             .collect();
-        //         RichTerm::new(
-        //             Term::Record(RecordData::new(
-        //                 fields_res?,
-        //                 record.attrs,
-        //                 record.sealed_tail,
-        //             )),
-        //             pos,
-        //         )
-        //     }
-        //     Term::RecRecord(record, includes, dyn_fields, deps) => {
-        //         // The annotation on `map_res` uses Result's corresponding trait to convert from
-        //         // Iterator<Result> to a Result<Iterator>
-        //         let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-        //             .fields
-        //             .into_iter()
-        //             // For the conversion to work, note that we need a Result<(Ident,Field), E>
-        //             .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-        //             .collect();
-        //         let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
-        //             .into_iter()
-        //             .map(|(id_t, field)| {
-        //                 let id_t = id_t.traverse(f, order)?;
-        //                 let field = field.traverse(f, order)?;
-        //
-        //                 Ok((id_t, field))
-        //             })
-        //             .collect();
-        //         RichTerm::new(
-        //             Term::RecRecord(
-        //                 RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
-        //                 includes,
-        //                 dyn_fields_res?,
-        //                 deps,
-        //             ),
-        //             pos,
-        //         )
-        //     }
-        //     Term::Array(ts, attrs) => {
-        //         let ts_res = ts
-        //             .into_iter()
-        //             .map(|t| t.traverse(f, order))
-        //             .collect::<Result<Array, _>>()?;
-        //
-        //         RichTerm::new(Term::Array(ts_res, attrs), pos)
-        //     }
-        //     Term::StrChunks(chunks) => {
-        //         let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
-        //             .into_iter()
-        //             .map(|chunk| match chunk {
-        //                 chunk @ StrChunk::Literal(_) => Ok(chunk),
-        //                 StrChunk::Expr(t, indent) => {
-        //                     Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
-        //                 }
-        //             })
-        //             .collect();
-        //
-        //         RichTerm::new(Term::StrChunks(chunks_res?), pos)
-        //     }
-        //     Term::Annotated(annot, term) => {
-        //         let annot = annot.traverse(f, order)?;
-        //         let term = term.traverse(f, order)?;
-        //         RichTerm::new(Term::Annotated(annot, term), pos)
-        //     }
-        //     Term::Type { typ, contract } => {
-        //         let typ = typ.traverse(f, order)?;
-        //         let contract = contract.traverse(f, order)?;
-        //
-        //         RichTerm::new(Term::Type { typ, contract }, pos)
-        //     }
-        //     Term::EnumVariant { tag, arg, attrs } => {
-        //         let arg = arg.traverse(f, order)?;
-        //         RichTerm::new(Term::EnumVariant { tag, attrs, arg }, pos)
-        //     }
-        //     _ => rt,
-        // });
-        //
-        // match order {
-        //     TraverseOrder::TopDown => Ok(result),
-        //     TraverseOrder::BottomUp => f(result),
-        // }
+        Ok(match self {
+            Term::Fun(id, body) => {
+                let body = body.traverse(f, order)?;
+                Term::Fun(id, body)
+            }
+            Term::FunPattern(pat, body) => {
+                let body = body.traverse(f, order)?;
+                Term::FunPattern(pat, body)
+            }
+            Term::Let(bindings, body, attrs) => {
+                let bindings = bindings
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
+                    .collect::<Result<_, E>>()?;
+                let body = body.traverse(f, order)?;
+                Term::Let(bindings, body, attrs)
+            }
+            Term::LetPattern(bindings, body, attrs) => {
+                let bindings = bindings
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
+                    .collect::<Result<_, E>>()?;
+                let body = body.traverse(f, order)?;
+                Term::LetPattern(bindings, body, attrs)
+            }
+            Term::App(head, arg) => {
+                let head = head.traverse(f, order)?;
+                let arg = arg.traverse(f, order)?;
+                Term::App(head, arg)
+            }
+            Term::Match(data) => {
+                // The annotation on `map_res` use Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let branches: Result<Vec<MatchBranch>, E> = data
+                    .branches
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(
+                        |MatchBranch {
+                             pattern,
+                             guard,
+                             body,
+                         }| {
+                            let guard = guard.map(|cond| cond.traverse(f, order)).transpose()?;
+                            let body = body.traverse(f, order)?;
+
+                            Ok(MatchBranch {
+                                pattern,
+                                guard,
+                                body,
+                            })
+                        },
+                    )
+                    .collect();
+
+                Term::Match(MatchData {
+                    branches: branches?,
+                })
+            }
+            Term::Op1(op, arg) => {
+                let arg = arg.traverse(f, order)?;
+                Term::Op1(op, arg)
+            }
+            Term::Op2(op, arg1, arg2) => {
+                let arg1 = arg1.traverse(f, order)?;
+                let arg2 = arg2.traverse(f, order)?;
+                Term::Op2(op, arg1, arg2)
+            }
+            Term::OpN(op, args) => {
+                let args: Result<Vec<NickelValue>, E> =
+                    args.into_iter().map(|t| t.traverse(f, order)).collect();
+                Term::OpN(op, args?)
+            }
+            Term::Sealed(key, inner, label) => {
+                let inner = inner.traverse(f, order)?;
+                Term::Sealed(key, inner, label)
+            }
+            Term::RecRecord(record, includes, dyn_fields, deps) => {
+                // The annotation on `map_res` uses Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
+                    .fields
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,Field), E>
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
+                    .collect();
+                let dyn_fields_res: Result<Vec<(NickelValue, Field)>, E> = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, field)| {
+                        let id_t = id_t.traverse(f, order)?;
+                        let field = field.traverse(f, order)?;
+
+                        Ok((id_t, field))
+                    })
+                    .collect();
+                Term::RecRecord(
+                    RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
+                    includes,
+                    dyn_fields_res?,
+                    deps,
+                )
+            }
+            Term::StrChunks(chunks) => {
+                let chunks_res: Result<Vec<StrChunk<NickelValue>>, E> = chunks
+                    .into_iter()
+                    .map(|chunk| match chunk {
+                        chunk @ StrChunk::Literal(_) => Ok(chunk),
+                        StrChunk::Expr(t, indent) => {
+                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
+                        }
+                    })
+                    .collect();
+
+                Term::StrChunks(chunks_res?)
+            }
+            Term::Annotated(annot, term) => {
+                let annot = annot.traverse(f, order)?;
+                let term = term.traverse(f, order)?;
+                Term::Annotated(annot, term)
+            }
+            Term::Value(value) => {
+                let value = value.traverse(f, order)?;
+                Term::Value(value)
+            }
+            Term::Closurize(value) => {
+                let value = value.traverse(f, order)?;
+                Term::Closurize(value)
+            }
+            Term::Var(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => self,
+        })
     }
 
     fn traverse_ref<S, U>(
@@ -2075,95 +2030,64 @@ impl Traverse<NickelValue> for Term {
         f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
-        todo!()
-        // let child_state = match f(self, state) {
-        //     TraverseControl::Continue => None,
-        //     TraverseControl::ContinueWithScope(s) => Some(s),
-        //     TraverseControl::SkipBranch => {
-        //         return None;
-        //     }
-        //     TraverseControl::Return(ret) => {
-        //         return Some(ret);
-        //     }
-        // };
-        // let state = child_state.as_ref().unwrap_or(state);
-        //
-        // match &*self.term {
-        //     Term::Null
-        //     | Term::Bool(_)
-        //     | Term::Num(_)
-        //     | Term::Str(_)
-        //     | Term::Lbl(_)
-        //     | Term::Var(_)
-        //     | Term::Closure(_)
-        //     | Term::Enum(_)
-        //     | Term::Import(_)
-        //     | Term::ResolvedImport(_)
-        //     | Term::SealingKey(_)
-        //     | Term::ForeignId(_)
-        //     | Term::ParseError(_)
-        //     | Term::RuntimeError(_) => None,
-        //     Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
-        //         if let StrChunk::Expr(term, _) = ch {
-        //             term.traverse_ref(f, state)
-        //         } else {
-        //             None
-        //         }
-        //     }),
-        //     Term::Fun(_, t)
-        //     | Term::FunPattern(_, t)
-        //     | Term::EnumVariant { arg: t, .. }
-        //     | Term::Op1(_, t)
-        //     | Term::Sealed(_, t, _)
-        //     | Term::CustomContract(t) => t.traverse_ref(f, state),
-        //     Term::Let(bindings, body, _) => bindings
-        //         .iter()
-        //         .find_map(|(_id, t)| t.traverse_ref(f, state))
-        //         .or_else(|| body.traverse_ref(f, state)),
-        //     Term::LetPattern(bindings, body, _) => bindings
-        //         .iter()
-        //         .find_map(|(_pat, t)| t.traverse_ref(f, state))
-        //         .or_else(|| body.traverse_ref(f, state)),
-        //     Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
-        //         .traverse_ref(f, state)
-        //         .or_else(|| t2.traverse_ref(f, state)),
-        //     Term::Record(data) => data
-        //         .fields
-        //         .values()
-        //         .find_map(|field| field.traverse_ref(f, state)),
-        //     Term::RecRecord(data, _, dyn_data, _) => data
-        //         .fields
-        //         .values()
-        //         .find_map(|field| field.traverse_ref(f, state))
-        //         .or_else(|| {
-        //             dyn_data.iter().find_map(|(id, field)| {
-        //                 id.traverse_ref(f, state)
-        //                     .or_else(|| field.traverse_ref(f, state))
-        //             })
-        //         }),
-        //     Term::Match(data) => data.branches.iter().find_map(
-        //         |MatchBranch {
-        //              pattern: _,
-        //              guard,
-        //              body,
-        //          }| {
-        //             if let Some(cond) = guard.as_ref() {
-        //                 cond.traverse_ref(f, state)?;
-        //             }
-        //
-        //             body.traverse_ref(f, state)
-        //         },
-        //     ),
-        //     Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-        //     Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-        //     Term::Annotated(annot, t) => t
-        //         .traverse_ref(f, state)
-        //         .or_else(|| annot.traverse_ref(f, state)),
-        //     Term::Type { typ, contract } => {
-        //         typ.traverse_ref(f, state)?;
-        //         contract.traverse_ref(f, state)
-        //     }
-        // }
+        match self {
+            Term::Var(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => None,
+            Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
+                if let StrChunk::Expr(term, _) = ch {
+                    term.traverse_ref(f, state)
+                } else {
+                    None
+                }
+            }),
+            Term::Fun(_, t)
+            | Term::FunPattern(_, t)
+            | Term::Op1(_, t)
+            | Term::Sealed(_, t, _)
+            | Term::Value(t)
+            | Term::Closurize(t) => t.traverse_ref(f, state),
+            Term::Let(bindings, body, _) => bindings
+                .iter()
+                .find_map(|(_id, t)| t.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Term::LetPattern(bindings, body, _) => bindings
+                .iter()
+                .find_map(|(_pat, t)| t.traverse_ref(f, state))
+                .or_else(|| body.traverse_ref(f, state)),
+            Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
+                .traverse_ref(f, state)
+                .or_else(|| t2.traverse_ref(f, state)),
+            Term::RecRecord(data, _, dyn_data, _) => data
+                .fields
+                .values()
+                .find_map(|field| field.traverse_ref(f, state))
+                .or_else(|| {
+                    dyn_data.iter().find_map(|(id, field)| {
+                        id.traverse_ref(f, state)
+                            .or_else(|| field.traverse_ref(f, state))
+                    })
+                }),
+            Term::Match(data) => data.branches.iter().find_map(
+                |MatchBranch {
+                     pattern: _,
+                     guard,
+                     body,
+                 }| {
+                    if let Some(cond) = guard.as_ref() {
+                        cond.traverse_ref(f, state)?;
+                    }
+
+                    body.traverse_ref(f, state)
+                },
+            ),
+            Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
+            Term::Annotated(annot, t) => t
+                .traverse_ref(f, state)
+                .or_else(|| annot.traverse_ref(f, state)),
+        }
     }
 }
 
@@ -2172,7 +2096,80 @@ impl Traverse<NickelValue> for NickelValue {
     where
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
-        todo!()
+        let value = match order {
+            TraverseOrder::TopDown => f(self)?,
+            TraverseOrder::BottomUp => self,
+        };
+
+        let pos_idx = value.pos_idx();
+
+        let result = match value.content() {
+            lens @ (ValueContent::Inline(_)
+            | ValueContent::Number(_)
+            | ValueContent::String(_)
+            | ValueContent::Label(_)
+            | ValueContent::Thunk(_)
+            | ValueContent::SealingKey(_)
+            | ValueContent::ForeignId(_)) => lens.restore(),
+            ValueContent::Term(lens) => {
+                let term = lens.take();
+                let term = term.traverse(f, order)?;
+                NickelValue::term(term, pos_idx)
+            }
+            ValueContent::Record(lens) => {
+                let record = lens.take().0;
+
+                // The annotation on `fields_res` uses Result's corresponding trait to convert from
+                // Iterator<Result> to a Result<Iterator>
+                let fields: Result<IndexMap<LocIdent, Field>, E> = record
+                    .fields
+                    .into_iter()
+                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
+                    .collect();
+                NickelValue::record(
+                    RecordData::new(fields?, record.attrs, record.sealed_tail),
+                    pos_idx,
+                )
+                .unwrap()
+            }
+            ValueContent::Array(lens) => {
+                let ArrayBody {
+                    array,
+                    pending_contracts,
+                } = lens.take();
+
+                let array = array
+                    .into_iter()
+                    .map(|t| t.traverse(f, order))
+                    .collect::<Result<Array, _>>()?;
+
+                // We don't recurse into pending contracts currently
+                NickelValue::array(array, pending_contracts, pos_idx).unwrap()
+            }
+            ValueContent::Type(lens) => {
+                let TypeBody { typ, contract } = lens.take();
+                let typ = typ.traverse(f, order)?;
+                let contract = contract.traverse(f, order)?;
+
+                NickelValue::typ(typ, contract, pos_idx)
+            }
+            ValueContent::EnumVariant(lens) => {
+                let EnumVariantBody { tag, arg } = lens.take();
+                let arg = arg.map(|arg| arg.traverse(f, order)).transpose()?;
+                NickelValue::enum_variant(tag, arg, pos_idx)
+            }
+            ValueContent::CustomContract(lens) => {
+                let ctr = lens.take().0;
+                let ctr = ctr.traverse(f, order)?;
+                NickelValue::custom_contract(ctr, pos_idx)
+            }
+        };
+
+        match order {
+            TraverseOrder::TopDown => Ok(result),
+            TraverseOrder::BottomUp => f(result),
+        }
     }
 
     fn traverse_ref<S, U>(
@@ -2180,7 +2177,44 @@ impl Traverse<NickelValue> for NickelValue {
         f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U> {
-        todo!()
+        let child_scope = match f(self, scope) {
+            TraverseControl::Continue => None,
+            TraverseControl::ContinueWithScope(s) => Some(s),
+            TraverseControl::SkipBranch => {
+                return None;
+            }
+            TraverseControl::Return(ret) => {
+                return Some(ret);
+            }
+        };
+
+        let scope = child_scope.as_ref().unwrap_or(scope);
+
+        match self.content_ref() {
+            ValueContentRef::Inline(_)
+            | ValueContentRef::Number(_)
+            | ValueContentRef::String(_)
+            | ValueContentRef::Label(_)
+            | ValueContentRef::Thunk(_)
+            | ValueContentRef::SealingKey(_)
+            | ValueContentRef::EnumVariant(EnumVariantBody { arg: None, .. })
+            | ValueContentRef::ForeignId(_) => None,
+            ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(v), .. })
+            | ValueContentRef::CustomContract(CustomContractBody(v)) => v.traverse_ref(f, scope),
+            ValueContentRef::Array(array_data) => array_data
+                .array
+                .iter()
+                .find_map(|t| t.traverse_ref(f, scope)),
+            ValueContentRef::Type(TypeBody { typ, contract }) => {
+                typ.traverse_ref(f, scope)?;
+                contract.traverse_ref(f, scope)
+            }
+            ValueContentRef::Record(RecordBody(data)) => data
+                .fields
+                .values()
+                .find_map(|field| field.traverse_ref(f, scope)),
+            ValueContentRef::Term(TermBody(term)) => term.traverse_ref(f, scope),
+        }
     }
 }
 
@@ -2189,19 +2223,21 @@ impl Traverse<Type> for NickelValue {
     where
         F: FnMut(Type) -> Result<Type, E>,
     {
-        todo!()
-        // self.traverse(
-        //     &mut |rt: RichTerm| {
-        //         match_sharedterm!(match (rt.term) {
-        //             Term::Type { typ, contract } => {
-        //                 let typ = typ.traverse(f, order)?;
-        //                 Ok(RichTerm::new(Term::Type { typ, contract }, rt.pos))
-        //             }
-        //             _ => Ok(rt),
-        //         })
-        //     },
-        //     order,
-        // )
+        self.traverse(
+            &mut |value: NickelValue| {
+                let pos_idx = value.pos_idx();
+
+                match value.content() {
+                    ValueContent::Type(lens) => {
+                        let TypeBody { typ, contract } = lens.take();
+                        let typ = typ.traverse(f, order)?;
+                        Ok(NickelValue::typ(typ, contract, pos_idx))
+                    }
+                    lens => Ok(lens.restore()),
+                }
+            },
+            order,
+        )
     }
 
     fn traverse_ref<S, U>(
@@ -2209,26 +2245,22 @@ impl Traverse<Type> for NickelValue {
         f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
         state: &S,
     ) -> Option<U> {
-        todo!()
-        // self.traverse_ref(
-        //     &mut |rt: &RichTerm, state: &S| match &*rt.term {
-        //         Term::Type { typ, contract: _ } => typ.traverse_ref(f, state).into(),
-        //         _ => TraverseControl::Continue,
-        //     },
-        //     state,
-        // )
-    }
-}
-
-impl From<NickelValue> for Term {
-    fn from(value: NickelValue) -> Self {
-        todo!()
+        self.traverse_ref(
+            &mut |value: &NickelValue, state: &S| {
+                if let Some(TypeBody { typ, contract }) = value.as_type() {
+                    typ.traverse_ref(f, state).into()
+                } else {
+                    TraverseControl::Continue
+                }
+            },
+            state,
+        )
     }
 }
 
 impl From<Term> for NickelValue {
-    fn from(value: Term) -> Self {
-        todo!()
+    fn from(term: Term) -> Self {
+        NickelValue::term_posless(term)
     }
 }
 
