@@ -32,12 +32,15 @@ codespan.workspace = true
 crossbeam.workspace = true
 csv.workspace = true
 env_logger.workspace = true
+glob.workspace = true
+jiff = { workspace = true, features = ["serde"] }
 lalrpop-util.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
 nickel-lang-core = {workspace = true, default-features = false, features = ["format"]}
+notify-debouncer-full.workspace = true
 ouroboros.workspace = true
 pretty.workspace = true
 regex.workspace = true
@@ -55,6 +58,7 @@ insta = { workspace = true, features = ["filters"] }
 lsp-harness.workspace = true
 nickel-lang-utils.workspace = true
 pretty_assertions.workspace = true
+tempfile.workspace = true
 test-generator.workspace = true
 
 [features]
