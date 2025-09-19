@@ -522,6 +522,11 @@ impl NickelValue {
         Self::custom_contract(value, PosIdx::NONE)
     }
 
+    /// Allocates a new type.
+    pub fn typ(typ: Type, contract: NickelValue, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(TypeBody { typ, contract }, pos_idx).into()
+    }
+
     /// Returns the inner value of `self` if it's an inline value, or `None` otherwise.
     pub fn as_inline(&self) -> Option<InlineValue> {
         InlineValue::try_from(self).ok()
