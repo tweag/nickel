@@ -1877,8 +1877,8 @@ mod blame_error {
                 let type_pprinted = format!("{ty}");
                 let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
 
-                let ty_with_pos = FixedTypeParser::new()
-                    .parse_strict_compat(file_id, Lexer::new(&type_pprinted))
+                let (ty_with_pos, _) = FixedTypeParser::new()
+                    .parse_tolerant_compat(file_id, Lexer::new(&type_pprinted))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
