@@ -82,7 +82,7 @@ jobs:
     runs-on: ${{ matrix.os.runs-on }}
     needs: release-artifacts
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Log in to registry
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
     - id: build-image
@@ -117,7 +117,7 @@ jobs:
     name: "Build MacOS Nickel binaries"
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - name: Build binaries
@@ -140,7 +140,7 @@ jobs:
     name: "Build Windows Nickel binaries"
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - name: Build binaries
