@@ -2,4 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[0:10-0:11: "incompatible types\nExpected an expression of type `{  <parse error>, }` (a contract)\nFound an expression of type `{ _ : _ }`\nStatic types and contracts are not compatible", 0:10-0:11: "this expression", 0:32-0:33: "unexpected token"]
+[0:10-0:11: "incompatible types\nExpected an expression of type `{ %<parse error> }` (a contract)\nFound an expression of type `{ _ : _ }`\nStatic types and contracts are not compatible", 0:10-0:11: "this expression", 0:32-0:33: "unexpected token"]

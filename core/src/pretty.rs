@@ -559,7 +559,7 @@ impl Allocator {
         match id_expr.as_ref() {
             // Nickel will not parse a multiline string literal in this position
             Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
-            Term::ParseError(_) => docs![self, "<parse error>"],
+            Term::ParseError(_) => docs![self, "%<parse error>"],
             _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
         }
         .append(self.field_body(field))
@@ -1180,8 +1180,8 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             // This type is in term position, so we don't need to add parentheses.
             Type { typ, contract: _ } => typ.pretty(allocator),
-            ParseError(_) => allocator.text("%<PARSE ERROR>"),
-            RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
+            ParseError(_) => allocator.text("%<parse error>"),
+            RuntimeError(_) => allocator.text("%<runtime error>"),
             Closure(idx) => allocator.text(format!("%<closure@{idx:p}>")),
         }
     }
