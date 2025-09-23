@@ -725,9 +725,15 @@ pub mod toml_deser {
 
     /// Deserialize a Nickel term with position information from a TOML source provided as a
     /// string and the file id of this source.
-    pub fn from_str(s: &str, pos_table: &mut PosTable, file_id: FileId) -> Result<NickelValue, toml_edit::TomlError> {
+    pub fn from_str(
+        pos_table: &mut PosTable,
+        s: &str,
+        file_id: FileId,
+    ) -> Result<NickelValue, toml_edit::TomlError> {
         let doc: toml_edit::Document<_> = s.parse()?;
-        Ok(doc.as_item().to_value_with_pos(pos_table, doc.span(), file_id))
+        Ok(doc
+            .as_item()
+            .to_value_with_pos(pos_table, doc.span(), file_id))
     }
 }
 
