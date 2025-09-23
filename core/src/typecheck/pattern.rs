@@ -1,6 +1,5 @@
 use crate::{
     bytecode::ast::pattern::*,
-    error::TypecheckError,
     identifier::{Ident, LocIdent},
     mk_uty_record_row,
     typ::{EnumRowsF, RecordRowsF, TypeF},
@@ -608,10 +607,12 @@ impl<'ast> PatternTypes<'ast> for OrPattern<'ast> {
                     pat_bindings.last().unwrap().0
                 };
 
-                return Err(TypecheckError::OrPatternVarsMismatch {
-                    var: witness,
-                    pos: self.pos,
-                });
+                return Err(TypecheckError::new(AstAlloc::new(), |_alloc| {
+                    TypecheckErrorData::OrPatternVarsMismatch {
+                        var: witness,
+                        pos: self.pos,
+                    }
+                }));
             }
 
             // We unify the type of the first or-branch with the current or-branch, to make sure
@@ -632,10 +633,12 @@ impl<'ast> PatternTypes<'ast> for OrPattern<'ast> {
                     // smaller one, which is guaranteed to be missing (indeed, the greater one
                     // could still appear later in the other list, but the smaller is necessarily
                     // missing in the list with the greater one)
-                    return Err(TypecheckError::OrPatternVarsMismatch {
-                        var: std::cmp::min(*model_id, id),
-                        pos: self.pos,
-                    });
+                    return Err(TypecheckError::new(AstAlloc::new(), |_alloc| {
+                        TypecheckErrorData::OrPatternVarsMismatch {
+                            var: std::cmp::min(*model_id, id),
+                            pos: self.pos,
+                        }
+                    }));
                 }
 
                 if let TypecheckMode::Enforce = mode {

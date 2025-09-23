@@ -56,12 +56,12 @@
 //! [HasApparentType]).
 use crate::{
     bytecode::ast::{
-        alloc::CloneTo, compat::ToMainline, pattern::bindings::Bindings as _, record::FieldDef,
-        typ::*, Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
+        alloc::CloneTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*, Annotation,
+        Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
     },
     cache::AstImportResolver,
     environment::Environment,
-    error::TypecheckError,
+    error::{TypecheckError, TypecheckErrorData},
     identifier::{Ident, LocIdent},
     mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
     position::TermPos,
@@ -1275,12 +1275,13 @@ impl<'ast> Context<'ast> {
     }
 
     /// Retrieves a variable from the type environment, or fail with
-    /// [crate::error::TypecheckError::UnboundIdentifier] instead.
+    /// [crate::error::TypecheckErrorData::UnboundIdentifier] instead.
     pub fn get_type(&self, id: LocIdent) -> Result<UnifType<'ast>, TypecheckError> {
-        self.type_env
-            .get(&id.ident())
-            .cloned()
-            .ok_or_else(|| TypecheckError::UnboundIdentifier(id))
+        self.type_env.get(&id.ident()).cloned().ok_or_else(|| {
+            TypecheckError::new(AstAlloc::new(), |_alloc| {
+                TypecheckErrorData::UnboundIdentifier(id)
+            })
+        })
     }
 }
 
@@ -2445,10 +2446,12 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
             }
             Node::Type(typ) => {
                 if let Some(contract) = typ.find_contract() {
-                    Err(TypecheckError::CtrTypeInTermPos {
-                        contract: contract.to_mainline(),
-                        pos: self.pos,
-                    })
+                    Err(TypecheckError::new(AstAlloc::new(), |alloc| {
+                        TypecheckErrorData::CtrTypeInTermPos {
+                            contract: Ast::clone_to(contract.clone(), alloc),
+                            pos: self.pos,
+                        }
+                    }))
                 } else {
                     Ok(())
                 }

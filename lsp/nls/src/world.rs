@@ -197,11 +197,11 @@ impl World {
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
     fn associate_failed_import(&mut self, err: &nickel_lang_core::error::TypecheckError) {
-        if let nickel_lang_core::error::TypecheckError::ImportError(ImportError::IOError(
+        if let nickel_lang_core::error::TypecheckErrorData::ImportError(ImportError::IOError(
             name,
             _,
             pos,
-        )) = &err
+        )) = err.borrow_error()
         {
             if let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt()) {
                 self.failed_imports

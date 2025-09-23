@@ -3,7 +3,7 @@ use std::{io::Cursor, thread};
 use nickel_lang_core::{
     error::{
         Error, EvalError, ExportError, ExportErrorData, ImportError, NullReporter, ParseError,
-        TypecheckError,
+        TypecheckErrorData,
     },
     term::Term,
     typecheck::TypecheckMode,
@@ -261,23 +261,6 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::EvalError(EvalError::NonExhaustiveEnumMatch { .. }),
             )
             | (EvalFailedDestructuring, Error::EvalError(EvalError::FailedDestructuring { .. }))
-            | (
-                TypecheckRecordRowMismatch,
-                Error::TypecheckError(TypecheckError::RecordRowMismatch { .. }),
-            )
-            | (
-                TypecheckEnumRowMismatch,
-                Error::TypecheckError(TypecheckError::EnumRowMismatch { .. }),
-            )
-            | (
-                TypecheckMissingDynTail,
-                Error::TypecheckError(TypecheckError::MissingDynTail { .. }),
-            )
-            | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail { .. }))
-            | (
-                TypecheckCtrTypeInTermPos,
-                Error::TypecheckError(TypecheckError::CtrTypeInTermPos { .. }),
-            )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
             | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
             | (
@@ -313,92 +296,108 @@ impl PartialEq<Error> for ErrorExpectation {
                 EvalMissingFieldDef { field },
                 Error::EvalError(EvalError::MissingFieldDef { id, .. }),
             ) => field == id.label(),
+            (_, Error::TypecheckError(tc_err)) => self == tc_err.borrow_error(),
+            (_, _) => false,
+        }
+    }
+}
+
+impl PartialEq<TypecheckErrorData<'_>> for ErrorExpectation {
+    fn eq(&self, other: &TypecheckErrorData) -> bool {
+        use ErrorExpectation::*;
+
+        match (self, other) {
+            (TypecheckRecordRowMismatch, TypecheckErrorData::RecordRowMismatch { .. })
+            | (TypecheckEnumRowMismatch, TypecheckErrorData::EnumRowMismatch { .. })
+            | (TypecheckMissingDynTail, TypecheckErrorData::MissingDynTail { .. })
+            | (TypecheckExtraDynTail, TypecheckErrorData::ExtraDynTail { .. })
+            | (TypecheckCtrTypeInTermPos, TypecheckErrorData::CtrTypeInTermPos { .. }) => true,
             (
                 TypecheckUnboundIdentifier { identifier },
-                Error::TypecheckError(TypecheckError::UnboundIdentifier(id)),
+                TypecheckErrorData::UnboundIdentifier(id),
             ) => id.label() == identifier,
             (
                 TypecheckUnboundTypeVariable { identifier },
-                Error::TypecheckError(TypecheckError::UnboundTypeVariable(ident)),
+                TypecheckErrorData::UnboundTypeVariable(ident),
             ) => identifier == ident.label(),
             (
                 TypecheckTypeMismatch { expected, inferred },
-                Error::TypecheckError(
-                    TypecheckError::TypeMismatch {
-                        expected: expected1,
-                        inferred: inferred1,
-                        ..
-                    }
-                    | TypecheckError::ArrowTypeMismatch {
-                        expected: expected1,
-                        inferred: inferred1,
-                        ..
-                    },
-                ),
+                TypecheckErrorData::TypeMismatch {
+                    expected: expected1,
+                    inferred: inferred1,
+                    ..
+                }
+                | TypecheckErrorData::ArrowTypeMismatch {
+                    expected: expected1,
+                    inferred: inferred1,
+                    ..
+                },
             ) if expected == &expected1.to_string() && inferred == &inferred1.to_string() => true,
             (
                 TypecheckForallParametricityViolation {
                     tail,
                     violating_type,
                 },
-                Error::TypecheckError(TypecheckError::ForallParametricityViolation {
+                TypecheckErrorData::ForallParametricityViolation {
                     tail: tail1,
                     violating_type: vtype1,
                     ..
-                }),
+                },
             ) => {
                 tail.as_str() == tail1.to_string() && violating_type.as_str() == vtype1.to_string()
             }
-            (
-                TypecheckMissingRow { ident },
-                Error::TypecheckError(TypecheckError::MissingRow { id: id1, .. }),
-            ) if ident == id1.label() => true,
-            (
-                TypecheckExtraRow { ident },
-                Error::TypecheckError(TypecheckError::ExtraRow { id: id1, .. }),
-            ) if ident == id1.label() => true,
+            (TypecheckMissingRow { ident }, TypecheckErrorData::MissingRow { id: id1, .. })
+                if ident == id1.label() =>
+            {
+                true
+            }
+            (TypecheckExtraRow { ident }, TypecheckErrorData::ExtraRow { id: id1, .. })
+                if ident == id1.label() =>
+            {
+                true
+            }
             (
                 TypecheckRecordRowConflict { row },
-                Error::TypecheckError(TypecheckError::RecordRowConflict { row: row1, .. }),
+                TypecheckErrorData::RecordRowConflict { row: row1, .. },
             ) => row == row1.id.label(),
             (
                 TypecheckEnumRowConflict { row },
-                Error::TypecheckError(TypecheckError::EnumRowConflict { row: row1, .. }),
+                TypecheckErrorData::EnumRowConflict { row: row1, .. },
             ) => row == row1.id.label(),
             (
                 TypecheckVarLevelMismatch { type_var: ident },
-                Error::TypecheckError(TypecheckError::VarLevelMismatch {
+                TypecheckErrorData::VarLevelMismatch {
                     type_var: constant, ..
-                }),
+                },
             ) => ident == constant.label(),
             (
                 TypecheckInhomogeneousRecord {
                     row_a: row1,
                     row_b: row2,
                 },
-                Error::TypecheckError(TypecheckError::InhomogeneousRecord { row_a, row_b, .. }),
+                TypecheckErrorData::InhomogeneousRecord { row_a, row_b, .. },
             ) => row1 == &row_a.to_string() && row2 == &row_b.to_string(),
             (
                 TypecheckOrPatternVarsMismatch { var },
-                Error::TypecheckError(TypecheckError::OrPatternVarsMismatch { var: id, .. }),
+                TypecheckErrorData::OrPatternVarsMismatch { var: id, .. },
             ) => var == id.label(),
             // The clone is not ideal, but currently we can't compare `TypecheckError` directly
             // with an ErrorExpectation. Ideally, we would implement `eq` for all error subtypes,
             // and have the eq with `Error` just dispatch to those sub-eq functions.
             (
                 TypecheckArrowTypeMismatch { cause },
-                Error::TypecheckError(TypecheckError::ArrowTypeMismatch { cause: cause2, .. }),
-            ) => cause.as_ref() == &Error::TypecheckError((**cause2).clone()),
+                TypecheckErrorData::ArrowTypeMismatch { cause: cause2, .. },
+            ) => cause.as_ref() == &**cause2,
             // If nothing else matched up to this point, we allow the expected error to appear wrapped inside an `ArrowTypeMismatch`
             //
-            (error_exp, Error::TypecheckError(TypecheckError::ArrowTypeMismatch { cause, .. })) => {
-                error_exp == &Error::TypecheckError((**cause).clone())
+            (error_exp, TypecheckErrorData::ArrowTypeMismatch { cause, .. }) => {
+                error_exp == &**cause
             }
             // We equate `TypecheckError(ImportError(x))` with `Error::ImportError(x)`
-            (error_exp, Error::TypecheckError(TypecheckError::ImportError(import_err))) => {
+            (error_exp, TypecheckErrorData::ImportError(import_err)) => {
                 error_exp == &Error::ImportError(import_err.clone())
             }
-            (_, _) => false,
+            _ => false,
         }
     }
 }

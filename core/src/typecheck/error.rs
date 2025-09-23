@@ -5,8 +5,11 @@ use super::{
 };
 
 use crate::{
-    bytecode::ast::compat::ToMainline,
-    error::TypecheckError,
+    bytecode::ast::{
+        alloc::{AstAlloc, CloneTo as _},
+        typ::{EnumRow, RecordRow, Type},
+    },
+    error::{TypecheckError, TypecheckErrorData},
     identifier::LocIdent,
     label::ty_path,
     position::TermPos,
@@ -278,26 +281,31 @@ impl<'ast> UnifError<'ast> {
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
     pub fn into_typecheck_err(self, state: &State<'ast, '_>, pos_opt: TermPos) -> TypecheckError {
         let mut names = reporting::NameReg::new(state.names.clone());
-        self.into_typecheck_err_(state, &mut names, pos_opt)
+        TypecheckError::new(AstAlloc::new(), |alloc| {
+            self.into_typecheck_err_data(alloc, state, &mut names, pos_opt)
+        })
     }
 
     /// Convert a unification error to a typechecking error, given a populated [name
-    /// registry][reporting::NameReg]. Actual meat of the implementation of
-    /// [`Self::into_typecheck_err`].
-    fn into_typecheck_err_(
+    /// registry][reporting::NameReg] and the error's allocator. Actual meat of the implementation
+    /// of [`Self::into_typecheck_err`].
+    fn into_typecheck_err_data<'err>(
         self,
+        alloc: &'err AstAlloc,
         state: &State<'ast, '_>,
         names_reg: &mut reporting::NameReg,
         pos: TermPos,
-    ) -> TypecheckError {
+    ) -> TypecheckErrorData<'err> {
         match self {
-            UnifError::TypeMismatch { expected, inferred } => TypecheckError::TypeMismatch {
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+            UnifError::TypeMismatch { expected, inferred } => TypecheckErrorData::TypeMismatch {
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
             UnifError::RecordRowMismatch {
@@ -305,15 +313,22 @@ impl<'ast> UnifError<'ast> {
                 expected,
                 inferred,
                 cause,
-            } => TypecheckError::RecordRowMismatch {
+            } => TypecheckErrorData::RecordRowMismatch {
                 id,
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                cause: Box::new((*cause).into_typecheck_err_(state, names_reg, TermPos::None)),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                cause: Box::new((*cause).into_typecheck_err_data(
+                    alloc,
+                    state,
+                    names_reg,
+                    TermPos::None,
+                )),
                 pos,
             },
             UnifError::EnumRowMismatch {
@@ -321,16 +336,18 @@ impl<'ast> UnifError<'ast> {
                 expected,
                 inferred,
                 cause,
-            } => TypecheckError::EnumRowMismatch {
+            } => TypecheckErrorData::EnumRowMismatch {
                 id,
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 cause: cause.map(|err| {
-                    Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None))
+                    Box::new((*err).into_typecheck_err_data(alloc, state, names_reg, TermPos::None))
                 }),
                 pos,
             },
@@ -341,156 +358,196 @@ impl<'ast> UnifError<'ast> {
                 var_kind,
                 expected_const_id,
                 inferred_const_id,
-            } => TypecheckError::TypeMismatch {
-                expected: UnifType::from_constant_of_kind(expected_const_id, var_kind)
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: UnifType::from_constant_of_kind(inferred_const_id, var_kind)
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+            } => TypecheckErrorData::TypeMismatch {
+                expected: Type::clone_to(
+                    UnifType::from_constant_of_kind(expected_const_id, var_kind).to_type(
+                        state.ast_alloc,
+                        names_reg,
+                        state.table,
+                    ),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    UnifType::from_constant_of_kind(inferred_const_id, var_kind).to_type(
+                        state.ast_alloc,
+                        names_reg,
+                        state.table,
+                    ),
+                    alloc,
+                ),
                 pos,
             },
             UnifError::WithConst {
                 var_kind: VarKindDiscriminant::Type,
                 expected_const_id,
                 inferred,
-            } => TypecheckError::TypeMismatch {
-                expected: UnifType::Constant(expected_const_id)
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+            } => TypecheckErrorData::TypeMismatch {
+                expected: Type::clone_to(
+                    UnifType::Constant(expected_const_id).to_type(
+                        state.ast_alloc,
+                        names_reg,
+                        state.table,
+                    ),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
             UnifError::WithConst {
                 var_kind,
                 expected_const_id,
                 inferred,
-            } => TypecheckError::ForallParametricityViolation {
+            } => TypecheckErrorData::ForallParametricityViolation {
                 kind: var_kind,
-                tail: UnifType::from_constant_of_kind(expected_const_id, var_kind)
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                violating_type: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                tail: Type::clone_to(
+                    UnifType::from_constant_of_kind(expected_const_id, var_kind).to_type(
+                        state.ast_alloc,
+                        names_reg,
+                        state.table,
+                    ),
+                    alloc,
+                ),
+                violating_type: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
             UnifError::MissingRow {
                 id,
                 expected,
                 inferred,
-            } => TypecheckError::MissingRow {
+            } => TypecheckErrorData::MissingRow {
                 id,
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
-            UnifError::MissingDynTail { expected, inferred } => TypecheckError::MissingDynTail {
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                pos,
-            },
+            UnifError::MissingDynTail { expected, inferred } => {
+                TypecheckErrorData::MissingDynTail {
+                    expected: Type::clone_to(
+                        expected.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    inferred: Type::clone_to(
+                        inferred.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    pos,
+                }
+            }
             UnifError::ExtraRow {
                 id,
                 expected,
                 inferred,
-            } => TypecheckError::ExtraRow {
+            } => TypecheckErrorData::ExtraRow {
                 id,
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
-            UnifError::ExtraDynTail { expected, inferred } => TypecheckError::ExtraDynTail {
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+            UnifError::ExtraDynTail { expected, inferred } => TypecheckErrorData::ExtraDynTail {
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
-            #[allow(unused_variables)]
-            #[allow(unreachable_code)]
             UnifError::RecordRowConflict {
                 row,
                 expected,
                 inferred,
-            } => TypecheckError::RecordRowConflict {
+            } => TypecheckErrorData::RecordRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: row
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                row: RecordRow::clone_to(
+                    row.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
-            #[allow(unused_variables)]
-            #[allow(unreachable_code)]
             UnifError::EnumRowConflict {
                 row,
                 expected,
                 inferred,
-            } => TypecheckError::EnumRowConflict {
+            } => TypecheckErrorData::EnumRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
-                row: row
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                expected: expected
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
-                inferred: inferred
-                    .to_type(state.ast_alloc, names_reg, state.table)
-                    .to_mainline(),
+                row: EnumRow::clone_to(row.to_type(state.ast_alloc, names_reg, state.table), alloc),
+                expected: Type::clone_to(
+                    expected.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
+                inferred: Type::clone_to(
+                    inferred.to_type(state.ast_alloc, names_reg, state.table),
+                    alloc,
+                ),
                 pos,
             },
-            UnifError::UnboundTypeVariable(ident) => TypecheckError::UnboundTypeVariable(ident),
+            UnifError::UnboundTypeVariable(ident) => TypecheckErrorData::UnboundTypeVariable(ident),
             err @ UnifError::CodomainMismatch { .. } | err @ UnifError::DomainMismatch { .. } => {
                 let (expected, inferred, type_path, err_final) = err.into_type_path().unwrap();
-                TypecheckError::ArrowTypeMismatch {
-                    expected: expected
-                        .to_type(state.ast_alloc, names_reg, state.table)
-                        .to_mainline(),
-                    inferred: inferred
-                        .to_type(state.ast_alloc, names_reg, state.table)
-                        .to_mainline(),
+                TypecheckErrorData::ArrowTypeMismatch {
+                    expected: Type::clone_to(
+                        expected.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    inferred: Type::clone_to(
+                        inferred.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
                     type_path,
-                    cause: Box::new(err_final.into_typecheck_err_(state, names_reg, TermPos::None)),
+                    cause: Box::new(err_final.into_typecheck_err_data(
+                        alloc,
+                        state,
+                        names_reg,
+                        TermPos::None,
+                    )),
                     pos,
                 }
             }
             UnifError::VarLevelMismatch {
                 constant_id,
                 var_kind,
-            } => TypecheckError::VarLevelMismatch {
+            } => TypecheckErrorData::VarLevelMismatch {
                 type_var: names_reg.gen_cst_name(constant_id, var_kind).into(),
                 pos,
             },
             UnifError::InhomogeneousRecord { row_a, row_b } => {
-                TypecheckError::InhomogeneousRecord {
-                    row_a: row_a
-                        .to_type(state.ast_alloc, names_reg, state.table)
-                        .to_mainline(),
-                    row_b: row_b
-                        .to_type(state.ast_alloc, names_reg, state.table)
-                        .to_mainline(),
+                TypecheckErrorData::InhomogeneousRecord {
+                    row_a: Type::clone_to(
+                        row_a.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    row_b: Type::clone_to(
+                        row_b.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
                     pos,
                 }
             }

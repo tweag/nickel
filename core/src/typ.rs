@@ -758,7 +758,11 @@ impl From<UnboundTypeVariableError> for EvalError {
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        TypecheckError::UnboundTypeVariable(err.0)
+        use crate::{bytecode::ast::alloc::AstAlloc, error::TypecheckErrorData};
+
+        TypecheckError::new(AstAlloc::new(), |_alloc| {
+            TypecheckErrorData::UnboundTypeVariable(err.0)
+        })
     }
 }
 
