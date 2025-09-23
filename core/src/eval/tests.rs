@@ -233,14 +233,14 @@ fn interpolation_simple() {
         StrChunk::Literal(String::from("Hello")),
         StrChunk::expr(mk_term::op2(
             BinaryOp::StringConcat,
-            mk_term::string(", "),
-            mk_term::string("World!"),
+            NickelValue::string_posless(", "),
+            NickelValue::string_posless("World!"),
         )),
         StrChunk::Literal(String::from(" How")),
         StrChunk::expr(mk_term::if_then_else(
             Term::Bool(true),
-            mk_term::string(" are"),
-            mk_term::string(" is"),
+            NickelValue::string_posless(" are"),
+            NickelValue::string_posless(" is"),
         )),
         StrChunk::Literal(String::from(" you?")),
     ];
@@ -260,15 +260,15 @@ fn interpolation_nested() {
         StrChunk::expr(
             Term::Op2(
                 BinaryOp::StringConcat,
-                mk_term::string(" ar"),
-                mk_term::string("e"),
+                NickelValue::string_posless(" ar"),
+                NickelValue::string_posless("e"),
             )
             .into(),
         ),
         StrChunk::expr(mk_term::if_then_else(
             Term::Bool(true),
-            mk_term::string(" you"),
-            mk_term::string(" me"),
+            NickelValue::string_posless(" you"),
+            NickelValue::string_posless(" me"),
         )),
     ];
     inner_chunks.reverse();
