@@ -482,9 +482,11 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
+          pkgs.cargo-c
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
+          pkgs.rust-cbindgen
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn

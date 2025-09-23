@@ -38,6 +38,9 @@ use nickel_lang_core::{
 
 pub use nickel_lang_core::error::report::ErrorFormat;
 
+//#[cfg(feature = "capi")]
+pub mod capi;
+
 /// Provides a destination for the output of `std.trace`.
 #[derive(Clone)]
 pub struct Trace {
@@ -296,7 +299,7 @@ impl VirtualMachine {
 /// A Nickel expression.
 ///
 /// This might be fully evaluated (for example, if you got it from [`Context::eval_deep`])
-/// or might have unevaluated thunks (if you got it from [`Context::eval_shallow`]).
+/// or might have unevaluated sub-expressions (if you got it from [`Context::eval_shallow`]).
 #[derive(Clone)]
 pub struct Expr {
     rt: RichTerm,
@@ -503,7 +506,7 @@ impl Expr {
     /// Has this expression been evaluated?
     ///
     /// An evaluated expression is either null, or it's a number, bool, string,
-    /// record, array, or enum. Is this expression is not a value, you probably
+    /// record, array, or enum. If this expression is not a value, you probably
     /// got it from looking inside the result of [`Context::eval_shallow`],
     /// and you can use the [`VirtualMachine`] you got from `eval_shallow` to
     /// evaluate this expression further.
@@ -534,9 +537,9 @@ impl Record<'_> {
 
     /// Return the field name and value at the given index.
     ///
-    /// If this record was fully evaluated, every defined field will have a value
+    /// If this record was deeply evaluated, every defined field will have a value
     /// (i.e. the `Option<Expr>` returned here will never be `None`). However,
-    /// partially evaluated records may have fields with no value.
+    /// shallowly evaluated records may have fields with no value.
     pub fn key_value_by_index(&self, idx: usize) -> Option<(&str, Option<Expr>)> {
         self.data.fields.get_index(idx).map(|(key, fld)| {
             (

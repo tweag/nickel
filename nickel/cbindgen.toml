@@ -1,0 +1,14 @@
+header = "// SPDX-License-Identifier: MIT"
+sys_includes = ["stdint.h"]
+no_includes = true
+include_guard = "NICKEL_LANG_H"
+tab_width = 4
+style = "Type"
+language = "C"
+cpp_compat = true
+
+[export]
+
+[const]
+allow_static_const = false
+allow_constexpr = false
