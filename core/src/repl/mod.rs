@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::ast::AstAlloc,
+    bytecode::{value::NickelValue, ast::AstAlloc},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
@@ -15,7 +15,8 @@ use crate::{
     identifier::LocIdent,
     parser::{grammar, lexer, ErrorTolerantParser},
     program::FieldPath,
-    term::{record::Field, RichTerm},
+    position::PosTable,
+    term::record::Field,
     typ::Type,
     typecheck::TypecheckMode,
 };
@@ -58,13 +59,13 @@ pub mod wasm_frontend;
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     /// The input has been evaluated to a term.
-    Evaluated(RichTerm),
+    Evaluated(NickelValue),
     /// The input was a toplevel let, which has been bound in the environment.
     Bound(LocIdent),
 }
 
-impl From<RichTerm> for EvalResult {
-    fn from(t: RichTerm) -> Self {
+impl From<NickelValue> for EvalResult {
+    fn from(t: NickelValue) -> Self {
         EvalResult::Evaluated(t)
     }
 }
@@ -76,7 +77,7 @@ pub trait Repl {
     /// Fully evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
-    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
+    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<NickelValue, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
     /// Query the metadata of an expression.
@@ -175,7 +176,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         self.eval_(exp, true)
     }
 
-    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
+    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<NickelValue, Error> {
         let file_id = self
             .vm_ctxt
             .import_resolver
@@ -183,17 +184,17 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
 
-        self.vm_ctxt.import_resolver.prepare_repl(file_id)?;
-        let term = self
+        self.vm_ctxt.import_resolver.prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
+        let value = self
             .vm_ctxt
             .import_resolver
             .terms
             .get_owned(file_id)
             .unwrap();
-        let pos = term.pos;
+        let pos = value.pos_idx();
 
         let Closure {
-            value: term,
+            value,
             env: new_env,
         } = {
             VirtualMachine::new(&mut self.vm_ctxt).eval_closure(Closure {
@@ -204,9 +205,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         self.vm_ctxt
             .import_resolver
-            .add_repl_bindings(&term)
+            .add_repl_bindings(&value)
             .map_err(|NotARecord| {
-                Error::EvalError(EvalError::Other(
+                Error::EvalError(EvalErrorData::Other(
                     String::from("load: expected a record"),
                     pos,
                 ))
