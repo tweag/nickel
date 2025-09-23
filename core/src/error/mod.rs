@@ -2822,7 +2822,7 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
             }
             // clone() here is unfortunate, but I haven't found a better way to interface typecheck
             // errors - which can generate a diagnostic by reference - from other errors (import
-            // errrors can themselves hide parsing errors), where `into_diagnostics` consume `self`
+            // errors can themselves hide parsing errors), where `into_diagnostics` consume `self`
             // in the current implementation. Maybe we should migrate from `into_diagnostics` to
             // `to_diagnostic`, taking the error by reference, but this might cause more copying.
             TypecheckErrorData::ImportError(err) => err.clone().into_diagnostics(files),
