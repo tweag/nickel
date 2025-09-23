@@ -9,29 +9,28 @@ pub use ast_cache::AstCache;
 use crate::{
     bytecode::{
         ast::{
-            self,
+            self, Ast, AstAlloc, TryConvert,
             compat::{ToAst, ToMainline},
-            Ast, AstAlloc, TryConvert,
         },
         value::NickelValue,
     },
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
-    eval::cache::Cache as EvalCache,
     eval::Closure,
+    eval::cache::Cache as EvalCache,
     files::{FileId, Files},
     identifier::LocIdent,
     metrics::measure_runtime,
     package::PackageMap,
-    parser::{lexer::Lexer, ErrorTolerantParser, ExtendedTerm},
+    parser::{ErrorTolerantParser, ExtendedTerm, lexer::Lexer},
     position::{PosTable, TermPos},
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self, Term},
-    transform::{import_resolution, Wildcards},
+    transform::{Wildcards, import_resolution},
     traverse::{Traverse, TraverseOrder},
     typ::{self as mainline_typ, UnboundTypeVariableError},
-    typecheck::{self, typecheck, HasApparentType, TypecheckMode},
+    typecheck::{self, HasApparentType, TypecheckMode, typecheck},
     {eval, parser, transform},
 };
 
@@ -39,7 +38,7 @@ use crate::{
 use crate::nix_ffi;
 
 use std::{
-    collections::{hash_map, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map},
     ffi::{OsStr, OsString},
     fmt, fs,
     io::{self, Read},
@@ -629,7 +628,7 @@ impl SourceCache {
     ) -> Result<NickelValue, ParseError> {
         let whole_span: TermPos = self.files.source_span(file_id).into();
 
-        let attach_pos = |t: NickelValue| -> NickelValue {
+        let attach_pos = |pos_table: &mut PosTable, t: NickelValue| -> NickelValue {
             let pos_idx = if t.is_inline() {
                 pos_table.push_inline(whole_span).into()
             } else {
@@ -652,19 +651,25 @@ impl SourceCache {
             InputFormat::Json => {
                 crate::serialize::yaml::load_json_term(source, Some((file_id, &self.files)))
             }
-            InputFormat::Yaml => crate::serialize::yaml::load_yaml_term(source, Some(file_id)),
-            InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
-                .map(attach_pos)
+            // InputFormat::Json => crate::serialize::yaml::load_json_term(source)
+            //     .map(|v| attach_pos(pos_table, v))
+            //     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+            InputFormat::Yaml => crate::serialize::yaml::load_yaml_term(pos_table, source, Some(file_id)),
+            InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
+                .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
                 let json = nix_ffi::eval_to_json(source, &self.get_base_dir_for_nix(file_id))
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
-                    .map(attach_pos)
+                    .map(|v| attach_pos(pos_table, v))
                     .map_err(|err| ParseError::from_serde_json(err, Some((file_id, &self.files))))
             }
-            InputFormat::Text => Ok(attach_pos(Term::Str(source.into()).into())),
+            InputFormat::Text => Ok(attach_pos(
+                pos_table,
+                NickelValue::string_posless(source).into(),
+            )),
         }
     }
 
@@ -682,7 +687,7 @@ impl SourceCache {
     }
 
     /// Returns the list of file ids corresponding to the standard library modules.
-    pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
+    pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> + use<> {
         self.files.stdlib_modules()
     }
 
@@ -879,6 +884,7 @@ impl CacheHub {
     /// This method populates both the ast cache and the term cache at once.
     pub fn parse_repl(
         &mut self,
+        pos_table: &mut PosTable,
         file_id: FileId,
     ) -> Result<CacheOp<Option<LocIdent>>, ParseErrors> {
         // Since we need the identifier, we always reparse the input. In any case, it doesn't
@@ -894,7 +900,7 @@ impl CacheHub {
             ExtendedTerm::ToplevelLet(id, t) => (Some(id), t),
         };
 
-        let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+        let term = measure_runtime!("runtime:ast_conversion", ast.to_mainline(pos_table));
 
         self.terms.insert(
             file_id,
@@ -1082,7 +1088,7 @@ impl CacheHub {
     ) -> Result<CacheOp<Option<LocIdent>>, Error> {
         let mut done = false;
 
-        let parsed = self.parse_repl(file_id)?;
+        let parsed = self.parse_repl(pos_table, file_id)?;
 
         done = done || matches!(parsed, CacheOp::Done(_));
 
@@ -1989,6 +1995,7 @@ pub trait ImportResolver {
     /// already transformed in the cache and do not need further processing.
     fn resolve(
         &mut self,
+        pos_table: &mut PosTable,
         import: &term::Import,
         parent: Option<FileId>,
         //TODO[RFC007]: do we really need a position here, or just a pos idx?
@@ -2019,6 +2026,7 @@ pub trait ImportResolver {
 impl ImportResolver for CacheHub {
     fn resolve(
         &mut self,
+        pos_table: &mut PosTable,
         import: &term::Import,
         parent: Option<FileId>,
         pos: &TermPos,
@@ -2422,6 +2430,7 @@ pub mod resolvers {
     impl ImportResolver for DummyResolver {
         fn resolve(
             &mut self,
+            _pos_table: &mut PosTable,
             _import: &Import,
             _parent: Option<FileId>,
             _pos: &TermPos,
@@ -2472,6 +2481,7 @@ pub mod resolvers {
     impl ImportResolver for SimpleResolver {
         fn resolve(
             &mut self,
+            pos_table: &mut PosTable,
             import: &Import,
             _parent: Option<FileId>,
             pos: &TermPos,
@@ -2499,7 +2509,7 @@ pub mod resolvers {
                 let ast = parser::grammar::TermParser::new()
                     .parse_strict(&alloc, file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
-                e.insert(ast.to_mainline());
+                e.insert(ast.to_mainline(pos_table));
 
                 Ok((
                     ResolvedTerm::FromFile {
@@ -3006,8 +3016,10 @@ mod tests {
         // Since the closed file should be stale, id_or_new_timestamp_of should not return the
         // file ID for the closed file. Since in this case the file doesn't exist on the
         // filesystem, it should return an error.
-        assert!(sources
-            .id_or_new_timestamp_of(&path, InputFormat::Nickel)
-            .is_err());
+        assert!(
+            sources
+                .id_or_new_timestamp_of(&path, InputFormat::Nickel)
+                .is_err()
+        );
     }
 }
