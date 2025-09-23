@@ -27,15 +27,16 @@
 
 use super::*;
 use crate::{
+    bytecode::value::{EnumVariantBody, NickelValue, ThunkBody, ValueContent},
     closurize::Closurize,
     combine::Combine,
     error::{EvalError, IllegalPolymorphicTailAction},
     label::{Label, MergeLabel},
-    position::TermPos,
+    position::PosIdx,
     term::{
         make as mk_term,
         record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, EnumVariantAttrs, IndexMap, RichTerm, Term, TypeAnnotation,
+        BinaryOp, IndexMap, Term, TypeAnnotation,
     },
 };
 
@@ -64,297 +65,325 @@ impl From<MergeMode> for MergeLabel {
     }
 }
 
-/// Compute the merge of two evaluated operands. Support both standard merging and record contract
-/// application.
-///
-/// # Mode
-///
-/// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
-/// important as `merge` is not commutative in this mode.
-#[allow(clippy::too_many_arguments)] // TODO: Is it worth to pack the inputs in an ad-hoc struct?
-pub fn merge<C: Cache>(
-    cache: &mut C,
-    t1: RichTerm,
-    env1: Environment,
-    t2: RichTerm,
-    env2: Environment,
-    pos_op: TermPos,
-    mode: MergeMode,
-    call_stack: &mut CallStack,
-) -> Result<Closure, EvalError> {
-    let RichTerm {
-        term: t1,
-        pos: pos1,
-    } = t1;
-    let RichTerm {
-        term: t2,
-        pos: pos2,
-    } = t2;
+impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+    /// Compute the merge of two evaluated operands. Support both standard merging and record contract
+    /// application.
+    ///
+    /// # Mode
+    ///
+    /// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
+    /// important as `merge` is not commutative in this mode.
+    // TODO: Is it worth to pack the inputs in an ad-hoc struct?
+    #[allow(clippy::too_many_arguments)]
+    pub fn merge(
+        &mut self,
+        v1: NickelValue,
+        env1: Environment,
+        v2: NickelValue,
+        env2: Environment,
+        pos_op: PosIdx,
+        mode: MergeMode,
+    ) -> Result<Closure, EvalErrorData> {
+        let pos1 = v1.pos_idx();
+        let pos2 = v2.pos_idx();
 
-    // Determines if we need to wrap the result in `'Ok` upon successful merging, which is the case
-    // when in contract merge mode. We're going to move out of `mode` at some point, so we need to
-    // save this information now.
-    let wrap_in_ok = matches!(mode, MergeMode::Contract(_));
+        // Determines if we need to wrap the result in `'Ok` upon successful merging, which is the case
+        // when in contract merge mode. We're going to move out of `mode` at some point, so we need to
+        // save this information now.
+        let wrap_in_ok = matches!(mode, MergeMode::Contract(_));
 
-    let result = match (t1.into_owned(), t2.into_owned()) {
-        // Merge is idempotent on basic terms
-        (Term::Null, Term::Null) => Ok(Closure::atomic_closure(RichTerm::new(
-            Term::Null,
-            pos_op.into_inherited(),
-        ))),
-        (Term::Bool(b1), Term::Bool(b2)) => {
-            if b1 == b2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(b1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs {
-                    left_arg: RichTerm::new(Term::Bool(b1), pos1),
-                    right_arg: RichTerm::new(Term::Bool(b2), pos2),
-                    merge_label: mode.into(),
-                })
-            }
-        }
-        (Term::Num(n1), Term::Num(n2)) => {
-            if n1 == n2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Num(n1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs {
-                    left_arg: RichTerm::new(Term::Num(n1), pos1),
-                    right_arg: RichTerm::new(Term::Num(n2), pos2),
-                    merge_label: mode.into(),
-                })
-            }
-        }
-        (Term::Str(s1), Term::Str(s2)) => {
-            if s1 == s2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Str(s1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs {
-                    left_arg: RichTerm::new(Term::Str(s1), pos1),
-                    right_arg: RichTerm::new(Term::Str(s2), pos2),
-                    merge_label: mode.into(),
-                })
-            }
-        }
-        (Term::Lbl(l1), Term::Lbl(l2)) => {
-            if l1 == l2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(l1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs {
-                    left_arg: RichTerm::new(Term::Lbl(l1), pos1),
-                    right_arg: RichTerm::new(Term::Lbl(l2), pos2),
-                    merge_label: mode.into(),
-                })
-            }
-        }
-        (Term::Enum(i1), Term::Enum(i2)) => {
-            if i1 == i2 {
-                Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Enum(i1),
-                    pos_op.into_inherited(),
-                )))
-            } else {
-                Err(EvalError::MergeIncompatibleArgs {
-                    left_arg: RichTerm::new(Term::Enum(i1), pos1),
-                    right_arg: RichTerm::new(Term::Enum(i2), pos2),
-                    merge_label: mode.into(),
-                })
-            }
-        }
-        (
-            Term::EnumVariant {
-                tag: tag1,
-                arg: arg1,
-                attrs: _,
-            },
-            Term::EnumVariant {
-                tag: tag2,
-                arg: arg2,
-                attrs: _,
-            },
-        ) if tag1 == tag2 => {
-            let arg = RichTerm::from(Term::Op2(
-                BinaryOp::Merge(mode.into()),
-                arg1.closurize(cache, env1),
-                arg2.closurize(cache, env2),
-            ));
-
-            Ok(Closure::atomic_closure(RichTerm::new(
-                Term::EnumVariant {
-                    tag: tag1,
-                    arg,
-                    attrs: EnumVariantAttrs { closurized: true },
-                },
-                pos_op.into_inherited(),
-            )))
-        }
-        // There are several different (and valid) ways of merging arrays. We don't want to choose
-        // for the user, so future custom merge functions will provide a way to overload the native
-        // merging function. For the time being, we still need to be idempotent: thus we rewrite
-        // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
-        // minimum way such that it is idempotent.
-        (t1 @ Term::Array(..), t2 @ Term::Array(..)) => {
-            use crate::{mk_app, stdlib, typ::TypeF};
-            use std::rc::Rc;
-
-            let t1 = RichTerm::new(t1, pos1).closurize(cache, env1);
-            let t2 = RichTerm::new(t2, pos2).closurize(cache, env2);
-
-            // We reconstruct the contract we apply later on just to fill the label. This will be
-            // printed out when reporting the error.
-            let contract_for_display = mk_app!(
-                mk_term::op1(
-                    UnaryOp::RecordAccess("Equal".into()),
-                    Term::Var("contract".into()),
-                ),
-                // We would need to substitute variables inside `t1` to make it useful to print,
-                // but currently we don't want to do it preventively at each array merging, so we
-                // just print `contract.Equal some_array`.
-                //
-                // If the error reporting proves to be insufficient, consider substituting the
-                // variables inside `t1`, but be aware that it might (or might not) have a
-                // noticeable impact on performance.
-                mk_term::var("some_array")
-            );
-
-            let label = Label {
-                typ: Rc::new(TypeF::Contract(contract_for_display).into()),
-                span: MergeLabel::from(mode).span,
-                ..Default::default()
-            }
-            .with_diagnostic_message("cannot merge unequal arrays")
-            .append_diagnostic_note(
-                "\
-                This equality contract was auto-generated from a merge operation on two arrays. \
-                Arrays can only be merged if they are equal.",
-            );
-
-            // We don't actually use `contract.Equal` directly, because contract could have been
-            // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
-            // exactly the same, but can't be shadowed.
-            let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
-            let result = mk_app!(
-                mk_term::op2(BinaryOp::ContractApply, eq_contract, Term::Lbl(label)),
-                t2
-            )
-            .with_pos(pos_op);
-
-            Ok(Closure {
-                value: result,
-                env: Environment::new(),
-            })
-        }
-        // Merge put together the fields of records, and recursively merge
-        // fields that are present in both terms
-        (Term::Record(r1), Term::Record(r2)) => {
-            // While it wouldn't be impossible to merge records with sealed tails,
-            // working out how to do so in a "sane" way that preserves parametricity
-            // is non-trivial. It's also not entirely clear that this is something
-            // users will generally have reason to do, so in the meantime we've
-            // decided to just prevent this entirely
-            if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
-                return Err(EvalError::IllegalPolymorphicTailAccess {
-                    action: IllegalPolymorphicTailAction::Merge,
-                    evaluated_arg: label.get_evaluated_arg(cache),
-                    label,
-                    call_stack: std::mem::take(call_stack),
-                });
-            }
-
-            let split::SplitResult {
-                left,
-                center,
-                right,
-            } = split::split(r1.fields, r2.fields);
-
-            match mode {
-                MergeMode::Contract(_) if !r2.attrs.open && !left.is_empty() => {
-                    let fields: Vec<String> =
-                        left.keys().map(|field| format!("`{field}`")).collect();
-                    let plural = if fields.len() == 1 { "" } else { "s" };
-                    let fields_list = fields.join(", ");
-
-                    // The presence of extra fields is an immediate contract error. Thus, instead
-                    // of raising a blame error as for a delayed contract error, which can't be
-                    // caught in user-code, we return an `'Error {..}` value instead.
-                    return Ok(Closure::atomic_closure(
-                        mk_term::enum_variant("Error", Term::Record(RecordData::with_field_values([
-                            ("message".into(), mk_term::string(format!("extra field{plural} {fields_list}"))),
-                            ("notes".into(), Term::Array([
-                                mk_term::string("Have you misspelled a field?"),
-                                mk_term::string(
-                                    "The record contract might also be too strict. By default, \
-                                    record contracts exclude any field which is not listed.\n\
-                                    Append `, ..` at the end of the record contract, as in \
-                                    `{some_field | SomeContract, ..}`, to make it accept extra fields."
-                                ),
-                            ].into_iter().collect(), Default::default()).into())
-                        ])))));
+        let result = match (v1.content(), v2.content()) {
+            // Merge is idempotent on basic terms
+            (ValueContent::Inline(lens1), ValueContent::Inline(lens2)) => {
+                match (lens1.take(), lens2.take()) {
+                    (inline1, inline2) if inline1 == inline2 => Ok(NickelValue::inline(
+                        inline1,
+                        pos_op.to_inherited_inline(&mut self.pos_table),
+                    )),
+                    (inline1, inline2) => Err(EvalErrorData::MergeIncompatibleArgs {
+                        // unwrap(): will go away soon, anyway
+                        left_arg: NickelValue::inline(inline1, pos1.try_into().unwrap()),
+                        right_arg: NickelValue::inline(inline2, pos2.try_into().unwrap()),
+                        merge_label: mode.into(),
+                    }),
                 }
-                _ => (),
-            };
-
-            let final_pos = if let MergeMode::Standard(_) = mode {
-                pos_op.into_inherited()
-            } else {
-                pos1.into_inherited()
-            };
-
-            let merge_label = MergeLabel::from(mode);
-
-            let field_names: Vec<_> = left
-                .keys()
-                .chain(center.keys())
-                .chain(right.keys())
-                .copied()
-                .collect();
-            let mut m = IndexMap::with_capacity(left.len() + center.len() + right.len());
-
-            // Merging recursive records is the one operation that may override recursive fields. To
-            // have the recursive fields depend on the updated values, we need to revert the
-            // corresponding elements in the cache to their original expression.
-            //
-            // We do that for the left and the right part.
-            //
-            // The fields in the intersection (center) need a slightly more general treatment to
-            // correctly propagate the recursive values down each field: saturation. See
-            // [crate::eval::cache::Cache::saturate()].
-            m.extend(
-                left.into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache))),
-            );
-
-            m.extend(
-                right
-                    .into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache))),
-            );
-
-            for (id, (field1, field2)) in center.into_iter() {
-                m.insert(
-                    id,
-                    merge_fields(cache, merge_label, field1, field2, field_names.iter())?,
-                );
             }
+            (ValueContent::Number(lens1), ValueContent::Number(lens2)) => {
+                let n1 = lens1.take().0;
+                let n2 = lens2.take().0;
 
-            let attrs = RecordAttrs::combine(r1.attrs, r2.attrs);
-            // Both records passed to `merge` should be closurized, and their result after merging
-            // must be as well
-            debug_assert!(attrs.closurized);
+                if n1 == n2 {
+                    Ok(NickelValue::number(
+                        n1,
+                        pos_op.to_inherited_block(&mut self.pos_table),
+                    ))
+                } else {
+                    Err(EvalErrorData::MergeIncompatibleArgs {
+                        left_arg: NickelValue::number(n1, pos1),
+                        right_arg: NickelValue::number(n2, pos2),
+                        merge_label: mode.into(),
+                    })
+                }
+            }
+            (ValueContent::String(lens1), ValueContent::String(lens2)) => {
+                let s1 = lens1.take().0;
+                let s2 = lens2.take().0;
 
-            Ok(Closure {
-                value: RichTerm::new(
+                if s1 == s2 {
+                    Ok(NickelValue::string(
+                        s1,
+                        pos_op.to_inherited_block(&mut self.pos_table),
+                    ))
+                } else {
+                    Err(EvalErrorData::MergeIncompatibleArgs {
+                        left_arg: NickelValue::string(s1, pos1),
+                        right_arg: NickelValue::string(s2, pos2),
+                        merge_label: mode.into(),
+                    })
+                }
+            }
+            (ValueContent::Label(lens1), ValueContent::Label(lens2)) => {
+                let label1 = lens1.take().0;
+                let label2 = lens2.take().0;
+
+                if label1 == label2 {
+                    Ok(NickelValue::label(
+                        label1,
+                        pos_op.to_inherited_block(&mut self.pos_table),
+                    ))
+                } else {
+                    Err(EvalErrorData::MergeIncompatibleArgs {
+                        left_arg: NickelValue::label(label1, pos1),
+                        right_arg: NickelValue::label(label2, pos2),
+                        merge_label: mode.into(),
+                    })
+                }
+            }
+            (ValueContent::EnumVariant(lens1), ValueContent::EnumVariant(lens2)) => {
+                let enum1 = lens1.take();
+                let enum2 = lens2.take();
+
+                match (enum1, enum2) {
+                    (
+                        EnumVariantBody {
+                            tag: tag1,
+                            arg: None,
+                        },
+                        EnumVariantBody {
+                            tag: tag2,
+                            arg: None,
+                        },
+                    ) if tag1 == tag2 => Ok(NickelValue::enum_tag(
+                        tag1,
+                        pos_op.to_inherited_block(&mut self.pos_table),
+                    )),
+                    (
+                        EnumVariantBody {
+                            tag: tag1,
+                            arg: Some(arg1),
+                        },
+                        EnumVariantBody {
+                            tag: tag2,
+                            arg: Some(arg2),
+                        },
+                    ) if tag1 == tag2 => {
+                        let arg = NickelValue::term_posless(Term::Op2(
+                            BinaryOp::Merge(mode.into()),
+                            arg1.closurize(&mut self.cache, env1),
+                            arg2.closurize(&mut self.cache, env2),
+                        ));
+
+                        Ok(NickelValue::enum_variant(
+                            tag1,
+                            Some(arg),
+                            pos_op.to_inherited_block(&mut self.pos_table),
+                        ))
+                    }
+                    (enum1, enum2) => Err(EvalErrorData::MergeIncompatibleArgs {
+                        left_arg: NickelValue::enum_variant(enum1.tag, enum1.arg, pos1),
+                        right_arg: NickelValue::enum_variant(enum2.tag, enum2.arg, pos2),
+                        merge_label: mode.into(),
+                    }),
+                }
+            }
+            // There are several different (and valid) ways of merging arrays. We don't want to choose
+            // for the user, so future custom merge functions will provide a way to overload the native
+            // merging function. For the time being, we still need to be idempotent: thus we rewrite
+            // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
+            // minimum way such that it is idempotent.
+            (ValueContent::Array(lens1), ValueContent::Array(lens2)) => {
+                use crate::{mk_app, stdlib, typ::TypeF};
+                use std::rc::Rc;
+
+                let v1 = lens1.restore().closurize(&mut self.cache, env1);
+                let v2 = lens2.restore().closurize(&mut self.cache, env2);
+
+                // We reconstruct the contract we apply later on just to fill the label. This will be
+                // printed out when reporting the error.
+                let contract_for_display = mk_app!(
+                    mk_term::op1(
+                        UnaryOp::RecordAccess("Equal".into()),
+                        Term::Var("contract".into()),
+                    ),
+                    // We would need to substitute variables inside `t1` to make it useful to print,
+                    // but currently we don't want to do it preventively at each array merging, so we
+                    // just print `contract.Equal some_array`.
+                    //
+                    // If the error reporting proves to be insufficient, consider substituting the
+                    // variables inside `t1`, but be aware that it might (or might not) have a
+                    // noticeable impact on performance.
+                    mk_term::var("some_array")
+                );
+
+                let label = Label {
+                    typ: Rc::new(TypeF::Contract(contract_for_display).into()),
+                    span: MergeLabel::from(mode).span,
+                    ..Default::default()
+                }
+                .with_diagnostic_message("cannot merge unequal arrays")
+                .append_diagnostic_note(
+                    "\
+                    This equality contract was auto-generated from a merge operation on two arrays. \
+                    Arrays can only be merged if they are equal.",
+                );
+
+                // We don't actually use `contract.Equal` directly, because `contract` could have been
+                // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
+                // exactly the same, but can't be shadowed.
+                let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), v1);
+
+                Ok(mk_app!(
+                    mk_term::op2(
+                        BinaryOp::ContractApply,
+                        eq_contract,
+                        NickelValue::label_posless(label)
+                    ),
+                    v2
+                )
+                .with_pos_idx(&mut self.pos_table, pos_op))
+            }
+            // Merge put together the fields of records, and recursively merge
+            // fields that are present in both terms
+            (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
+                let r1 = lens1.take().0;
+                let r2 = lens2.take().0;
+
+                // While it wouldn't be impossible to merge records with sealed tails,
+                // working out how to do so in a "sane" way that preserves parametricity
+                // is non-trivial. It's also not entirely clear that this is something
+                // users will generally have reason to do, so in the meantime we've
+                // decided to just prevent this entirely
+                if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
+                    return Err(EvalErrorData::IllegalPolymorphicTailAccess {
+                        action: IllegalPolymorphicTailAction::Merge,
+                        evaluated_arg: label.get_evaluated_arg(&self.cache),
+                        label,
+                    });
+                }
+
+                let split::SplitResult {
+                    left,
+                    center,
+                    right,
+                } = split::split(r1.fields, r2.fields);
+
+                match mode {
+                    MergeMode::Contract(_) if !r2.attrs.open && !left.is_empty() => {
+                        let fields: Vec<String> =
+                            left.keys().map(|field| format!("`{field}`")).collect();
+                        let plural = if fields.len() == 1 { "" } else { "s" };
+                        let fields_list = fields.join(", ");
+
+                        let error_data = [
+                            (
+                                "message".into(),
+                                NickelValue::string_posless(format!(
+                                    "extra field{plural} {fields_list}"
+                                )),
+                            ),
+                            (
+                                "notes".into(),
+                                NickelValue::array_posless(
+                                    [
+                                        NickelValue::string_posless("Have you misspelled a field?"),
+                                        NickelValue::string_posless(
+                                            "The record contract might also be too strict. By default, \
+                                record contracts exclude any field which is not listed.\n\
+                                Append `, ..` at the end of the record contract, as in \
+                                `{some_field | SomeContract, ..}`, to make it accept extra fields.",
+                                        ),
+                                    ]
+                                    .into_iter()
+                                    .collect(),
+                                    Default::default(),
+                                ),
+                            ),
+                        ];
+
+                        // The presence of extra fields is an immediate contract error. Thus, instead
+                        // of raising a blame error as for a delayed contract error, which can't be
+                        // caught in user-code, we return an `'Error {..}` value instead.
+                        return Ok(mk_term::enum_variant(
+                            "Error",
+                            NickelValue::record_posless(RecordData::with_field_values(error_data)),
+                        )
+                        .into());
+                    }
+                    _ => (),
+                };
+
+                let final_pos = if let MergeMode::Standard(_) = mode {
+                    pos_op.to_inherited_block(&mut self.pos_table)
+                } else {
+                    pos1.to_inherited_block(&mut self.pos_table)
+                };
+
+                let merge_label = MergeLabel::from(mode);
+
+                let field_names: Vec<_> = left
+                    .keys()
+                    .chain(center.keys())
+                    .chain(right.keys())
+                    .copied()
+                    .collect();
+                let mut m = IndexMap::with_capacity(left.len() + center.len() + right.len());
+
+                // Merging recursive records is the one operation that may override recursive fields. To
+                // have the recursive fields depend on the updated values, we need to revert the
+                // corresponding elements in the cache to their original expression.
+                //
+                // We do that for the left and the right part.
+                //
+                // The fields in the intersection (center) need a slightly more general treatment to
+                // correctly propagate the recursive values down each field: saturation. See
+                // [crate::eval::cache::Cache::saturate()].
+                m.extend(
+                    left.into_iter()
+                        .map(|(id, field)| (id, field.revert_closurize(&mut self.cache))),
+                );
+
+                m.extend(
+                    right
+                        .into_iter()
+                        .map(|(id, field)| (id, field.revert_closurize(&mut self.cache))),
+                );
+
+                for (id, (field1, field2)) in center.into_iter() {
+                    m.insert(
+                        id,
+                        merge_fields(
+                            &mut self.cache,
+                            merge_label,
+                            field1,
+                            field2,
+                            field_names.iter(),
+                        )?,
+                    );
+                }
+
+                let attrs = RecordAttrs::combine(r1.attrs, r2.attrs);
+
+                Ok(NickelValue::term(
                     // We don't have to provide RecordDeps, which are required in a previous stage
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
@@ -369,28 +398,23 @@ pub fn merge<C: Cache>(
                         None,
                     ),
                     final_pos,
-                ),
-                env: Environment::new(),
-            })
-        }
-        (t1_, t2_) => Err(EvalError::MergeIncompatibleArgs {
-            left_arg: RichTerm::new(t1_, pos1),
-            right_arg: RichTerm::new(t2_, pos2),
-            merge_label: mode.into(),
-        }),
-    };
+                ))
+            }
+            (lens1, lens2) => Err(EvalErrorData::MergeIncompatibleArgs {
+                left_arg: lens1.restore(),
+                right_arg: lens2.restore(),
+                merge_label: mode.into(),
+            }),
+        };
 
-    if wrap_in_ok {
-        result.map(|closure| {
-            let pos = closure.value.pos;
-
-            Closure {
-                value: mk_term::enum_variant("Ok", closure.value).with_pos(pos),
-                ..closure
+        result.map(|value| {
+            if wrap_in_ok {
+                let pos = value.pos_idx();
+                NickelValue::enum_variant("Ok".into(), Some(value), pos).into()
+            } else {
+                value.into()
             }
         })
-    } else {
-        result
     }
 }
 
@@ -404,7 +428,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     field1: Field,
     field2: Field,
     fields: I,
-) -> Result<Field, EvalError> {
+) -> Result<Field, EvalErrorData> {
     let Field {
         metadata: metadata1,
         value: value1,
@@ -493,26 +517,28 @@ trait Saturate: Sized {
     ) -> Result<Self, EvalError>;
 }
 
-impl Saturate for RichTerm {
+impl Saturate for NickelValue {
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
         fields: I,
-    ) -> Result<RichTerm, EvalError> {
-        if let Term::Closure(idx) = &*self.term {
+    ) -> Result<NickelValue, EvalError> {
+        if let Some(ThunkBody(idx)) = self.as_thunk() {
             Ok(cache
                 .saturate(idx.clone(), fields.map(LocIdent::ident))
-                .with_pos(self.pos))
+                // unwrap(): will go away soon
+                .try_with_pos_idx(self.pos_idx())
+                .unwrap())
         } else {
-            debug_assert!(self.as_ref().is_constant());
+            debug_assert!(self.is_constant());
             Ok(self)
         }
     }
 }
 
-/// Return the dependencies of a field when represented as a `RichTerm`.
-fn field_deps<C: Cache>(cache: &C, rt: &RichTerm) -> Result<FieldDeps, EvalError> {
-    if let Term::Closure(idx) = &*rt.term {
+/// Return the dependencies of a field when represented as a `NickelValue`.
+fn field_deps<C: Cache>(cache: &C, value: &NickelValue) -> Result<FieldDeps, EvalError> {
+    if let Some(ThunkBody(idx)) = value.as_thunk() {
         Ok(cache.deps(idx).unwrap_or_else(FieldDeps::empty))
     } else {
         Ok(FieldDeps::empty())
@@ -532,12 +558,12 @@ fn field_deps<C: Cache>(cache: &C, rt: &RichTerm) -> Result<FieldDeps, EvalError
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
     cache: &mut C,
     merge_label: MergeLabel,
-    t1: RichTerm,
-    t2: RichTerm,
+    t1: NickelValue,
+    t2: NickelValue,
     fields: I,
-) -> Result<RichTerm, EvalError> {
+) -> Result<NickelValue, EvalError> {
     let combined_deps = field_deps(cache, &t1)?.union(field_deps(cache, &t2)?);
-    let body = RichTerm::from(Term::Op2(
+    let body = NickelValue::from(Term::Op2(
         BinaryOp::Merge(merge_label),
         t1.saturate(cache, fields.clone())?,
         t2.saturate(cache, fields)?,
@@ -551,7 +577,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
     let idx = cache.add(closure, BindingType::Revertible(combined_deps));
 
-    Ok(RichTerm::from(Term::Closure(idx)))
+    Ok(NickelValue::thunk_posless(idx))
 }
 
 /// Same as [Closurizable], but also revert the element if the term is a closure.
@@ -560,14 +586,14 @@ pub(super) trait RevertClosurize {
     fn revert_closurize<C: Cache>(self, cache: &mut C) -> Self;
 }
 
-impl RevertClosurize for RichTerm {
-    fn revert_closurize<C: Cache>(self, cache: &mut C) -> RichTerm {
-        if let Term::Closure(idx) = self.as_ref() {
-            RichTerm::new(Term::Closure(cache.revert(idx)), self.pos)
+impl RevertClosurize for NickelValue {
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> NickelValue {
+        if let Some(ThunkBody(idx)) = self.as_thunk() {
+            NickelValue::thunk(cache.revert(idx), self.pos_idx())
         } else {
             // Otherwise, if it is not a closure after the share normal form transformations, it
             // should be a constant and we don't need to revert anything
-            debug_assert!(self.as_ref().is_constant());
+            debug_assert!(self.is_constant());
             self
         }
     }
@@ -576,7 +602,6 @@ impl RevertClosurize for RichTerm {
 impl RevertClosurize for Field {
     fn revert_closurize<C: Cache>(self, cache: &mut C) -> Field {
         let value = self.value.map(|value| value.revert_closurize(cache));
-
         let pending_contracts = self.pending_contracts.revert_closurize(cache);
 
         Field {
