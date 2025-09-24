@@ -511,11 +511,11 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Only parse the program (and any additional attached contracts), don't typecheck or
-    /// evaluate. returns the [`RichTerm`] AST
+    /// evaluate. Returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
         self.vm
             .import_resolver_mut()
-            .parse(self.main_id, InputFormat::Nickel)
+            .parse_to_ast(self.main_id)
             .map_err(Error::ParseErrors)?;
 
         for source in self.contracts.iter() {
@@ -524,7 +524,7 @@ impl<EC: EvalCache> Program<EC> {
                 ProgramContract::Source(file_id) => {
                     self.vm
                         .import_resolver_mut()
-                        .parse(*file_id, InputFormat::Nickel)
+                        .parse_to_ast(*file_id)
                         .map_err(Error::ParseErrors)?;
                 }
             }
@@ -802,17 +802,22 @@ impl<EC: EvalCache> Program<EC> {
     /// Load, parse, and typecheck the program (together with additional contracts) and the
     /// standard library, if not already done.
     pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
-        self.vm
-            .import_resolver_mut()
-            .parse(self.main_id, InputFormat::Nickel)?;
+        // If the main file is known to not be Nickel, we don't bother parsing it into an AST
+        // (`cache.typecheck()` will ignore it anyway)
+        let is_nickel = !matches!(
+            self.vm.import_resolver().input_format(self.main_id),
+            None | Some(InputFormat::Nickel)
+        );
+
+        if is_nickel {
+            self.vm.import_resolver_mut().parse_to_ast(self.main_id)?;
+        }
 
         for source in self.contracts.iter() {
             match source {
                 ProgramContract::Term(_) => (),
                 ProgramContract::Source(file_id) => {
-                    self.vm
-                        .import_resolver_mut()
-                        .parse(*file_id, InputFormat::Nickel)?;
+                    self.vm.import_resolver_mut().parse_to_ast(*file_id)?;
                 }
             }
         }

@@ -6,7 +6,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
+    cache::{CacheHub, ImportResolver, SourcePath},
     error::{
         report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
@@ -405,7 +405,7 @@ fn doctest_transform(
         let src_id = cache
             .sources
             .add_string(source_path.clone(), input.to_owned());
-        cache.parse(src_id, InputFormat::Nickel)?;
+        cache.parse_to_ast(src_id)?;
         // unwrap(): we just populated it
         Ok(cache.get(src_id).unwrap())
     }
