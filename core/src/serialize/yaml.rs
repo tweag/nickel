@@ -12,18 +12,19 @@ use codespan::ByteIndex;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
-    bytecode::ast::{
-        self,
-        compat::ToMainline,
-        record::{FieldMetadata, FieldPathElem},
-        Ast, AstAlloc,
+    bytecode::{
+        ast::{
+            self, Ast, AstAlloc,
+            compat::ToMainline,
+            record::{FieldMetadata, FieldPathElem},
+        },
+        value::{NickelValue, ValueContent, lens::TermContent},
     },
     error::ParseError,
     files::FileId,
     identifier::{Ident, LocIdent},
-    match_sharedterm,
-    position::{RawSpan, TermPos},
-    term::{Number, RichTerm, Term},
+    position::{PosTable, RawSpan, TermPos},
+    term::Number,
     traverse::Traverse,
 };
 
@@ -513,19 +514,29 @@ pub fn load_yaml<'ast>(
     }
 }
 
-pub fn load_yaml_term(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
+pub fn load_yaml_value(
+    pos_table: &mut PosTable,
+    s: &str,
+    file_id: Option<FileId>,
+) -> Result<NickelValue, ParseError> {
     let alloc = AstAlloc::new();
-    let rt: RichTerm = load_yaml(&alloc, s, file_id)?.to_mainline();
+    let value: NickelValue = load_yaml(&alloc, s, file_id)?.to_mainline(pos_table);
 
     // The mainline conversion creates RecRecords, but since they came from YAML we know they're
     // just normal Records. This is important for std.deserialize, since it expects deserialized
     // data to be evaluated.
-    Ok(rt
+    Ok(value
         .traverse::<_, Infallible>(
-            &mut |rt: RichTerm| {
-                match_sharedterm!(match (rt.term) {
-                    Term::RecRecord(record, ..) => Ok(RichTerm::new(Term::Record(record), rt.pos)),
-                    _ => Ok(rt),
+            &mut |value: NickelValue| {
+                let pos_idx = value.pos_idx();
+
+                Ok(match value.content() {
+                    ValueContent::Term(TermContent::RecRecord(lens)) => {
+                        let (record, _, _, _) = lens.take();
+                        // unwrap(): will go away soon
+                        NickelValue::record(record, pos_idx).unwrap()
+                    }
+                    lens => lens.restore(),
                 })
             },
             crate::traverse::TraverseOrder::BottomUp,

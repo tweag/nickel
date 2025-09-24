@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::ast::AstAlloc,
+    bytecode::{value::NickelValue, ast::AstAlloc},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
     eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
@@ -15,7 +15,8 @@ use crate::{
     identifier::LocIdent,
     parser::{grammar, lexer, ErrorTolerantParser},
     program::FieldPath,
-    term::{record::Field, RichTerm},
+    position::PosTable,
+    term::record::Field,
     typ::Type,
     typecheck::TypecheckMode,
 };
@@ -57,13 +58,13 @@ pub mod wasm_frontend;
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     /// The input has been evaluated to a term.
-    Evaluated(RichTerm),
+    Evaluated(NickelValue),
     /// The input was a toplevel let, which has been bound in the environment.
     Bound(LocIdent),
 }
 
-impl From<RichTerm> for EvalResult {
-    fn from(t: RichTerm) -> Self {
+impl From<NickelValue> for EvalResult {
+    fn from(t: NickelValue) -> Self {
         EvalResult::Evaluated(t)
     }
 }
@@ -75,7 +76,7 @@ pub trait Repl {
     /// Fully evaluate an expression, which can be either a standard term or a toplevel let-binding.
     fn eval_full(&mut self, exp: &str) -> Result<EvalResult, Error>;
     /// Load the content of a file in the environment. Return the loaded record.
-    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
+    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<NickelValue, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
     /// Query the metadata of an expression.
@@ -97,7 +98,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             eval_env: eval::Environment::new(),
-            vm: VirtualMachine::new(CacheHub::new(), trace, NullReporter {}),
+            vm: VirtualMachine::new(PosTable::new(), CacheHub::new(), trace, NullReporter {}),
         }
     }
 
@@ -141,11 +142,11 @@ impl<EC: EvalCache> ReplImpl<EC> {
             Ok(eval_function(
                 &mut self.vm,
                 Closure {
-                    body: term,
+                    value: term,
                     env: self.eval_env.clone(),
                 },
             )?
-            .body
+            .value
             .into())
         }
     }
@@ -166,7 +167,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         self.eval_(exp, true)
     }
 
-    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
+    fn load(&mut self, path: impl AsRef<OsStr>) -> Result<NickelValue, Error> {
         let file_id = self
             .vm
             .import_resolver_mut()
@@ -174,27 +175,27 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
 
-        self.vm.import_resolver_mut().prepare_repl(file_id)?;
+        self.vm.import_resolver_mut().prepare_repl(self.vm.pos_table_mut(), file_id)?;
         // self.vm
         //     .import_resolver_mut()
         //     .parse(file_id, InputFormat::Nickel)?;
 
-        let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
-        let pos = term.pos;
+        let value = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
+        let pos = value.pos_idx();
 
         let Closure {
-            body: term,
+            value,
             env: new_env,
         } = self.vm.eval_closure(Closure {
-            body: term,
+            value,
             env: self.eval_env.clone(),
         })?;
 
         self.vm
             .import_resolver_mut()
-            .add_repl_bindings(&term)
+            .add_repl_bindings(&value)
             .map_err(|NotARecord| {
-                Error::EvalError(EvalError::Other(
+                Error::EvalError(EvalErrorData::Other(
                     String::from("load: expected a record"),
                     pos,
                 ))
@@ -204,7 +205,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             &mut self.vm.cache,
             &mut self.eval_env,
             Closure {
-                body: term.clone(),
+                value: term.clone(),
                 env: new_env,
             },
         )
@@ -257,7 +258,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         Ok(self.vm.query_closure(
             Closure {
-                body: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
+                value: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
                 env: self.eval_env.clone(),
             },
             &query_path,

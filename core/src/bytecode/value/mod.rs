@@ -10,21 +10,25 @@
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
+    impl_display_from_pretty,
     label::Label,
     position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
-        record::RecordData, string::NickelString, ForeignIdPayload, Number, RuntimeContract,
-        SealingKey, Term,
+        ForeignIdPayload, Number, RuntimeContract, SealingKey, Term, record::RecordData,
+        string::NickelString,
     },
     typ::Type,
 };
 use nickel_lang_vector::Slice;
 use std::{
-    alloc::{alloc, dealloc, Layout},
+    alloc::{Layout, alloc, dealloc},
     cmp::max,
-    mem::{size_of, transmute, ManuallyDrop},
+    marker::PhantomData,
+    mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
 };
+
+pub mod lens;
 
 /// A Nickel array.
 pub type Array = Slice<NickelValue, 32>;
@@ -236,12 +240,26 @@ impl NickelValue {
         Self::inline_posless(InlineValue::False)
     }
 
+    /// Creates a new boolean value.
+    pub fn bool_value(value: bool, pos_idx: InlinePosIdx) -> Self {
+        if value {
+            Self::inline(InlineValue::True, pos_idx)
+        } else {
+            Self::inline(InlineValue::False, pos_idx)
+        }
+    }
+
+    /// Creates a new boolean value with the index set to [InlinePosIdx::NONE].
+    pub fn bool_value_posless(value: bool) -> Self {
+        Self::bool_value(value, InlinePosIdx::NONE)
+    }
+
     /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
     pub const fn empty_array() -> Self {
         Self::inline_posless(InlineValue::EmptyArray)
     }
 
-    /// Creates a new empty array.
+    /// Creates a new empty record with the index set to [InlinePosIdx::NONE].
     pub const fn empty_record() -> Self {
         Self::inline_posless(InlineValue::EmptyRecord)
     }
@@ -297,6 +315,37 @@ impl NickelValue {
         }
     }
 
+    /// Allocates a new array value. If the array is empty, it is automatically inlined as
+    /// [InlineValue::EmptyArray].
+    ///
+    /// As opposed to [Self::array], if `value` is an empty array but `pos_idx` isn't a valid
+    /// inline value, a new inline position index is allocated in the table automatically, making
+    /// this method always succeed.
+    pub fn array_force_pos(
+        pos_table: &mut PosTable,
+        value: Array,
+        pending_contracts: Vec<RuntimeContract>,
+        pos_idx: PosIdx,
+    ) -> Self {
+        if value.is_empty() {
+            Self::inline(
+                InlineValue::EmptyArray,
+                pos_idx
+                    .try_into()
+                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
+            )
+        } else {
+            ValueBlockRc::encode(
+                ArrayBody {
+                    array: value,
+                    pending_contracts,
+                },
+                pos_idx,
+            )
+            .into()
+        }
+    }
+
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
@@ -312,6 +361,20 @@ impl NickelValue {
             )
             .into()
         }
+    }
+
+    /// Creates a new empty array, but don't inline it. This forces the allocation of a value
+    /// block. [Self::empty_array] can be useful when one needs to have a pre-allocated array that
+    /// will be mutated in a second step.
+    pub fn empty_array_block(pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(
+            ArrayBody {
+                array: Array::default(),
+                pending_contracts: Vec::new(),
+            },
+            pos_idx,
+        )
+        .into()
     }
 
     /// Allocates a new record value. If the record is empty, it is automatically inlined as
@@ -331,6 +394,25 @@ impl NickelValue {
         }
     }
 
+    /// Allocates a new record value. If the record is empty, it is automatically inlined as
+    /// [InlineValue::EmptyArray].
+    ///
+    /// As opposed to [Self::record], if `value` is an empty record but `pos_idx` isn't a valid
+    /// inline value index, a new inline position index is allocated in the table automatically, making
+    /// this method always succeed.
+    pub fn record_force_pos(pos_table: &mut PosTable, value: RecordData, pos_idx: PosIdx) -> Self {
+        if value.is_empty() {
+            Self::inline(
+                InlineValue::EmptyRecord,
+                pos_idx
+                    .try_into()
+                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
+            )
+        } else {
+            ValueBlockRc::encode(RecordBody(value), pos_idx).into()
+        }
+    }
+
     /// Allocates a new record value without any position set. If the record is empty, it is
     /// automatically inlined as [InlineValue::EmptyRecord].
     pub fn record_posless(value: RecordData) -> Self {
@@ -339,6 +421,17 @@ impl NickelValue {
         } else {
             ValueBlockRc::encode(RecordBody(value), PosIdx::NONE).into()
         }
+    }
+
+    /// Creates a new empty record, but don't inline it. This forces the allocation of a value
+    /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record that
+    /// will be mutated in a second step.
+    pub fn empty_record_block(pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(
+            RecordBody(RecordData::empty()),
+            pos_idx,
+        )
+        .into()
     }
 
     /// Allocates a new thunk value.
@@ -385,6 +478,39 @@ impl NickelValue {
         Self::enum_variant(tag, arg, PosIdx::NONE)
     }
 
+    /// Allocates a new enum tag value. Same as `Self::enum_variant(tag, None, pos_idx)`.
+    pub fn enum_tag(tag: LocIdent, pos_idx: PosIdx) -> Self {
+        Self::enum_variant(tag, None, pos_idx)
+    }
+
+    /// Allocates a new enum tag value without any position set. Equivalent to `Self::enum_tag(tag,
+    /// arg, PosIdx::NONE)`.
+    pub fn enum_tag_posless(tag: LocIdent) -> Self {
+        Self::enum_tag(tag, PosIdx::NONE)
+    }
+
+    /// Allocates a new foreign ID value.
+    pub fn foreign_id(value: ForeignIdPayload, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(ForeignIdBody(value), pos_idx).into()
+    }
+
+    /// Allocates a new foreign ID value without any position set. Equivalent to
+    /// `Self::foreign_id(value, PosIdx::NONE)`.
+    pub fn foreign_id_posless(value: ForeignIdPayload) -> Self {
+        Self::foreign_id(value, PosIdx::NONE)
+    }
+
+    /// Allocates a new sealing key value.
+    pub fn sealing_key(value: SealingKey, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(SealingKeyBody(value), pos_idx).into()
+    }
+
+    /// Allocates a new sealing key value without any position set. Equivalent to
+    /// `Self::sealing_key(value, PosIdx::NONE)`.
+    pub fn sealing_key_posless(value: SealingKey) -> Self {
+        Self::sealing_key(value, PosIdx::NONE)
+    }
+
     /// Allocates a new custom contract value.
     pub fn custom_contract(value: NickelValue, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(CustomContractBody(value), pos_idx).into()
@@ -396,9 +522,23 @@ impl NickelValue {
         Self::custom_contract(value, PosIdx::NONE)
     }
 
+    /// Allocates a new type.
+    pub fn typ(typ: Type, contract: NickelValue, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(TypeBody { typ, contract }, pos_idx).into()
+    }
+
     /// Returns the inner value of `self` if it's an inline value, or `None` otherwise.
     pub fn as_inline(&self) -> Option<InlineValue> {
         InlineValue::try_from(self).ok()
+    }
+
+    /// Returns the inner value of `self` if it's a (inlined) boolean value, or `None` otherwise.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self.as_inline()? {
+            InlineValue::True => Some(true),
+            InlineValue::False => Some(false),
+            _ => None,
+        }
     }
 
     /// Returns a reference to the inner number stored in this value if `self` is a value block
@@ -408,44 +548,63 @@ impl NickelValue {
     }
 
     /// Returns a reference to the inner string stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag string, or `None` otherwise.
     pub fn as_string(&self) -> Option<&StringBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag array, or `None` otherwise.
     pub fn as_array(&self) -> Option<&ArrayBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner record stored in this value if `self` is a value block
-    /// with tag number, or `None` otherwise.
+    /// with tag record, or `None` otherwise.
     pub fn as_record(&self) -> Option<&RecordBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner thunk stored in this value if `self` is a value block with
-    /// tag number, or `None` otherwise.
+    /// tag thunk, or `None` otherwise.
     pub fn as_thunk(&self) -> Option<&ThunkBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner term stored in this value if `self` is a value block with
-    /// a record inside, or `None` otherwise.
+    /// a tag term, or `None` otherwise.
     pub fn as_term(&self) -> Option<&TermBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner label stored in this value if `self` is a value block with
-    /// tag number, or `None` otherwise.
+    /// tag label, or `None` otherwise.
     pub fn as_label(&self) -> Option<&LabelBody> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner enum variant stored in this value if `self` is a value
-    /// block with tag number, or `None` otherwise.
+    /// block with tag enum variant, or `None` otherwise.
     pub fn as_enum_variant(&self) -> Option<&EnumVariantBody> {
+        self.as_value_body()
+    }
+
+    /// Returns a reference to the inner enum tag stored in this value if `self` is a value is a
+    /// block with an enum variant inside, which has no arguments, or `None` otherwise.
+    pub fn as_enum_tag(&self) -> Option<LocIdent> {
+        let enum_var = self.as_enum_variant()?;
+        enum_var.arg.is_none().then(|| enum_var.tag)
+    }
+
+    /// Returns a reference to the inner sealing key stored in this value if `self` is a value
+    /// block with sealing key inside, or `None` otherwise.
+    pub fn as_sealing_key(&self) -> Option<&SealingKeyBody> {
+        self.as_value_body()
+    }
+
+    /// Returns a reference to the inner type stored in this value if `self` is a value with a type
+    /// inside, or `None` otherwise.
+    pub fn as_type(&self) -> Option<&TypeBody> {
         self.as_value_body()
     }
 
@@ -475,9 +634,14 @@ impl NickelValue {
         }
     }
 
+    /// Checks if this value is an inline value or is an allocated block.
+    pub fn is_inline(&self) -> bool {
+        self.tag() == ValueTag::Inline
+    }
+
     /// Returns a typed reference to the content of the value, or the content of the inline value
     /// directly.
-    pub fn content(&self) -> ValueContentRef<'_> {
+    pub fn content_ref(&self) -> ValueContentRef<'_> {
         match self.tag() {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
             // non-null pointer to a value block.
@@ -595,6 +759,73 @@ impl NickelValue {
         }
     }
 
+    /// Returns a lazy, owned handle to the content of this value.
+    pub fn content(self) -> ValueContent {
+        use lens::{TermContent, ValueLens};
+
+        match self.tag() {
+            ValueTag::Pointer => {
+                // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
+                // pointer to a block.
+                let as_ptr = unsafe { NonNull::new_unchecked(self.data as *mut u8) };
+                // Safety: ditto
+                let header = unsafe { ValueBlockRc::header_from_raw(as_ptr) };
+
+                // Safety: in each branch, the tag of the value block matches the type parameter of
+                // the lens built with `body_lens`.
+                unsafe {
+                    match header.tag {
+                        BodyTag::Number => ValueContent::Number(ValueLens::body_lens(self)),
+                        BodyTag::Array => ValueContent::Array(ValueLens::body_lens(self)),
+                        BodyTag::Record => ValueContent::Record(ValueLens::body_lens(self)),
+                        BodyTag::String => ValueContent::String(ValueLens::body_lens(self)),
+                        BodyTag::Thunk => ValueContent::Thunk(ValueLens::body_lens(self)),
+                        BodyTag::Term => {
+                            let term: &TermBody = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
+
+                            ValueContent::Term(match term.0 {
+                                Term::Value(_) => {
+                                    TermContent::Value(ValueLens::term_value_lens(self))
+                                }
+                                Term::StrChunks(_) => todo!(),
+                                Term::Fun(..) => todo!(),
+                                Term::FunPattern(..) => todo!(),
+                                Term::Let(..) => todo!(),
+                                Term::LetPattern(..) => todo!(),
+                                Term::App(..) => todo!(),
+                                Term::Var(..) => todo!(),
+                                Term::RecRecord(..) => todo!(),
+                                Term::Closurize(_) => todo!(),
+                                Term::Match(_) => todo!(),
+                                Term::Op1(..) => todo!(),
+                                Term::Op2(..) => todo!(),
+                                Term::OpN(..) => todo!(),
+                                Term::Sealed(..) => todo!(),
+                                Term::Annotated(..) => todo!(),
+                                Term::Import(_) => todo!(),
+                                Term::ResolvedImport(_) => todo!(),
+                                Term::ParseError(_) => todo!(),
+                                Term::RuntimeError(_) => todo!(),
+                            })
+                        }
+                        BodyTag::Label => ValueContent::Label(ValueLens::body_lens(self)),
+                        BodyTag::EnumVariant => {
+                            ValueContent::EnumVariant(ValueLens::body_lens(self))
+                        }
+                        BodyTag::ForeignId => ValueContent::ForeignId(ValueLens::body_lens(self)),
+                        BodyTag::SealingKey => ValueContent::SealingKey(ValueLens::body_lens(self)),
+                        BodyTag::CustomContract => {
+                            ValueContent::CustomContract(ValueLens::body_lens(self))
+                        }
+                        BodyTag::Type => ValueContent::Type(ValueLens::body_lens(self)),
+                    }
+                }
+            }
+            // Safety: `self.tag()` is `ValueTag::Inline`
+            ValueTag::Inline => ValueContent::Inline(unsafe { ValueLens::inline_lens(self) }),
+        }
+    }
+
     /// Returns a mutable typed reference to the content of the value. This method is
     /// copy-on-write, same as [std::rc::Rc::make_mut] and [ValueBlockRc::make_mut]: if the
     /// underlying value block has a reference count greater than one, `self` is assigned to a fresh
@@ -657,13 +888,17 @@ impl NickelValue {
         })
     }
 
-    /// Checks if this value is the inlined empty array.
+    /// Checks if this value is the inlined empty array. Caution: note that `self` could also be an
+    /// empty array, but allocated as a block. In that case, [Self::is_empty_array] would still
+    /// return `false`.
     pub fn is_empty_array(&self) -> bool {
         self.as_inline()
             .is_some_and(|inl| matches!(inl, InlineValue::EmptyArray))
     }
 
-    /// Checks if this value is the inlined empty record.
+    /// Checks if this value is the inlined empty record. Caution: note that `self` could also be
+    /// an empty record, but allocated as a block. In that case, [Self::is_empty_record] would
+    /// still return `false`.
     pub fn is_empty_record(&self) -> bool {
         self.as_inline()
             .is_some_and(|inl| matches!(inl, InlineValue::EmptyRecord))
@@ -780,7 +1015,7 @@ impl NickelValue {
                 .arg
                 .is_none(),
             BodyTag::Thunk => false,
-            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.is_atom(),
+            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.fmt_is_atom(),
             BodyTag::CustomContract => self
                 .as_value_body::<CustomContractBody>()
                 .unwrap()
@@ -824,50 +1059,51 @@ impl NickelValue {
         }
     }
 
-    /// Try to update the position index of this value. This method will fail if `self` is a shared
-    /// value block; it won't re-allocate a new block automatically. It'll also fail if `self` is
-    /// an inline value but `pos_idx` is too large and can't be converted to a [InlinePosIdx].
-    pub fn with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, PosIdxUpdateError> {
-        match self.tag() {
-            ValueTag::Pointer => {
-                // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
-                let block: ValueBlockRc = self.try_into().unwrap();
-
-                if block.header().ref_count() == 1 {
-                    // Safety: if the ref count is equal to one, there's no sharing and we have
-                    // the exclusive mutable access over the block.
-                    unsafe { (*block.header_mut()).pos_idx = pos_idx.into() }
-                    Ok(block.into())
-                } else {
-                    Err(PosIdxUpdateError::SharedValueBlock { this: block.into() })
-                }
-            }
-            // Safety: the tag is checked to be `Inline`
-            ValueTag::Inline => {
-                // [^irrefutable-let-patterns-32bits]: when compiling for 32-bit platforms, this
-                // pattern is irrefutable (the conversion is infallible), but we don't want to
-                // bother writing a separate version for 32-bit platforms.
-                #[allow(irrefutable_let_patterns)]
-                if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
-                    Ok(self.with_inline_pos_idx(inline_pos_idx))
-                } else {
-                    Err(PosIdxUpdateError::NonInlinePosIdx { this: self })
-                }
-            }
-        }
+    /// Returns `self` with the position index set to `idx` if `self` is a block value (with the
+    /// same behavior as [Self::with_pos_idx] if the block is shared), or returns `self` unchanged
+    /// otherwise. Can be useful to avoid `self.try_with_pos_idx(pos_idx).unwrap()` or the need to
+    /// pass the position table to [Self::with_pos_idx] when one knows that `self` is not an inline
+    /// value, and thus that [Self::try_with_pos_idx] can't fail.
+    pub fn with_block_pos_idx(self, pos_idx: PosIdx) -> Self {
+        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| this)
     }
 
-    /// Same as [Self::with_pos_idx], but if `self` is a shared value block, returns a new copy
-    /// with the given position instead of failing. This method still fails if `self` is an inline
-    /// value and `pos_idx` is too large and can't be converted to an [InlinePosIdx].
-    pub fn force_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
+    /// Updates the position index of this value. As opposed to [Self::try_with_pos_idx], if `self`
+    /// is an inline value and `pos_idx` can't be converted to an inline index, a new inline index
+    /// is allocated in the position table to make it work.
+    pub fn with_pos_idx(self, pos_table: &mut PosTable, pos_idx: impl Into<PosIdx>) -> Self {
+        let pos_idx = pos_idx.into();
+
+        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| {
+            this.with_inline_pos_idx(pos_table.push_inline(pos_table.get(pos_idx)))
+        })
+    }
+
+    /// Updates the position of this value. First allocates a position index of the proper type
+    /// (inline or not) in the position table, and then use it as the new index.
+    pub fn with_pos(self, pos_table: &mut PosTable, pos: TermPos) -> Self {
+        let pos_idx = if self.is_inline() {
+            pos_table.push_inline(pos).into()
+        } else {
+            pos_table.push_block(pos)
+        };
+
+        // unwrap(): we allocated `pos_idx` to be of the right type for `self`
+        self.try_with_pos_idx(pos_idx).unwrap()
+    }
+
+    /// Tries to update the position index of this value. If the value is a shared block (the ref
+    /// count is greater than one), the result will be a new copy of the original value with the
+    /// position set. This method fails if `self` is an inline value but `pos_idx` is too large and
+    /// can't be converted to a [InlinePosIdx].
+    pub fn try_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
         match self.tag() {
             ValueTag::Pointer => {
                 // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
                 let block: ValueBlockRc = self.try_into().unwrap();
                 let unique = block.make_unique();
                 // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
-                // mutable access (ownership) off the block.
+                // mutable access (ownership) of the block.
                 unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
                 Ok(unique.into())
             }
@@ -901,18 +1137,6 @@ impl NickelValue {
     pub fn pos(&self, table: &PosTable) -> TermPos {
         table.get(self.pos_idx())
     }
-}
-
-/// Possible error values for [NickelValue::with_pos_idx]. As the latter consumes its input, we
-/// return the original value unchanged in the error variant.
-#[derive(Clone, Debug)]
-pub enum PosIdxUpdateError {
-    /// The value is inline but the provided position index is out of range for an inline value
-    /// (it's a value block index).
-    NonInlinePosIdx { this: NickelValue },
-    /// The value is a block but its reference count is more than one, so it couldn't be modified
-    /// in-place.
-    SharedValueBlock { this: NickelValue },
 }
 
 // Since a `NickelValue` can be a reference-counted pointer in disguise, we can't just copy it
@@ -1001,6 +1225,8 @@ impl From<ValueBlockRc> for NickelValue {
         unsafe { NickelValue::block(this.0) }
     }
 }
+
+impl_display_from_pretty!(NickelValue);
 
 /// Pointer tag used by [NickelValue] to discriminate between the pointer and non-pointer kind of Nickel values.
 #[repr(usize)]
@@ -1144,6 +1370,25 @@ impl BodyTag {
             BodyTag::SealingKey => ValueBlockRc::padding::<SealingKeyBody>(),
             BodyTag::CustomContract => ValueBlockRc::padding::<CustomContractBody>(),
             BodyTag::Type => ValueBlockRc::padding::<TypeBody>(),
+        }
+    }
+
+    /// Returns the offset of the body of a value block from start pointer (the header). Calls to
+    /// [ValueBlockRc::body_offset] under the hood instantiated with the right type.
+    fn body_offset(&self) -> usize {
+        match self {
+            BodyTag::Number => ValueBlockRc::body_offset::<NumberBody>(),
+            BodyTag::String => ValueBlockRc::body_offset::<StringBody>(),
+            BodyTag::Array => ValueBlockRc::body_offset::<ArrayBody>(),
+            BodyTag::Record => ValueBlockRc::body_offset::<RecordBody>(),
+            BodyTag::Thunk => ValueBlockRc::body_offset::<ThunkBody>(),
+            BodyTag::Term => ValueBlockRc::body_offset::<TermBody>(),
+            BodyTag::Label => ValueBlockRc::body_offset::<LabelBody>(),
+            BodyTag::EnumVariant => ValueBlockRc::body_offset::<EnumVariantBody>(),
+            BodyTag::ForeignId => ValueBlockRc::body_offset::<ForeignIdBody>(),
+            BodyTag::SealingKey => ValueBlockRc::body_offset::<SealingKeyBody>(),
+            BodyTag::CustomContract => ValueBlockRc::body_offset::<CustomContractBody>(),
+            BodyTag::Type => ValueBlockRc::body_offset::<TypeBody>(),
         }
     }
 
@@ -1329,23 +1574,23 @@ pub struct EnumVariantBody {
     pub arg: Option<NickelValue>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ForeignIdBody(ForeignIdPayload);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForeignIdBody(pub ForeignIdPayload);
 
 #[derive(Clone, Debug)]
-pub struct CustomContractBody(NickelValue);
+pub struct CustomContractBody(pub NickelValue);
 
-#[derive(Clone, Debug)]
-pub struct SealingKeyBody(SealingKey);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealingKeyBody(pub SealingKey);
 
 #[derive(Clone, Debug)]
 pub struct TypeBody {
     /// The static type.
-    typ: Type,
+    pub typ: Type,
     /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
     /// serves as a caching mechanism so we only run the contract generation code once per type
     /// written by the user.
-    contract: NickelValue,
+    pub contract: NickelValue,
 }
 
 impl ValueBlockBody for NumberBody {
@@ -1595,8 +1840,8 @@ impl ValueBlockRc {
     /// with the same data. Similar to [Self::make_mut] in spirit but it doesn't require to specify
     /// the `T` and doesn't return a mutable reference.
     ///
-    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (deep) copy is allocated
-    /// and returned.
+    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (strong) copy is
+    /// allocated and returned.
     pub fn make_unique(self) -> Self {
         if self.header().ref_count() == 1 {
             self
@@ -1607,7 +1852,7 @@ impl ValueBlockRc {
 
     /// Creates a copy of the content of this value block. As opposed to [Self::clone], which just
     /// increments the reference count but encapsulates a pointer to the same block in memory (as
-    /// [std::rc::Rc::clone], this method allocates a fresh block with a clone of the content and
+    /// [std::rc::Rc::clone]), this method allocates a fresh block with a clone of the content and
     /// return a value that is 1-reference counted.
     pub fn strong_clone(&self) -> Self {
         match self.tag() {
@@ -1642,6 +1887,13 @@ impl ValueBlockRc {
         let leftover = size_of::<ValueBlockHeader>() % align;
 
         (align - leftover) % align
+    }
+
+    /// Returns the offset to add to the start of a value block (the address of the block header)
+    /// to reach the body (including padding). Offsetting [Self::0] by [Self::body_offset]
+    /// yields a valid pointer to a `T`.
+    const fn body_offset<T: ValueBlockBody>() -> usize {
+        size_of::<ValueBlockHeader>() + Self::padding::<T>()
     }
 
     /// Returns the alignment in bytes of a value block for a given value content type `T`. This is
@@ -1689,8 +1941,7 @@ impl ValueBlockRc {
             let header_ptr = start as *mut ValueBlockHeader;
             header_ptr.write(ValueBlockHeader::new(T::TAG, pos_idx));
 
-            let body_ptr =
-                start.add(size_of::<ValueBlockHeader>() + Self::padding::<T>()) as *mut T;
+            let body_ptr = start.add(Self::body_offset::<T>()) as *mut T;
             body_ptr.write(value);
 
             Self(NonNull::new_unchecked(start))
@@ -1742,9 +1993,7 @@ impl ValueBlockRc {
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
     unsafe fn decode_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a T {
-        ptr.add(size_of::<ValueBlockHeader>() + ValueBlockRc::padding::<T>())
-            .cast::<T>()
-            .as_ref()
+        ptr.add(Self::body_offset::<T>()).cast::<T>().as_ref()
     }
 
     /// Mutable variant of [Self::decode_from_raw_unchecked].
@@ -1758,9 +2007,7 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
     ///   the reference count of the value block is `1`.
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
-        ptr.add(size_of::<ValueBlockHeader>() + Self::padding::<T>())
-            .cast::<T>()
-            .as_mut()
+        ptr.add(Self::body_offset::<T>()).cast::<T>().as_mut()
     }
 
     /// Given a pointer into a value block, tries to decode the content to a `T`. Returns `None` if
@@ -1786,10 +2033,7 @@ impl Drop for ValueBlockRc {
                 let tag = self.tag();
                 // Safety: the value block is guaranteed to have been allocated with a size of
                 // `size_of::<ValueBlockHeader>()` + `tag.padding()` + `size_of::<T>()`.
-                let body_ptr = self
-                    .0
-                    .as_ptr()
-                    .add(size_of::<ValueBlockHeader>() + tag.padding());
+                let body_ptr = self.0.as_ptr().add(tag.body_offset());
 
                 // Safety: `body_ptr` is a valid pointer for the corresponding type and it hasn't
                 // been dropped before, as it's only dropped once when the last reference goes out
@@ -1876,10 +2120,11 @@ pub enum ValueContentRef<'a> {
 pub enum ValueContentRefMut<'a> {
     /// Given the encoding of inline values, it's a bad idea to provide a bare Rust reference to
     /// the underlying data encoding the inline value. While it's possible currently, we might use
-    /// a more exoctic layout in the future making it impossible.
+    /// a more exotic layout in the future making it impossible to produce a valid Rust reference
+    /// to an [InlineValue].
     ///
-    /// A mutable reference to is mostly useful for value blocks anyway. For inline values, we just
-    /// return the original value back, which can be overriden directly with a new inline value.
+    /// A mutable reference is mostly useful for value blocks anyway. For inline values, we just
+    /// return the original value back, which can be overridden directly with a new inline value.
     Inline(&'a mut NickelValue),
     Number(&'a mut NumberBody),
     Array(&'a mut ArrayBody),
@@ -1893,6 +2138,54 @@ pub enum ValueContentRefMut<'a> {
     SealingKey(&'a mut SealingKeyBody),
     CustomContract(&'a mut CustomContractBody),
     Type(&'a mut TypeBody),
+}
+
+/// A lazy handle to the owned content of a value block.
+///
+/// It's a common pattern to need to move the content out of a block (copying the content if it's
+/// shared, but avoiding copy if it's unique, like [std::)  only if a value matches some patterns. Typically
+/// during program transformations, where blocks should always be 1-reference counted, and where
+/// one transformation only affects specific nodes.
+///
+/// This is the *lazy* part: while the type of the body is known, the content is hidden behind a
+/// lazy handle, which can either be unwrapped further - consuming the original value irreversibly
+/// and producing an owned version of the body - or reverted back to the original value.
+pub enum ValueContent {
+    /// In the case of an inline value, it's useless to
+    Inline(lens::ValueLens<InlineValue>),
+    Number(lens::ValueLens<NumberBody>),
+    Array(lens::ValueLens<ArrayBody>),
+    Record(lens::ValueLens<RecordBody>),
+    String(lens::ValueLens<StringBody>),
+    Thunk(lens::ValueLens<ThunkBody>),
+    Term(lens::TermContent),
+    Label(lens::ValueLens<LabelBody>),
+    EnumVariant(lens::ValueLens<EnumVariantBody>),
+    ForeignId(lens::ValueLens<ForeignIdBody>),
+    SealingKey(lens::ValueLens<SealingKeyBody>),
+    CustomContract(lens::ValueLens<CustomContractBody>),
+    Type(lens::ValueLens<TypeBody>),
+}
+
+impl ValueContent {
+    /// Do not access the content and restore the original value unchanged.
+    pub fn restore(self) -> NickelValue {
+        match self {
+            ValueContent::Inline(lens) => lens.restore(),
+            ValueContent::Number(lens) => lens.restore(),
+            ValueContent::Array(lens) => lens.restore(),
+            ValueContent::Record(lens) => lens.restore(),
+            ValueContent::String(lens) => lens.restore(),
+            ValueContent::Thunk(lens) => lens.restore(),
+            ValueContent::Term(lens) => lens.restore(),
+            ValueContent::Label(lens) => lens.restore(),
+            ValueContent::EnumVariant(lens) => lens.restore(),
+            ValueContent::ForeignId(lens) => lens.restore(),
+            ValueContent::SealingKey(lens) => lens.restore(),
+            ValueContent::CustomContract(lens) => lens.restore(),
+            ValueContent::Type(lens) => lens.restore(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1937,35 +2230,45 @@ mod tests {
 
         // Makes sure the values are what we expect, and that `phys_eq` properly ignores position
         // information (we create a fresh position index for each value).
-        assert!(inline_null
-            .clone()
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::null().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
-        assert!(inline_true
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
-        assert!(inline_false
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::bool_false()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
-        assert!(inline_empty_array
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::empty_array()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
-        assert!(inline_empty_record
-            .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            .phys_eq(
-                &NickelValue::empty_record()
-                    .with_inline_pos_idx(pos_table.push_inline_pos(dummy_pos))
-            ));
+        assert!(
+            inline_null
+                .clone()
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::null().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_true
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_false
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::bool_false()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_empty_array
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::empty_array()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
+        assert!(
+            inline_empty_record
+                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .phys_eq(
+                    &NickelValue::empty_record()
+                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                )
+        );
 
         assert!(!inline_null.phys_eq(&NickelValue::bool_true()));
     }
