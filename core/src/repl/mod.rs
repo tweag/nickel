@@ -175,10 +175,6 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .map_err(IOError::from)?;
 
         self.vm.import_resolver_mut().prepare_repl(file_id)?;
-        // self.vm
-        //     .import_resolver_mut()
-        //     .parse(file_id, InputFormat::Nickel)?;
-
         let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
         let pos = term.pos;
 
@@ -218,7 +214,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let cache = self.vm.import_resolver_mut();
 
         let file_id = cache.replace_string(SourcePath::ReplTypecheck, String::from(exp));
-        let _ = cache.parse(file_id, InputFormat::Nickel)?;
+        let _ = cache.parse_to_ast(file_id)?;
 
         cache
             .typecheck(file_id, TypecheckMode::Walk)

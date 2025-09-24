@@ -12,7 +12,9 @@ use lsp_types::{TextDocumentPositionParams, Url};
 
 use nickel_lang_core::{
     bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
-    cache::{AstImportResolver, CacheHub, ImportData, InputFormat, SourceCache, SourcePath},
+    cache::{
+        AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
+    },
     error::{ImportError, IntoDiagnostics, ParseErrors},
     eval::{cache::CacheImpl, VirtualMachine},
     files::FileId,
@@ -804,7 +806,7 @@ impl World {
     pub fn cache_hub_for_eval(&self, file_id: FileId) -> CacheHub {
         use nickel_lang_core::{
             bytecode::ast::compat::ToMainline,
-            cache::{EntryState, TermEntry},
+            cache::{TermEntry, TermEntryState},
         };
 
         let mut cache = CacheHub::new();
@@ -815,7 +817,7 @@ impl World {
             self.analysis_reg.stdlib_analysis().file_id(),
             TermEntry {
                 term: self.compiled_stdlib.clone(),
-                state: EntryState::Typechecked,
+                state: TermEntryState::default(),
                 format: InputFormat::Nickel,
             },
         );
@@ -824,21 +826,14 @@ impl World {
             file_id,
             TermEntry {
                 term: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(),
-                state: EntryState::Parsed,
+                state: TermEntryState::default(),
                 format: InputFormat::Nickel,
             },
         );
 
-        let mut work_stack: Vec<FileId> = self
-            .import_data
-            .imports
-            .get(&file_id)
-            .map(|imports| imports.iter().copied().collect())
-            .unwrap_or_default();
-
+        let mut work_stack: Vec<FileId> = self.import_data.imports(file_id).collect();
         // Imports can be cyclic, so we need to keep track of what we've already done.
-        let mut visited = HashSet::new();
-        visited.insert(file_id);
+        let mut visited = HashSet::from([file_id]);
 
         while let Some(next) = work_stack.pop() {
             if !visited.insert(next) {
@@ -856,18 +851,12 @@ impl World {
                 next,
                 TermEntry {
                     term: analysis.ast().to_mainline(),
-                    state: EntryState::Typechecked,
+                    state: TermEntryState::default(),
                     format: InputFormat::Nickel,
                 },
             );
 
-            work_stack.extend(
-                self.import_data
-                    .imports
-                    .get(&next)
-                    .cloned()
-                    .unwrap_or_default(),
-            );
+            work_stack.extend(self.import_data.imports(next));
         }
 
         cache
@@ -983,7 +972,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 .imports
                 .entry(parent_id)
                 .or_default()
-                .insert(file_id);
+                .insert(ImportTarget { file_id, format });
             self.import_data
                 .rev_imports
                 .entry(file_id)
