@@ -3,6 +3,7 @@ name = "nickel-lang-cli"
 description = "The Nickel interpreter CLI"
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true

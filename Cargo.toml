@@ -20,6 +20,7 @@ version = "1.13.0"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 license = "MIT"
 edition = "2021"
+rust-version = "1.85"
 keywords = ["configuration", "language", "nix", "nickel"]
 repository = "https://github.com/tweag/nickel"
 homepage = "https://nickel-lang.org"
