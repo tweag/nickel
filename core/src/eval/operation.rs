@@ -2669,13 +2669,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // error location, this would be easy to fix. Unfortunately getting the
                     // locations right would involve handling location shifts caused by
                     // escape sequences and interpolation.
-                    "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
-                        EvalErrorData::DeserializationErrorWithInner {
+                    "Yaml" => crate::serialize::yaml::load_yaml_value(&mut self.pos_table, s, None)
+                        .map_err(|err| EvalErrorData::DeserializationErrorWithInner {
                             format: InputFormat::Yaml,
                             inner: err,
                             pos: pos_op,
-                        }
-                    })?,
+                        })?,
                     "Toml" => toml::from_str(s).map_err(|err| {
                         EvalErrorData::DeserializationError(
                             String::from("toml"),

@@ -649,12 +649,9 @@ impl SourceCache {
                 panic!("error: trying to parse a Nickel source with parse_other_nocache")
             }
             InputFormat::Json => {
-                crate::serialize::yaml::load_json_term(source, Some((file_id, &self.files)))
+                crate::serialize::yaml::load_json_value(pos_table, source, Some((file_id, &self.files)))
             }
-            // InputFormat::Json => crate::serialize::yaml::load_json_term(source)
-            //     .map(|v| attach_pos(pos_table, v))
-            //     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
-            InputFormat::Yaml => crate::serialize::yaml::load_yaml_term(pos_table, source, Some(file_id)),
+            InputFormat::Yaml => crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id)),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
                 .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),

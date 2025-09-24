@@ -12,18 +12,19 @@ use codespan::ByteIndex;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
-    bytecode::ast::{
-        self,
-        compat::ToMainline,
-        record::{FieldMetadata, FieldPathElem},
-        Ast, AstAlloc,
+    bytecode::{
+        ast::{
+            self, Ast, AstAlloc,
+            compat::ToMainline,
+            record::{FieldMetadata, FieldPathElem},
+        },
+        value::{NickelValue, ValueContent, lens::TermContent},
     },
     error::ParseError,
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
-    match_sharedterm,
-    position::{RawSpan, TermPos},
-    term::{Number, RichTerm, Term},
+    position::{PosTable, RawSpan, TermPos},
+    term::Number,
     traverse::Traverse,
 };
 
@@ -631,40 +632,56 @@ fn load<'ast>(
     }
 }
 
-// Convert a pure-data Ast to a pure-data RichTerm.
+// Convert a pure-data Ast to a pure-data NickelValue.
 //
-// The mainline conversion creates RecRecords, but since they came from data we know they're
-// just normal Records. This is important for std.deserialize, since it expects deserialized
-// data to be evaluated.
-fn ast_to_term(ast: Ast<'_>) -> RichTerm {
-    let rt: RichTerm = ast.to_mainline();
-    rt.traverse::<_, Infallible>(
-        &mut |rt: RichTerm| {
-            match_sharedterm!(match (rt.term) {
-                Term::RecRecord(record, ..) => Ok(RichTerm::new(Term::Record(record), rt.pos)),
-                _ => Ok(rt),
-            })
-        },
-        crate::traverse::TraverseOrder::BottomUp,
-    )
-    // unwrap: our traversal is infallible
-    .unwrap()
-}
+// The mainline conversion creates `RecRecords`, but since they came from data we know they're just
+// normal Records. This is important for std.deserialize, since it expects deserialized data to be
+// evaluated.
+fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
+    let value: NickelValue = ast.to_mainline(pos_table);
 
-/// Parse a YAML string and convert it to a [`RichTerm`].
-///
-/// If `file_id` is provided, the `RichTerm` will have its positions filled out.
-pub fn load_yaml_term(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
-    let alloc = AstAlloc::new();
-    Ok(ast_to_term(load_yaml(&alloc, s, file_id)?))
+    // The mainline conversion creates RecRecords, but since they came from YAML we know they're
+    // just normal Records. This is important for std.deserialize, since it expects deserialized
+    // data to be evaluated.
+    value
+        .traverse::<_, Infallible>(
+            &mut |value: NickelValue| {
+                let pos_idx = value.pos_idx();
+
+                Ok(match value.content() {
+                    ValueContent::Term(TermContent::RecRecord(lens)) => {
+                        let (record, _, _, _) = lens.take();
+                        // unwrap(): will go away soon
+                        NickelValue::record(record, pos_idx).unwrap()
+                    }
+                    lens => lens.restore(),
+                })
+            },
+            crate::traverse::TraverseOrder::BottomUp,
+        )
+        // unwrap: our traversal is infallible
+        .unwrap()
 }
 
 /// Parse a JSON string and convert it to a [`RichTerm`].
 ///
 /// If a location is provided, the `RichTerm` will have its positions filled out.
-pub fn load_json_term(s: &str, location: Option<(FileId, &Files)>) -> Result<RichTerm, ParseError> {
+pub fn load_json_value(
+    pos_table: &mut PosTable,
+    s: &str,
+    location: Option<(FileId, &Files)>,
+) -> Result<NickelValue, ParseError> {
     let alloc = AstAlloc::new();
-    Ok(ast_to_term(load_json(&alloc, s, location)?))
+    Ok(ast_to_term(pos_table, load_json(&alloc, s, location)?))
+}
+
+pub fn load_yaml_value(
+    pos_table: &mut PosTable,
+    s: &str,
+    file_id: Option<FileId>,
+) -> Result<NickelValue, ParseError> {
+    let alloc = AstAlloc::new();
+    Ok(ast_to_term(pos_table, load_yaml(&alloc, s, file_id)?))
 }
 
 #[cfg(test)]
