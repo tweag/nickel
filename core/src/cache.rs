@@ -597,7 +597,7 @@ impl SourceCache {
             InputFormat::Json => serde_json::from_str(source)
                 .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
-            InputFormat::Yaml => crate::serialize::yaml::load_yaml_term(pos_table, source, Some(file_id)),
+            InputFormat::Yaml => crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id)),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
                 .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
