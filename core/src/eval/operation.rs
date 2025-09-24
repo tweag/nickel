@@ -2652,13 +2652,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // error location, this would be easy to fix. Unfortunately getting the
                     // locations right would involve handling location shifts caused by
                     // escape sequences and interpolation.
-                    "Yaml" => crate::serialize::yaml::load_yaml_term(s, None).map_err(|err| {
-                        EvalErrorData::DeserializationErrorWithInner {
+                    "Yaml" => crate::serialize::yaml::load_yaml_value(&mut self.pos_table, s, None)
+                        .map_err(|err| EvalErrorData::DeserializationErrorWithInner {
                             format: InputFormat::Yaml,
                             inner: err,
                             pos: pos_op,
-                        }
-                    })?,
+                        })?,
                     "Toml" => toml::from_str(s).map_err(|err| {
                         EvalErrorData::DeserializationError(
                             String::from("toml"),
@@ -3200,9 +3199,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let result = if let NAryOp::StringReplace = n_op {
                     s.replace(from.as_str(), to.as_str())
                 } else {
-                    let re = regex::Regex::new(from).map_err(|err| {
-                        EvalErrorData::Other(err.to_string(), pos_op)
-                    })?;
+                    let re = regex::Regex::new(from)
+                        .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     s.replace_regex(&CompiledRegex(re), to)
                 };
@@ -3398,11 +3396,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 r.sealed_tail
                     .and_then(|tail| tail.unseal(s).cloned())
-                    .ok_or_else(|| {
-                        EvalErrorData::BlameError {
-                            evaluated_arg: label.get_evaluated_arg(&self.cache),
-                            label: label.clone(),
-                        }
+                    .ok_or_else(|| EvalErrorData::BlameError {
+                        evaluated_arg: label.get_evaluated_arg(&self.cache),
+                        label: label.clone(),
                     })
                     .map(|tail_unsealed| Closure {
                         value: tail_unsealed,
