@@ -4,6 +4,7 @@ version = "0.12.0"
 description = "WebAssembly REPL for the Nickel programming language."
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true

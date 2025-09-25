@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Persistent vectors for Nickel"
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true

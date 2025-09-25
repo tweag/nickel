@@ -4,6 +4,7 @@ readme = "README.md"
 description = "NLS: A language server for the Nickel configuration language."
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true

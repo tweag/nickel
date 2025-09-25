@@ -4,6 +4,7 @@ description = "Git utility functions for internal use in the Nickel configuratio
 version = "0.1.0"
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
