@@ -6,7 +6,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
 use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
 use nickel_lang_core::{
-    cache::{CacheHub, ImportResolver, SourcePath},
+    cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
     error::{
         report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
@@ -295,6 +295,7 @@ impl TestCommand {
     ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
         program.typecheck(TypecheckMode::Walk)?;
+        program.compile()?;
         program
             .custom_transform(0, |cache, rt| doctest_transform(cache, &mut registry, rt))
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
@@ -405,7 +406,7 @@ fn doctest_transform(
         let src_id = cache
             .sources
             .add_string(source_path.clone(), input.to_owned());
-        cache.parse_to_ast(src_id)?;
+        cache.parse_to_term(src_id, InputFormat::Nickel)?;
         // unwrap(): we just populated it
         Ok(cache.get(src_id).unwrap())
     }

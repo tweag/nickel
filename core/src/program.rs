@@ -804,7 +804,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
         // If the main file is known to not be Nickel, we don't bother parsing it into an AST
         // (`cache.typecheck()` will ignore it anyway)
-        let is_nickel = !matches!(
+        let is_nickel = matches!(
             self.vm.import_resolver().input_format(self.main_id),
             None | Some(InputFormat::Nickel)
         );
@@ -845,6 +845,23 @@ impl<EC: EvalCache> Program<EC> {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Parse and compile the stdlid and the program to the runtime representation. This is usually
+    /// done as part of the various `prepare_xxx` methods, but for some specific workflows (such as
+    /// `nickel test`), compilation might need to be performed explicitly.
+    pub fn compile(&mut self) -> Result<(), Error> {
+        let cache = self.vm.import_resolver_mut();
+
+        cache.load_stdlib()?;
+        cache.parse_to_ast(self.main_id)?;
+        // unwrap(): We just loaded the stdlib, so it should be there
+        cache.compile_stdlib().unwrap();
+        cache.compile(self.main_id).map_err(|cache_err| {
+            cache_err.unwrap_error("program::compile(): we just parsed the program")
+        })?;
 
         Ok(())
     }
