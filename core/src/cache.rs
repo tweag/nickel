@@ -1094,7 +1094,7 @@ impl CacheHub {
         asts.typecheck_stdlib(slice)
     }
 
-    /// Loads, parses, and compile the standard library. We don't typecheck for performance
+    /// Loads, parses, and compiles the standard library. We don't typecheck for performance
     /// reasons: this is done in the test suite.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
         #[cfg(debug_assertions)]
