@@ -1346,7 +1346,7 @@ impl CacheHub {
     }
 
     /// Converts an AST and all of its transitive dependencies to the runtime representation,
-    /// populating the term cache. `file_id` and any of its Nickel dependenncies must be present in
+    /// populating the term cache. `file_id` and any of its Nickel dependencies must be present in
     /// the AST cache, or [CacheError::NotParsed] is returned. However, for non-Nickel
     /// dependencies, they are instead parsed directly into the term cache,
     ///
