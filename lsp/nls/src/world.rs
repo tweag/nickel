@@ -758,9 +758,9 @@ impl World {
                 .remove(&file_id)
                 .unwrap_or_default();
 
-            acc.extend(rev_deps.iter().copied());
+            acc.extend(rev_deps.keys());
 
-            for file_id in &rev_deps {
+            for file_id in rev_deps.keys() {
                 invalidate_rec(world, acc, *file_id);
             }
         }
@@ -977,7 +977,8 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 .rev_imports
                 .entry(file_id)
                 .or_default()
-                .insert(parent_id);
+                .entry(parent_id)
+                .or_insert(*pos);
         }
 
         if let Some(pkg_id) = pkg_id {
