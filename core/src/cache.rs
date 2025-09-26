@@ -629,7 +629,6 @@ impl SourceCache {
     /// cache for `file_id`, or if there is well-defined input format (e.g. for REPL inputs, field
     /// assignments, etc.).
     pub fn input_format(&self, file_id: FileId) -> Option<InputFormat> {
-        //unwrap(): a file id should always map to a defined source in the cache
         self.file_paths
             .get(&file_id)
             .and_then(|source| match source {
