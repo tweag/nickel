@@ -850,8 +850,8 @@ impl CacheHub {
 
     /// Parses a source and populate the corresponding entry in the AST cache, or do nothing if the
     /// entry has already been parsed. External input formats are currently directly parsed to the
-    /// runtime representation, without going through an AST: for the time being, the format is
-    /// assumed to be [InputFormat::Nickel] in this method. See [Self::parse_other] for other formats.
+    /// runtime representation, without going through an AST: currently, the format is assumed to
+    /// be [InputFormat::Nickel] in this method. See [Self::parse_to_term] for other formats.
     ///
     /// # RFC007
     ///
@@ -978,10 +978,8 @@ impl CacheHub {
         // representation. While the imports of the main file will be parsed to terms by the
         // `compile_and_transform` automatically, we do need to ensure that the main file is in the
         // term cache if it's an external format, or `compile_and_transform` will complain.
-        else {
-            if let CacheOp::Done(_) = self.parse_to_term(file_id, format)? {
-                result = CacheOp::Done(());
-            }
+        else if let CacheOp::Done(_) = self.parse_to_term(file_id, format)? {
+            result = CacheOp::Done(());
         }
 
         let transform_res = self.compile_and_transform(file_id).map_err(|cache_err| {
@@ -1451,7 +1449,10 @@ impl CacheHub {
     /// Converts an AST entry and all of its transitive dependencies to the runtime representation
     /// (compile), populating the term cache. Applies both import resolution and other program
     /// transformations on the resulting terms.
-    fn compile_and_transform(&mut self, file_id: FileId) -> Result<CacheOp<()>, CacheError<Error>> {
+    pub fn compile_and_transform(
+        &mut self,
+        file_id: FileId,
+    ) -> Result<CacheOp<()>, CacheError<Error>> {
         let mut done = false;
 
         done = matches!(
@@ -1694,6 +1695,18 @@ impl TermEntryState {
             *self < TermEntryState::CustomTransforming
         }
     }
+}
+
+/// The state of an entry in the AST cache. Equivalent of [TermEntryState] but for ASTs.
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone, Default)]
+pub enum AstEntryState {
+    /// The initial state. The AST is in the cache but hasn't been processed further yet.
+    #[default]
+    Parsed,
+    /// The entry have been typechecked, and its (transitive) imports are being typechecked.
+    Typechecking,
+    /// The entry and its transitive imports have been typechecked.
+    Typechecked,
 }
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have

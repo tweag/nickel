@@ -166,9 +166,10 @@ macro_rules! ncl_bench_group {
                             };
 
                             let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
-                            cache.parse(id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
 
-                            if !matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
+                            if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
+                                cache.parse_to_term(id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
+                            } else{
                                 cache.prepare_eval_only(id).unwrap();
                                 runner = resolve_imports(runner, &mut cache).unwrap().transformed_term;
                             }
