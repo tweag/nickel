@@ -1098,7 +1098,7 @@ impl CacheHub {
         asts.typecheck_stdlib(slice)
     }
 
-    /// Loads, parses, and compile the standard library. We don't typecheck for performance
+    /// Loads, parses, and compiles the standard library. We don't typecheck for performance
     /// reasons: this is done in the test suite.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
         #[cfg(debug_assertions)]
@@ -1364,7 +1364,7 @@ impl CacheHub {
     }
 
     /// Converts an AST and all of its transitive dependencies to the runtime representation,
-    /// populating the term cache. `file_id` and any of its Nickel dependenncies must be present in
+    /// populating the term cache. `file_id` and any of its Nickel dependencies must be present in
     /// the AST cache, or [CacheError::NotParsed] is returned. However, for non-Nickel
     /// dependencies, they are instead parsed directly into the term cache,
     ///

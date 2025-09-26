@@ -849,7 +849,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(())
     }
 
-    /// Parse and compile the stdlid and the program to the runtime representation. This is usually
+    /// Parse and compile the stdlib and the program to the runtime representation. This is usually
     /// done as part of the various `prepare_xxx` methods, but for some specific workflows (such as
     /// `nickel test`), compilation might need to be performed explicitly.
     pub fn compile(&mut self) -> Result<(), Error> {
