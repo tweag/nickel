@@ -541,18 +541,19 @@ impl<EC: EvalCache> Program<EC> {
     /// Applies a custom transformation to the main term, assuming that it has been parsed but not
     /// yet transformed.
     ///
-    /// The term is left in whatever state it started in.
-    ///
-    /// This state-management isn't great, as it breaks the usual linear order of state changes.
-    /// In particular, there's no protection against double-applying the same transformation, and no
-    /// protection against applying it to a term that's in an unexpected state.
-    pub fn custom_transform<E, F>(&mut self, mut transform: F) -> Result<(), CacheError<E>>
+    /// If multiple invocations of `custom_transform` are needed, each subsequent invocation must supply
+    /// `transform_id` with with a number higher than that of all previous invocations.
+    pub fn custom_transform<E, F>(
+        &mut self,
+        transform_id: usize,
+        mut transform: F,
+    ) -> Result<(), CacheError<E>>
     where
         F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     {
         self.vm
             .import_resolver_mut()
-            .custom_transform(self.main_id, &mut transform)
+            .custom_transform(self.main_id, transform_id, &mut transform)
     }
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If

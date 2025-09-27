@@ -296,7 +296,7 @@ impl TestCommand {
         let mut registry = TestRegistry::default();
         program.typecheck(TypecheckMode::Walk)?;
         program
-            .custom_transform(|cache, rt| doctest_transform(cache, &mut registry, rt))
+            .custom_transform(0, |cache, rt| doctest_transform(cache, &mut registry, rt))
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
         Ok((program.eval_closurized_record_spine()?, registry))
     }
