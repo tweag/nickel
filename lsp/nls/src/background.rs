@@ -12,7 +12,12 @@ use lsp_types::Url;
 use nickel_lang_core::cache::{InputFormat, SourcePath};
 use serde::{Deserialize, Serialize};
 
-use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
+use crate::{
+    config::{self, LspEvalConfig},
+    diagnostic::SerializableDiagnostic,
+    files::uri_to_path,
+    world::World,
+};
 
 /// Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
@@ -26,6 +31,18 @@ struct Eval {
     eval: Url,
 }
 
+/// Evaluation data with a configuration.
+///
+/// This gets passed to the thread supervising background jobs, but
+/// not to the background worker process. The config shouldn't be
+/// serialized/deserialized to bincode because its serialization
+/// format relied on JSON-like semantics for missing fields.
+#[derive(Debug)]
+struct EvalWithConfig {
+    eval: Eval,
+    config: LspEvalConfig,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Diagnostics {
     pub path: PathBuf,
@@ -34,7 +51,7 @@ pub struct Diagnostics {
 
 pub struct BackgroundJobs {
     receiver: Option<Receiver<Diagnostics>>,
-    sender: Sender<Eval>,
+    sender: Sender<EvalWithConfig>,
 }
 
 fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
@@ -86,31 +103,27 @@ pub fn worker_main() -> anyhow::Result<()> {
 }
 
 struct SupervisorState {
-    eval_rx: Receiver<Eval>,
+    eval_rx: Receiver<EvalWithConfig>,
     response_tx: Sender<Diagnostics>,
 
     // A stack of files we want to evaluate, which we do in LIFO order.
-    eval_stack: Vec<Eval>,
+    eval_stack: Vec<EvalWithConfig>,
 
     // If evaluating a file causes the worker to time out or crash, we blacklist that file
     // and refuse to evaluate it for `self.config.blacklist_duration`
     banned_files: HashMap<Url, Instant>,
-
-    config: config::LspEvalConfig,
 }
 
 impl SupervisorState {
     fn new(
-        eval_rx: Receiver<Eval>,
+        eval_rx: Receiver<EvalWithConfig>,
         response_tx: Sender<Diagnostics>,
-        config: config::LspEvalConfig,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             eval_rx,
             response_tx,
             banned_files: HashMap::new(),
             eval_stack: Vec::new(),
-            config,
         })
     }
 
@@ -118,12 +131,12 @@ impl SupervisorState {
     //
     // The current implementation uses a background process per invocation, which is not the
     // most efficient thing but it allows for cancellation and prevents memory leaks.
-    fn eval(&self, eval: &Eval) -> anyhow::Result<Diagnostics> {
+    fn eval(&self, eval: &EvalWithConfig) -> anyhow::Result<Diagnostics> {
         let path = std::env::current_exe()?;
         let mut child = std::process::Command::new(path)
             .env(
                 RECURSION_LIMIT_ENV_VAR_NAME,
-                self.config.eval_limits.recursion_limit.to_string(),
+                eval.config.eval_limits.recursion_limit().to_string(),
             )
             .arg("--background-eval")
             .stdout(std::process::Stdio::piped())
@@ -147,24 +160,29 @@ impl SupervisorState {
         let mut tx = tx.ok_or_else(|| anyhow!("failed to get worker stdin"))?;
         let mut rx = rx.ok_or_else(|| anyhow!("failed to get worker stdout"))?;
 
-        bincode::serde::encode_into_std_write(eval, &mut tx, bincode::config::standard())?;
+        bincode::serde::encode_into_std_write(&eval.eval, &mut tx, bincode::config::standard())?;
 
         let result = run_with_timeout(
             move || bincode::serde::decode_from_std_read(&mut rx, bincode::config::standard()),
-            self.config.eval_limits.timeout,
+            eval.config.eval_limits.timeout(),
         );
 
         Ok(result??)
     }
 
-    fn handle_eval(&mut self, eval: Eval) {
-        match self.banned_files.get(&eval.eval) {
-            Some(blacklist_time) if blacklist_time.elapsed() < self.config.blacklist_duration => {}
+    fn handle_eval(&mut self, eval: EvalWithConfig) {
+        match self.banned_files.get(&eval.eval.eval) {
+            Some(blacklist_time) if blacklist_time.elapsed() < eval.config.blacklist_duration() => {
+            }
             _ => {
                 // If we re-request an evaluation, remove the old one. (This is quadratic in the
                 // size of the eval stack, but it only contains unique entries so we don't expect it
                 // to get big.)
-                if let Some(idx) = self.eval_stack.iter().position(|u| u.eval == eval.eval) {
+                if let Some(idx) = self
+                    .eval_stack
+                    .iter()
+                    .position(|u| u.eval.eval == eval.eval.eval)
+                {
                     self.eval_stack.remove(idx);
                 }
                 self.eval_stack.push(eval)
@@ -203,7 +221,7 @@ impl SupervisorState {
                         // Most likely the background eval timed out (but it could be something
                         // more exotic, like failing to spawn the subprocess).
                         warn!("background eval failed: {e}");
-                        self.banned_files.insert(eval.eval, Instant::now());
+                        self.banned_files.insert(eval.eval.eval, Instant::now());
                     }
                 }
             }
@@ -216,13 +234,13 @@ impl BackgroundJobs {
         let (eval_tx, eval_rx) = crossbeam::channel::unbounded();
         let (diag_tx, diag_rx) = crossbeam::channel::unbounded();
 
-        if config.disable {
+        if config.disable() {
             Self {
                 sender: eval_tx,
                 receiver: None,
             }
         } else {
-            match SupervisorState::new(eval_rx, diag_tx, config) {
+            match SupervisorState::new(eval_rx, diag_tx) {
                 Ok(mut sup) => {
                     std::thread::spawn(move || {
                         sup.run();
@@ -261,10 +279,16 @@ impl BackgroundJobs {
 
     pub fn eval_file(&mut self, uri: Url, world: &World) {
         if let Some(contents) = self.contents(&uri, world) {
-            let _ = self.sender.send(Eval {
-                eval: uri,
-                contents,
-            });
+            let config = world.local_configs.config_for(&uri).eval_config.clone();
+            if !config.disable() {
+                let _ = self.sender.send(EvalWithConfig {
+                    config: world.local_configs.config_for(&uri).eval_config.clone(),
+                    eval: Eval {
+                        eval: uri,
+                        contents,
+                    },
+                });
+            }
         };
     }
 
