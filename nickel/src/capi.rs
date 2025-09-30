@@ -13,10 +13,8 @@ use std::{
 
 use nickel_lang_core::term::Term;
 
-use crate::{Array, Context, Error, Expr, Number, Record, Trace, VirtualMachine};
+use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record, Trace, VirtualMachine};
 
-// TODO: put wrapper structs around Error
-// just so that we can have C-API-specific documentation for it
 // TODO: serialization functions
 // TODO: error reporting
 
@@ -189,6 +187,21 @@ pub enum nickel_result {
     NICKEL_RESULT_OK = 0,
     /// A bad result.
     NICKEL_RESULT_ERR = 1,
+}
+
+/// For functions that can fail, these are the interpretations of the return value.
+#[repr(C)]
+pub enum nickel_error_format {
+    /// Format an error as human-readable text.
+    NICKEL_ERROR_FORMAT_TEXT = 0,
+    /// Format an error as human-readable text, with ANSI color codes.
+    NICKEL_ERROR_FORMAT_ANSI_TEXT = 1,
+    /// Format an error as JSON.
+    NICKEL_ERROR_FORMAT_JSON = 2,
+    /// Format an error as YAML.
+    NICKEL_ERROR_FORMAT_YAML = 3,
+    /// Format an error as TOML.
+    NICKEL_ERROR_FORMAT_TOML = 4,
 }
 
 struct CTrace {
@@ -869,4 +882,43 @@ pub unsafe extern "C" fn nickel_error_alloc() -> *mut nickel_error {
 #[no_mangle]
 pub unsafe extern "C" fn nickel_error_free(err: *mut nickel_error) {
     let _ = Box::from_raw(err);
+}
+
+/// Write out an error as a user- or machine-readable diagnostic.
+///
+/// - `err` must have been allocated by `nickel_error_alloc` and initialized by some failing
+///   function (like `nickel_context_eval_deep`).
+/// - `write` is a callback function that will be invoked with UTF-8 encoded data.
+/// - `write_payload` is optional extra data to pass to `write`
+/// - `format` selects the error-rendering format.
+pub unsafe extern "C" fn nickel_error_format(
+    err: *const nickel_error,
+    write: nickel_write_callback,
+    write_payload: *const c_void,
+    format: nickel_error_format,
+) -> nickel_result {
+    let format = match format {
+        nickel_error_format::NICKEL_ERROR_FORMAT_TEXT => ErrorFormat::Text,
+        nickel_error_format::NICKEL_ERROR_FORMAT_ANSI_TEXT => ErrorFormat::AnsiText,
+        nickel_error_format::NICKEL_ERROR_FORMAT_JSON => ErrorFormat::Json,
+        nickel_error_format::NICKEL_ERROR_FORMAT_YAML => ErrorFormat::Yaml,
+        nickel_error_format::NICKEL_ERROR_FORMAT_TOML => ErrorFormat::Toml,
+    };
+
+    let err = err
+        .as_ref()
+        .unwrap()
+        .inner
+        .as_ref()
+        .expect("uninitialized error");
+    let mut write = CTrace {
+        write,
+        flush: None,
+        context: write_payload,
+    };
+    if err.format(&mut write, format).is_err() {
+        nickel_result::NICKEL_RESULT_ERR
+    } else {
+        nickel_result::NICKEL_RESULT_OK
+    }
 }

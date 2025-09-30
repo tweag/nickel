@@ -36,7 +36,18 @@ use nickel_lang_core::{
     },
 };
 
-pub use nickel_lang_core::error::report::ErrorFormat;
+/// Available export formats for error diagnostics.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub enum ErrorFormat {
+    /// Text with ANSI color codes.
+    #[default]
+    AnsiText,
+    /// Text without ANSI color codes.
+    Text,
+    Json,
+    Yaml,
+    Toml,
+}
 
 //#[cfg(feature = "capi")]
 pub mod capi;
@@ -89,6 +100,7 @@ pub enum Color {
 }
 
 /// A Nickel evaluation error.
+#[derive(Clone)]
 pub struct Error {
     error: Box<nickel_lang_core::error::Error>,
     files: nickel_lang_core::files::Files,
@@ -102,25 +114,22 @@ impl std::fmt::Debug for Error {
 
 impl Error {
     pub fn format<W: Write>(
-        mut self,
+        &self,
         write: &mut W,
         format: ErrorFormat,
-        color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let diagnostics = DiagnosticsWrapper::from(self.error.into_diagnostics(&mut self.files));
+        let mut err = self.clone();
+        let diagnostics = DiagnosticsWrapper::from(err.error.into_diagnostics(&mut err.files));
         match format {
-            ErrorFormat::Text => {
+            ErrorFormat::Text | ErrorFormat::AnsiText => {
                 let mut ansi;
                 let mut no_color;
-                let writer: &mut dyn WriteColor = match color {
-                    Color::Ansi => {
-                        ansi = Ansi::new(write);
-                        &mut ansi
-                    }
-                    Color::Off => {
-                        no_color = NoColor::new(write);
-                        &mut no_color
-                    }
+                let writer: &mut dyn WriteColor = if format == ErrorFormat::Text {
+                    ansi = Ansi::new(write);
+                    &mut ansi
+                } else {
+                    no_color = NoColor::new(write);
+                    &mut no_color
                 };
                 let config = codespan_reporting::term::Config::default();
                 diagnostics.diagnostics.iter().try_for_each(|d| {
