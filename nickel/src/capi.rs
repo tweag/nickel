@@ -15,9 +15,6 @@ use nickel_lang_core::term::Term;
 
 use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record, Trace, VirtualMachine};
 
-// TODO: serialization functions
-// TODO: error reporting
-
 /// The main entry point.
 pub struct nickel_context {}
 
@@ -202,6 +199,18 @@ pub enum nickel_error_format {
     NICKEL_ERROR_FORMAT_YAML = 3,
     /// Format an error as TOML.
     NICKEL_ERROR_FORMAT_TOML = 4,
+}
+
+impl From<nickel_error_format> for ErrorFormat {
+    fn from(e: nickel_error_format) -> Self {
+        match e {
+            nickel_error_format::NICKEL_ERROR_FORMAT_TEXT => ErrorFormat::Text,
+            nickel_error_format::NICKEL_ERROR_FORMAT_ANSI_TEXT => ErrorFormat::AnsiText,
+            nickel_error_format::NICKEL_ERROR_FORMAT_JSON => ErrorFormat::Json,
+            nickel_error_format::NICKEL_ERROR_FORMAT_YAML => ErrorFormat::Yaml,
+            nickel_error_format::NICKEL_ERROR_FORMAT_TOML => ErrorFormat::Toml,
+        }
+    }
 }
 
 struct CTrace {
@@ -651,6 +660,69 @@ pub unsafe extern "C" fn nickel_expr_as_array(expr: *const nickel_expr) -> *cons
     nickel_expr::as_rust(&expr).as_array().unwrap().into()
 }
 
+unsafe fn export_result(
+    result: Result<String, Error>,
+    out_string: *mut nickel_string,
+    out_err: *mut nickel_error,
+) -> nickel_result {
+    match result {
+        Ok(s) => {
+            if !out_string.is_null() {
+                (*out_string).inner = s;
+            }
+            nickel_result::NICKEL_RESULT_OK
+        }
+        Err(e) => {
+            if !out_err.is_null() {
+                (*out_err).inner = Some(e);
+            }
+            nickel_result::NICKEL_RESULT_ERR
+        }
+    }
+}
+
+/// Convert this expression to JSON.
+///
+/// This is fallible because enum variants have no canonical conversion to
+/// JSON: if the expression contains any enum variants, this will fail.
+/// This also fails if the expression contains any unevaluated sub-expressions.
+#[no_mangle]
+pub unsafe extern "C" fn nickel_expr_to_json(
+    expr: *const nickel_expr,
+    out_string: *mut nickel_string,
+    out_err: *mut nickel_error,
+) -> nickel_result {
+    export_result(nickel_expr::as_rust(&expr).to_json(), out_string, out_err)
+}
+
+/// Convert this expression to YAML.
+///
+/// This is fallible because enum variants have no canonical conversion to
+/// YAML: if the expression contains any enum variants, this will fail.
+/// This also fails if the expression contains any unevaluated sub-expressions.
+#[no_mangle]
+pub unsafe extern "C" fn nickel_expr_to_yaml(
+    expr: *const nickel_expr,
+    out_string: *mut nickel_string,
+    out_err: *mut nickel_error,
+) -> nickel_result {
+    export_result(nickel_expr::as_rust(&expr).to_yaml(), out_string, out_err)
+}
+
+/// Convert this expression to TOML.
+///
+/// This is fallible because enum variants have no canonical conversion to
+/// TOML: if the expression contains any enum variants, this will fail.
+/// This also fails if the expression contains any unevaluated sub-expressions.
+#[no_mangle]
+pub unsafe extern "C" fn nickel_expr_to_toml(
+    expr: *const nickel_expr,
+    out_string: *mut nickel_string,
+    out_err: *mut nickel_error,
+) -> nickel_result {
+    export_result(nickel_expr::as_rust(&expr).to_toml(), out_string, out_err)
+}
+
 /// Is this number an integer within the range of an `int64_t`?
 #[no_mangle]
 pub unsafe extern "C" fn nickel_number_is_i64(num: *const nickel_number) -> c_int {
@@ -897,14 +969,6 @@ pub unsafe extern "C" fn nickel_error_format(
     write_payload: *const c_void,
     format: nickel_error_format,
 ) -> nickel_result {
-    let format = match format {
-        nickel_error_format::NICKEL_ERROR_FORMAT_TEXT => ErrorFormat::Text,
-        nickel_error_format::NICKEL_ERROR_FORMAT_ANSI_TEXT => ErrorFormat::AnsiText,
-        nickel_error_format::NICKEL_ERROR_FORMAT_JSON => ErrorFormat::Json,
-        nickel_error_format::NICKEL_ERROR_FORMAT_YAML => ErrorFormat::Yaml,
-        nickel_error_format::NICKEL_ERROR_FORMAT_TOML => ErrorFormat::Toml,
-    };
-
     let err = err
         .as_ref()
         .unwrap()
@@ -916,9 +980,36 @@ pub unsafe extern "C" fn nickel_error_format(
         flush: None,
         context: write_payload,
     };
-    if err.format(&mut write, format).is_err() {
+    if err.format(&mut write, format.into()).is_err() {
         nickel_result::NICKEL_RESULT_ERR
     } else {
+        nickel_result::NICKEL_RESULT_OK
+    }
+}
+
+/// Write out an error as a user- or machine-readable diagnostic.
+///
+/// This is like `nickel_error_format`, but writes the error to a string instead
+/// of via a callback function.
+pub unsafe extern "C" fn nickel_error_format_as_string(
+    err: *const nickel_error,
+    out_string: *mut nickel_string,
+    format: nickel_error_format,
+) -> nickel_result {
+    let err = err
+        .as_ref()
+        .unwrap()
+        .inner
+        .as_ref()
+        .expect("uninitialized error");
+    let mut out = Vec::new();
+    if err.format(&mut out, format.into()).is_err() {
+        nickel_result::NICKEL_RESULT_ERR
+    } else {
+        if !out_string.is_null() {
+            // unwrap: Nickel's formatting always produces UTF-8.
+            (*out_string).inner = String::from_utf8(out).unwrap();
+        }
         nickel_result::NICKEL_RESULT_OK
     }
 }

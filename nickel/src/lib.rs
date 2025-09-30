@@ -49,7 +49,7 @@ pub enum ErrorFormat {
     Toml,
 }
 
-//#[cfg(feature = "capi")]
+#[cfg(feature = "capi")]
 pub mod capi;
 
 /// Provides a destination for the output of `std.trace`.
@@ -378,6 +378,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// JSON: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_json(&self) -> Result<String, Error> {
         self.export(ExportFormat::Json)
     }
@@ -386,6 +387,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// YAML: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_yaml(&self) -> Result<String, Error> {
         self.export(ExportFormat::Yaml)
     }
@@ -394,6 +396,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// TOML: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_toml(&self) -> Result<String, Error> {
         self.export(ExportFormat::Toml)
     }
