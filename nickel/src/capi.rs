@@ -29,6 +29,17 @@ impl nickel_context {
     }
 }
 
+/// A Nickel error.
+///
+/// If you want to collect an error message from a fallible function
+/// (like `nickel_context_eval_deep`), first allocate an error using
+/// `nickel_error_alloc`, and then pass the resulting pointer to your fallible
+/// function. If that function fails, it will save the error data in your
+/// `nickel_error`.
+pub struct nickel_error {
+    inner: Option<Error>,
+}
+
 /// A Nickel expression.
 ///
 /// This might be fully evaluated (for example, if you got it from [`nickel_context_eval_deep`])
@@ -105,6 +116,15 @@ impl<'a> From<Record<'a>> for *const nickel_record {
     }
 }
 
+/// A Nickel string.
+// It would be nice to put `repr(transparent)` here, but (1) we don't
+// actually need to cast `String` pointers to `nickel_string` pointers,
+// and (2) adding `repr(transparent)` makes cbindgen expose `String`
+// even though it's private.
+pub struct nickel_string {
+    inner: String,
+}
+
 /// A Nickel number.
 ///
 /// See [`nickel_expr_is_number`] and [`nickel_expr_as_number`].
@@ -153,11 +173,14 @@ pub unsafe extern "C" fn nickel_context_free(ctx: *mut nickel_context) {
 /// This function will be called with a buffer (`buf`) of data, having length
 /// `len`. It need not consume the entire buffer, and should return the number
 /// of bytes consumed.
+// This Option<fn> pattern seems to be cbindgen's preferred way of encoding
+// a nullable function pointer (since rust fns are never null).
+// https://github.com/mozilla/cbindgen/issues/326#issuecomment-584288686
 pub type nickel_write_callback =
-    extern "C" fn(context: *const c_void, buf: *const u8, len: usize) -> usize;
+    Option<extern "C" fn(context: *const c_void, buf: *const u8, len: usize) -> usize>;
 
 /// A callback function for flushing data that was written by a write callback.
-pub type nickel_flush_callback = extern "C" fn(context: *const c_void);
+pub type nickel_flush_callback = Option<extern "C" fn(context: *const c_void)>;
 
 /// For functions that can fail, these are the interpretations of the return value.
 #[repr(C)]
@@ -170,13 +193,17 @@ pub enum nickel_result {
 
 struct CTrace {
     write: nickel_write_callback,
-    flush: Option<nickel_flush_callback>,
+    flush: nickel_flush_callback,
     context: *const c_void,
 }
 
 impl Write for CTrace {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let count = (self.write)(self.context, buf.as_ptr(), buf.len());
+        let count = if let Some(w) = self.write {
+            w(self.context, buf.as_ptr(), buf.len())
+        } else {
+            buf.len()
+        };
         if count == usize::MAX {
             Err(std::io::Error::other("trace failed to write"))
         } else {
@@ -198,8 +225,7 @@ impl Write for CTrace {
 pub unsafe extern "C" fn nickel_context_set_trace_callback(
     mut ctx: *mut nickel_context,
     write: nickel_write_callback,
-    // TODO: if this is non-optional, are they allowed to pass NULL?
-    flush: Option<nickel_flush_callback>,
+    flush: nickel_flush_callback,
     user_data: *const c_void,
 ) {
     let trace = Trace::new(CTrace {
@@ -232,7 +258,7 @@ unsafe fn do_eval<F: FnOnce(&mut crate::Context, &str) -> Result<Expr, Error>>(
     mut ctx: *mut nickel_context,
     src: *const c_char,
     mut out_expr: *mut nickel_expr,
-    out_error: *mut *mut Error,
+    out_error: *mut nickel_error,
 ) -> nickel_result {
     let src = CStr::from_ptr(src).to_str().unwrap();
     match f(nickel_context::as_rust_mut(&mut ctx), src) {
@@ -244,7 +270,7 @@ unsafe fn do_eval<F: FnOnce(&mut crate::Context, &str) -> Result<Expr, Error>>(
         }
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = Box::into_raw(Box::new(e));
+                (*out_error).inner = Some(e);
             }
             nickel_result::NICKEL_RESULT_ERR
         }
@@ -273,7 +299,7 @@ pub unsafe extern "C" fn nickel_context_eval_deep(
     ctx: *mut nickel_context,
     src: *const c_char,
     out_expr: *mut nickel_expr,
-    out_error: *mut *mut Error,
+    out_error: *mut nickel_error,
 ) -> nickel_result {
     do_eval(|ctx, src| ctx.eval_deep(src), ctx, src, out_expr, out_error)
 }
@@ -300,7 +326,7 @@ pub unsafe extern "C" fn nickel_context_eval_deep_for_export(
     ctx: *mut nickel_context,
     src: *const c_char,
     out_expr: *mut nickel_expr,
-    out_error: *mut *mut Error,
+    out_error: *mut nickel_error,
 ) -> nickel_result {
     do_eval(
         |ctx, src| ctx.eval_deep_for_export(src),
@@ -343,7 +369,7 @@ pub unsafe extern "C" fn nickel_context_eval_shallow(
     src: *const c_char,
     mut out_expr: *mut nickel_expr,
     out_virtual_machine: *mut nickel_virtual_machine,
-    out_error: *mut *mut Error,
+    out_error: *mut nickel_error,
 ) -> nickel_result {
     let src = CStr::from_ptr(src).to_str().unwrap();
     match nickel_context::as_rust_mut(&mut ctx).eval_shallow(src) {
@@ -358,17 +384,11 @@ pub unsafe extern "C" fn nickel_context_eval_shallow(
         }
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = Box::into_raw(Box::new(e));
+                (*out_error).inner = Some(e);
             }
             nickel_result::NICKEL_RESULT_ERR
         }
     }
-}
-
-/// Frees a Nickel error message.
-#[no_mangle]
-pub unsafe extern "C" fn nickel_error_free(err: *mut Error) {
-    let _ = Box::from_raw(err);
 }
 
 /// Allocate a new Nickel expression.
@@ -391,16 +411,16 @@ pub unsafe extern "C" fn nickel_error_free(err: *mut Error) {
 ///
 /// nickel_context_eval_deep(ctx, "{ foo = 1 }", expr, NULL);
 ///
-/// /* now expr is a record */
+/// // now expr is a record
 /// printf("record: %d\n", nickel_expr_is_record(expr));
 ///
 /// nickel_context_eval_deep(ctx, "[1, 2, 3]", expr, NULL);
 ///
-/// /* now expr is an array */
+/// // now expr is an array
 /// printf("array: %d\n", nickel_expr_is_array(expr));
 ///
-/// /* the calls to nickel_context_eval_deep haven't created any new exprs:
-///    we only need to free it once */
+/// // the calls to nickel_context_eval_deep haven't created any new exprs:
+/// // we only need to free it once
 /// nickel_expr_free(expr);
 /// nickel_context_free(ctx);
 /// ```
@@ -650,12 +670,12 @@ pub unsafe extern "C" fn nickel_number_as_f64(num: *const nickel_number) -> f64 
 #[no_mangle]
 pub unsafe extern "C" fn nickel_number_as_rational(
     num: *const nickel_number,
-    out_numerator: *mut String,
-    out_denominator: *mut String,
+    out_numerator: *mut nickel_string,
+    out_denominator: *mut nickel_string,
 ) {
     let (numerator, denominator) = nickel_number::as_rust(&num).as_rational();
-    *out_numerator = numerator;
-    *out_denominator = denominator;
+    *out_numerator = nickel_string { inner: numerator };
+    *out_denominator = nickel_string { inner: denominator };
 }
 
 /// The number of elements of this Nickel array.
@@ -748,13 +768,15 @@ pub unsafe extern "C" fn nickel_record_value_by_name(
 /// (see `nickel_expr_alloc`). It gets allocated here, modified by various other
 /// functions, and finally is freed by a call to `nickel_string_free`.
 #[no_mangle]
-pub unsafe extern "C" fn nickel_string_alloc() -> *mut String {
-    Box::into_raw(Box::new(String::new()))
+pub unsafe extern "C" fn nickel_string_alloc() -> *mut nickel_string {
+    Box::into_raw(Box::new(nickel_string {
+        inner: String::new(),
+    }))
 }
 
 /// Frees a string.
 #[no_mangle]
-pub unsafe extern "C" fn nickel_string_free(s: *mut String) {
+pub unsafe extern "C" fn nickel_string_free(s: *mut nickel_string) {
     let _ = Box::from_raw(s);
 }
 
@@ -766,13 +788,13 @@ pub unsafe extern "C" fn nickel_string_free(s: *mut String) {
 /// freed or overwritten.
 #[no_mangle]
 pub unsafe extern "C" fn nickel_string_data(
-    s: *const String,
+    s: *const nickel_string,
     data: *mut *const c_char,
     len: *mut usize,
 ) {
     let s = s.as_ref().unwrap();
-    *data = s.as_ptr() as *const c_char;
-    *len = s.len();
+    *data = s.inner.as_ptr() as *const c_char;
+    *len = s.inner.len();
 }
 
 /// Allocate space for a virtual machine.
@@ -803,7 +825,7 @@ pub unsafe extern "C" fn nickel_virtual_machine_eval_shallow(
     vm: *mut nickel_virtual_machine,
     expr: *const nickel_expr,
     mut out_expr: *mut nickel_expr,
-    out_error: *mut *mut Error,
+    out_error: *mut nickel_error,
 ) -> nickel_result {
     // We clone `expr` instead of consuming it (as the rust API does). The clone is
     // cheap (it's only a refcount bump) and this makes the allocation/free pairing
@@ -830,9 +852,21 @@ pub unsafe extern "C" fn nickel_virtual_machine_eval_shallow(
         }
         Err(e) => {
             if !out_error.is_null() {
-                *out_error = Box::into_raw(Box::new(e));
+                (*out_error).inner = Some(e);
             }
             nickel_result::NICKEL_RESULT_ERR
         }
     }
+}
+
+/// Allocate a new `nickel_error`.
+#[no_mangle]
+pub unsafe extern "C" fn nickel_error_alloc() -> *mut nickel_error {
+    Box::into_raw(Box::new(nickel_error { inner: None }))
+}
+
+/// Frees a `nickel_error`.
+#[no_mangle]
+pub unsafe extern "C" fn nickel_error_free(err: *mut nickel_error) {
+    let _ = Box::from_raw(err);
 }
