@@ -329,25 +329,25 @@
           # libc and clang with libc++ to build C and C++ dependencies. We
           # tried building with libstdc++ but without success.
           buildStaticWorkspace = { pnameSuffix, extraNickelFeatures ? [ ], extraBuildArgs ? "", extraArgs ? { } }:
+            let
+              env_tgt = builtins.replaceStrings ["-"] ["_"] pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
+            in
             (buildWorkspace {
               inherit pnameSuffix extraNickelFeatures extraBuildArgs;
               extraArgs = {
                 inherit env;
                 CARGO_BUILD_TARGET = pkgs.pkgsMusl.stdenv.hostPlatform.rust.rustcTarget;
-                # For some reason, the rust build doesn't pick up the paths
-                # to `libcxx`. So we specify them explicitly.
-                #
-                # We also explicitly add `libc` because of
-                # https://github.com/rust-lang/rust/issues/89626.
-                RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -lstatic=c++abi -C link-arg=-lc";
-                # Explain to `cc-rs` that it should use the `libcxx` C++
-                # standard library, and a static version of it, when building
-                # C++ libraries. The `cc-rs` crate is typically used in
-                # upstream build.rs scripts.
-                CXXSTDLIB = "static=c++";
-                stdenv = p: p.pkgsMusl.libcxxStdenv;
                 doCheck = false;
                 CARGO_PROFILE = profile;
+                "CC_${env_tgt}" = "${pkgs.pkgsMusl.gcc}/bin/gcc";
+                # We used to support building the nix-experimental feature
+                # statically but we don't anymore because some of the pkgsMusl
+                # stuff isn't in the binary cache, and building them was taking
+                # hours in CI. Here are the incantations that allowed statically
+                # linking nix:
+                # RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -lstatic=c++abi -C link-arg=-lc";
+                # CXXSTDLIB = "static=c++";
+                # stdenv = p: p.pkgsMusl.libcxxStdenv;
               } // extraArgs;
             });
 
