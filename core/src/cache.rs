@@ -155,7 +155,7 @@ impl TermCache {
         wildcards: &WildcardsCache,
         import_data: &ImportData,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
+    ) -> Result<CacheOp<()>, TermCacheError<UnboundTypeVariableError>> {
         match self.terms.get(&file_id).map(|entry| entry.state) {
             Some(state) if state >= TermEntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) => {
@@ -187,7 +187,7 @@ impl TermCache {
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::IncompatibleState {
-                want: EntryState::Parsed,
+                want: TermEntryState::Populated,
             }),
         }
     }
@@ -220,7 +220,7 @@ impl TermCache {
         cache: &mut C,
         import_data: &ImportData,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<()>> {
+    ) -> Result<CacheOp<()>, TermCacheError<()>> {
         match self.entry_state(file_id) {
             Some(state) if state >= TermEntryState::Closurized => Ok(CacheOp::Cached(())),
             Some(_) => {
@@ -243,7 +243,7 @@ impl TermCache {
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::IncompatibleState {
-                want: EntryState::Parsed,
+                want: TermEntryState::Populated,
             }),
         }
     }
@@ -914,7 +914,7 @@ impl CacheHub {
         &mut self,
         file_id: FileId,
         initial_mode: TypecheckMode,
-    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+    ) -> Result<CacheOp<()>, AstCacheError<TypecheckError>> {
         let (slice, asts) = self.split_asts();
         asts.typecheck(slice, file_id, initial_mode)
     }
@@ -923,7 +923,7 @@ impl CacheHub {
     pub fn type_of(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
+    ) -> Result<CacheOp<mainline_typ::Type>, AstCacheError<TypecheckError>> {
         let (slice, asts) = self.split_asts();
         asts.type_of(slice, file_id)
     }
@@ -1049,7 +1049,7 @@ impl CacheHub {
     fn transform(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
+    ) -> Result<CacheOp<()>, TermCacheError<UnboundTypeVariableError>> {
         self.terms
             .transform(&self.wildcards, &self.import_data, file_id)
     }
@@ -1072,13 +1072,13 @@ impl CacheHub {
     }
 
     /// Converts the parsed standard library to the runtime representation.
-    pub fn compile_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<()>> {
+    pub fn compile_stdlib(&mut self) -> Result<CacheOp<()>, AstCacheError<()>> {
         let mut ret = CacheOp::Cached(());
 
         for (_, file_id) in self.sources.stdlib_modules() {
             let result = self.compile(file_id).map_err(|cache_err| {
-                if let CacheError::NotParsed = cache_err {
-                    CacheError::NotParsed
+                if let CacheError::IncompatibleState { want } = cache_err {
+                    CacheError::IncompatibleState { want }
                 } else {
                     unreachable!("unexpected parse error during the compilation of stdlib")
                 }
@@ -1093,7 +1093,7 @@ impl CacheHub {
     }
 
     /// Typechecks the standard library. Currently only used in the test suite.
-    pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+    pub fn typecheck_stdlib(&mut self) -> Result<CacheOp<()>, AstCacheError<TypecheckError>> {
         let (slice, asts) = self.split_asts();
         asts.typecheck_stdlib(slice)
     }
@@ -1116,7 +1116,7 @@ impl CacheHub {
             // is bound directly in the environment without evaluating it first, so we can't
             // tolerate top-level let bindings that would be introduced by `transform`.
             .try_for_each(|(_, file_id)| self.transform(file_id).map(|_| ()))
-            .map_err(|cache_err: CacheError<UnboundTypeVariableError>| {
+            .map_err(|cache_err: TermCacheError<UnboundTypeVariableError>| {
                 Error::ParseErrors(
                     cache_err
                         .unwrap_error(
@@ -1139,13 +1139,10 @@ impl CacheHub {
         file_id: FileId,
         transform_id: usize,
         f: &mut impl FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
-    ) -> Result<(), CacheError<E>> {
+    ) -> Result<(), TermCacheError<E>> {
         match self.terms.entry_state(file_id) {
             None => Err(CacheError::IncompatibleState {
-                want: EntryState::Parsed,
-            }),
-            Some(state) if state < TermEntryState::Typechecked => Err(CacheError::IncompatibleState {
-                want: EntryState::Typechecked,
+                want: TermEntryState::Populated,
             }),
             Some(state) => {
                 if state.needs_custom_transform(transform_id) {
@@ -1169,7 +1166,7 @@ impl CacheHub {
                     // unwrap(): we inserted the term just above
                     let _ = self
                         .terms
-                        .update_state(file_id, EntryState::CustomTransformed { transform_id })
+                        .update_state(file_id, TermEntryState::CustomTransformed { transform_id })
                         .unwrap();
                 }
 
@@ -1204,7 +1201,7 @@ impl CacheHub {
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<Vec<FileId>>, TermCacheError<ImportError>> {
         let entry = self.terms.terms.get(&file_id);
 
         match entry {
@@ -1276,7 +1273,7 @@ impl CacheHub {
             // >= EntryState::ImportsResolved
             Some(_) => Ok(CacheOp::Cached(Vec::new())),
             None => Err(CacheError::IncompatibleState {
-                want: EntryState::Parsed,
+                want: TermEntryState::Populated,
             }),
         }
     }
@@ -1352,7 +1349,7 @@ impl CacheHub {
         &mut self,
         eval_cache: &mut EC,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<()>> {
+    ) -> Result<CacheOp<()>, TermCacheError<()>> {
         self.terms.closurize(eval_cache, &self.import_data, file_id)
     }
 
@@ -1365,7 +1362,7 @@ impl CacheHub {
 
     /// Converts an AST and all of its transitive dependencies to the runtime representation,
     /// populating the term cache. `file_id` and any of its Nickel dependencies must be present in
-    /// the AST cache, or [CacheError::NotParsed] is returned. However, for non-Nickel
+    /// the AST cache, or [CacheError::IncompatibleState] is returned. However, for non-Nickel
     /// dependencies, they are instead parsed directly into the term cache,
     ///
     /// "Compile" is anticipating a bit on RFC007, although it is a lowering of the AST
@@ -1375,7 +1372,7 @@ impl CacheHub {
     /// program transformations through [Self::compile_and_transform]. It should preferably not be
     /// observable as an atomic transition, although as far as I can tell, this shouldn't cause
     /// major troubles to do so.
-    pub fn compile(&mut self, main_id: FileId) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    pub fn compile(&mut self, main_id: FileId) -> Result<CacheOp<()>, AstCacheError<ImportError>> {
         if self.terms.contains(main_id) {
             return Ok(CacheOp::Cached(()));
         }
@@ -1393,7 +1390,12 @@ impl CacheHub {
             }
 
             let entry = if let InputFormat::Nickel = format {
-                let ast_entry = self.asts.get_entry(file_id).ok_or(CacheError::NotParsed)?;
+                let ast_entry =
+                    self.asts
+                        .get_entry(file_id)
+                        .ok_or(CacheError::IncompatibleState {
+                            want: AstEntryState::Parsed,
+                        })?;
 
                 TermEntry {
                     term: ast_entry.ast.to_mainline(),
@@ -1451,7 +1453,7 @@ impl CacheHub {
     pub fn compile_and_transform(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<Error>> {
+    ) -> Result<CacheOp<()>, AstCacheError<Error>> {
         let mut done = false;
 
         done = matches!(
@@ -1462,14 +1464,20 @@ impl CacheHub {
 
         let imports = self
             .resolve_imports(file_id)
-            .map_err(|cache_err| cache_err.map_err(Error::ImportError))?;
+            // force_cast(): since we compiled `file_id`, the term cache must be populated, and
+            // thus `resolve_imports` should never throw `CacheError::IncompatibleState`.
+            .map_err(|cache_err| cache_err.map_err(Error::ImportError).force_cast())?;
         done = matches!(imports, CacheOp::Done(_)) || done;
 
         let transform = self
             .terms
             .transform(&self.wildcards, &self.import_data, file_id)
+            // force_cast(): since we compiled `file_id`, the term cache must be populated, and
+            // thus `resolve_imports` should never throw `CacheError::IncompatibleState`.
             .map_err(|cache_err| {
-                cache_err.map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))
+                cache_err
+                    .map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))
+                    .force_cast()
             })?;
         done = matches!(transform, CacheOp::Done(_)) || done;
 
@@ -1727,19 +1735,30 @@ impl<T> CacheOp<T> {
 
 /// Wrapper around other errors to indicate that typechecking or applying program transformations
 /// failed because the source has not been parsed yet.
+///
+/// # Type parameters
+///
+/// - `E`: the underlying, wrapped error type
+/// - `S`: the entry state, whether [TermEntryState] or [AstEntryState] in practice.
 #[derive(Eq, PartialEq, Debug, Clone)]
-pub enum CacheError<E> {
+pub enum CacheError<E, S> {
     Error(E),
-    IncompatibleState { want: TermEntryState },
+    /// The state of the entry in the cache is incompatible with the requested operation.
+    IncompatibleState {
+        want: S,
+    },
 }
 
-impl<E> From<E> for CacheError<E> {
+pub type AstCacheError<E> = CacheError<E, AstEntryState>;
+pub type TermCacheError<E> = CacheError<E, TermEntryState>;
+
+impl<E, S> From<E> for CacheError<E, S> {
     fn from(e: E) -> Self {
         CacheError::Error(e)
     }
 }
 
-impl<E> CacheError<E> {
+impl<E, S> CacheError<E, S> {
     #[track_caller]
     pub fn unwrap_error(self, msg: &str) -> E {
         match self {
@@ -1748,10 +1767,24 @@ impl<E> CacheError<E> {
         }
     }
 
-    pub fn map_err<O>(self, f: impl FnOnce(E) -> O) -> CacheError<O> {
+    pub fn map_err<O>(self, f: impl FnOnce(E) -> O) -> CacheError<O, S> {
         match self {
             CacheError::Error(e) => CacheError::Error(f(e)),
             CacheError::IncompatibleState { want } => CacheError::IncompatibleState { want },
+        }
+    }
+
+    /// Assuming that `self` is of the form `CacheError::Error(e)`, cast the error type to another
+    /// arbitrary state type `T`.
+    ///
+    /// # Panic
+    ///
+    /// This method panics if `self` is [CacheError::IncompatibleState].
+    #[track_caller]
+    pub fn force_cast<T>(self) -> CacheError<E, T> {
+        match self {
+            CacheError::Error(e) => CacheError::Error(e),
+            CacheError::IncompatibleState { want: _ } => panic!(),
         }
     }
 }
@@ -2591,10 +2624,10 @@ mod ast_cache {
             mut slice: CacheHubView<'_>,
             file_id: FileId,
             initial_mode: TypecheckMode,
-        ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+        ) -> Result<CacheOp<()>, AstCacheError<TypecheckError>> {
             let Some(state) = self.entry_state(file_id) else {
                 return Err(CacheError::IncompatibleState {
-                    want: EntryState::Parsed,
+                    want: AstEntryState::Parsed,
                 });
             };
 
@@ -2612,7 +2645,7 @@ mod ast_cache {
 
             // Ensure the initial typing context is properly initialized.
             self.populate_type_ctxt(slice.sources);
-            self.with_mut(|slf| -> Result<(), CacheError<TypecheckError>> {
+            self.with_mut(|slf| -> Result<(), AstCacheError<TypecheckError>> {
                 // unwrap(): we checked at the beginning of this function that the AST cache has an
                 // entry for `file_id`.
                 let ast = slf.asts.get(&file_id).unwrap().ast;
@@ -2667,7 +2700,7 @@ mod ast_cache {
         pub fn typecheck_stdlib(
             &mut self,
             mut slice: CacheHubView<'_>,
-        ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+        ) -> Result<CacheOp<()>, AstCacheError<TypecheckError>> {
             let mut ret = CacheOp::Cached(());
             self.populate_type_ctxt(slice.sources);
 
@@ -2689,17 +2722,18 @@ mod ast_cache {
             &mut self,
             mut slice: CacheHubView<'_>,
             file_id: FileId,
-        ) -> Result<CacheOp<mainline_typ::Type>, CacheError<TypecheckError>> {
+        ) -> Result<CacheOp<mainline_typ::Type>, AstCacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
 
-            let typ: Result<ast::typ::Type<'_>, CacheError<TypecheckError>> =
+            let typ: Result<ast::typ::Type<'_>, AstCacheError<TypecheckError>> =
                 self.with_mut(|slf| {
                     let ast = slf
                         .asts
                         .get(&file_id)
                         .ok_or(CacheError::IncompatibleState {
-                            want: EntryState::Parsed,
-                        })?.ast;
+                            want: AstEntryState::Parsed,
+                        })?
+                        .ast;
 
                     let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
                     let type_ctxt = slf.type_ctxt.clone();
@@ -2773,11 +2807,11 @@ mod ast_cache {
             mut slice: CacheHubView<'_>,
             id: LocIdent,
             file_id: FileId,
-        ) -> Result<(), CacheError<std::convert::Infallible>> {
+        ) -> Result<(), AstCacheError<std::convert::Infallible>> {
             self.with_mut(|slf| {
                 let Some(entry) = slf.asts.get(&file_id) else {
                     return Err(CacheError::IncompatibleState {
-                        want: EntryState::Parsed,
+                        want: AstEntryState::Parsed,
                     });
                 };
 

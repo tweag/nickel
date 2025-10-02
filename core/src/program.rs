@@ -547,7 +547,7 @@ impl<EC: EvalCache> Program<EC> {
         &mut self,
         transform_id: usize,
         mut transform: F,
-    ) -> Result<(), CacheError<E>>
+    ) -> Result<(), TermCacheError<E>>
     where
         F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     {
