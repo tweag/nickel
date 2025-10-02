@@ -295,6 +295,7 @@ impl TestCommand {
     ) -> Result<(RichTerm, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
         program.typecheck(TypecheckMode::Walk)?;
+        program.compile()?;
         program
             .custom_transform(0, |cache, rt| doctest_transform(cache, &mut registry, rt))
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
@@ -405,7 +406,7 @@ fn doctest_transform(
         let src_id = cache
             .sources
             .add_string(source_path.clone(), input.to_owned());
-        cache.parse(src_id, InputFormat::Nickel)?;
+        cache.parse_to_term(src_id, InputFormat::Nickel)?;
         // unwrap(): we just populated it
         Ok(cache.get(src_id).unwrap())
     }
