@@ -1,3 +1,43 @@
+Version 1.14 (2025-10-02)
+=========================
+
+Nickel 1.14 has no core language changes. It adds position information to
+YAML documents, so that if some imported YAML breaks a contract then Nickel
+can blame the correct location in the YAML file. Nickel's LSP has had some
+bugfixes (thanks to @L0r3m1p5um), fixing a crash and avoiding stale data.
+
+LSP
+---
+
+* Implement textDocument/didClose method for LSP by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2323
+* Pass sources from World into background eval by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2338
+* Avoid copying file contents in LSP eval by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2347
+* Fix crash in NLS when creating typechecking diagnostics by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2357
+* Fix performance of UsageLookup by @jneem in https://github.com/tweag/nickel/pull/2339
+
+Tooling
+-------
+
+* Allow index packages to live in subdirectories of the repo by @jneem in https://github.com/tweag/nickel/pull/2315
+* Convert to saphyr for positions in yaml by @jneem in https://github.com/tweag/nickel/pull/2332
+* Initial public api rfc by @jneem in https://github.com/tweag/nickel/pull/2337
+* Clean up Ident conversions to reduce accidental allocations by @jneem in https://github.com/tweag/nickel/pull/2341
+* Declare MSRV as 1.85 by @brandonweeks in https://github.com/tweag/nickel/pull/2364
+* Narrow serde_with features by @brandonweeks in https://github.com/tweag/nickel/pull/2366
+* Bump malachite to version 0.6 by @brandonweeks in https://github.com/tweag/nickel/pull/2367
+* Bump toml to version 0.9 and toml_edit to version 0.23 by @brandonweeks in https://github.com/tweag/nickel/pull/2368
+* Plumb custom_transform into EntryState to minimize traversal by @twitchyliquid64 in https://github.com/tweag/nickel/pull/2346
+* Restore the static nix release jobs by @jneem in https://github.com/tweag/nickel/pull/2373
+
+Documentation
+-------------
+
+* Fix broken note and other cosmetic changes in pkg manual by @yannham in https://github.com/tweag/nickel/pull/2329
+
+## New Contributors
+* @brandonweeks made their first contribution in https://github.com/tweag/nickel/pull/2364
+* @twitchyliquid64 made their first contribution in https://github.com/tweag/nickel/pull/2346
+
 Version 1.13 (2025-08-18)
 =========================
 
