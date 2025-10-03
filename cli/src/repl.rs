@@ -13,14 +13,9 @@ pub struct ReplCommand {
 
 impl ReplCommand {
     pub fn run(self, ctxt: &mut GlobalContext) {
-        let histfile = if let Some(h) = self.history_file {
-            h
-        } else {
-            BaseDirs::new()
-                .expect("Cannot retrieve home directory path")
-                .home_dir()
-                .join(".nickel_history")
-        };
+        let histfile = self
+            .history_file
+            .or_else(|| BaseDirs::new().map(|bd| bd.home_dir().join(".nickel_history")));
         ctxt.reporter.report_result(rustyline_frontend::repl(
             histfile,
             color_opt_from_clap(ctxt.opts.color),
