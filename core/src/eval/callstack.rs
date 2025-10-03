@@ -194,7 +194,7 @@ impl CallStack {
 
                     match pending.last_mut() {
                         Some(CallDescr {
-                            head: ref mut head @ None,
+                            head: head @ None,
                             span: span_call,
                         }) if span <= *span_call => *head = Some(*id),
                         _ => (),

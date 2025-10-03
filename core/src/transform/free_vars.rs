@@ -258,7 +258,7 @@ impl CollectFreeVars for Type {
                 ty1.as_mut().collect_free_vars(set);
                 ty2.as_mut().collect_free_vars(set);
             }
-            TypeF::Contract(ref mut rt) => rt.collect_free_vars(set),
+            TypeF::Contract(rt) => rt.collect_free_vars(set),
         }
     }
 }

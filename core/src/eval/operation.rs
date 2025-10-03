@@ -392,7 +392,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Ok(label
                         .0
                         .polarity
-                        .into()
+                        .into::<NickelValue>()
                         .with_pos_idx(&mut self.pos_table, pos_op_inh)
                         .into())
                 } else {
@@ -2536,8 +2536,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env: env1,
                 })
             }
-            BinaryOp::Merge(merge_label) => merge::merge(
-                &mut self.cache,
+            BinaryOp::Merge(merge_label) => self.merge(
                 value1,
                 env1,
                 value2,
@@ -3272,15 +3271,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                merge::merge(
-                    &mut self.cache,
+                self.merge(
                     arg2,
                     env2,
                     arg3,
                     env3,
                     pos_op,
                     MergeMode::Contract(label.clone()),
-                    &mut self.call_stack,
                 )
             }
             NAryOp::RecordSealTail => {

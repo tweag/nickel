@@ -483,7 +483,7 @@ fn contract_eq_fields(
         && field1.metadata.priority == field2.metadata.priority;
 
     let value_eq = match (&field1.value, &field2.value) {
-        (Some(ref value1), Some(ref value2)) => {
+        (Some(value1), Some(value2)) => {
             contract_eq_bounded(state, value1, env1, value2, env2)
         }
         (None, None) => true,
