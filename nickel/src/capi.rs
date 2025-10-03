@@ -172,7 +172,7 @@ pub unsafe extern "C" fn nickel_context_free(ctx: *mut nickel_context) {
 // a nullable function pointer (since rust fns are never null).
 // https://github.com/mozilla/cbindgen/issues/326#issuecomment-584288686
 pub type nickel_write_callback =
-    Option<extern "C" fn(context: *const c_void, buf: *const u8, len: usize) -> usize>;
+    Option<extern "C" fn(context: *mut c_void, buf: *const u8, len: usize) -> usize>;
 
 /// A callback function for flushing data that was written by a write callback.
 pub type nickel_flush_callback = Option<extern "C" fn(context: *const c_void)>;
@@ -216,7 +216,7 @@ impl From<nickel_error_format> for ErrorFormat {
 struct CTrace {
     write: nickel_write_callback,
     flush: nickel_flush_callback,
-    context: *const c_void,
+    context: *mut c_void,
 }
 
 impl Write for CTrace {
@@ -248,7 +248,7 @@ pub unsafe extern "C" fn nickel_context_set_trace_callback(
     mut ctx: *mut nickel_context,
     write: nickel_write_callback,
     flush: nickel_flush_callback,
-    user_data: *const c_void,
+    user_data: *mut c_void,
 ) {
     let trace = Trace::new(CTrace {
         write,
@@ -462,9 +462,9 @@ pub unsafe extern "C" fn nickel_context_eval_shallow(
 /// nickel_expr *field = nickel_expr_alloc();
 /// nickel_record_value_by_name(rec, "foo", field);
 ///
-/// /* Now `rec` points to data owned by `expr`, but `field`
-///    owns its own data. The following deallocation invalidates
-///    `rec`, but not `field`. */
+/// // Now `rec` points to data owned by `expr`, but `field`
+/// // owns its own data. The following deallocation invalidates
+/// // `rec`, but not `field`.
 /// nickel_expr_free(expr);
 /// printf("number: %d\n", nickel_expr_is_number(field));
 /// ```
@@ -963,10 +963,11 @@ pub unsafe extern "C" fn nickel_error_free(err: *mut nickel_error) {
 /// - `write` is a callback function that will be invoked with UTF-8 encoded data.
 /// - `write_payload` is optional extra data to pass to `write`
 /// - `format` selects the error-rendering format.
-pub unsafe extern "C" fn nickel_error_format(
+#[no_mangle]
+pub unsafe extern "C" fn nickel_error_display(
     err: *const nickel_error,
     write: nickel_write_callback,
-    write_payload: *const c_void,
+    write_payload: *mut c_void,
     format: nickel_error_format,
 ) -> nickel_result {
     let err = err

@@ -124,7 +124,7 @@ impl Error {
             ErrorFormat::Text | ErrorFormat::AnsiText => {
                 let mut ansi;
                 let mut no_color;
-                let writer: &mut dyn WriteColor = if format == ErrorFormat::Text {
+                let writer: &mut dyn WriteColor = if format == ErrorFormat::AnsiText {
                     ansi = Ansi::new(write);
                     &mut ansi
                 } else {
