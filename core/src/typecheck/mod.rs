@@ -1888,7 +1888,7 @@ fn walk_with_annot<'ast, 'a, S: AnnotSeqRef<'ast>, V: TypecheckVisitor<'ast>>(
             if let Node::Fun { args, body } = value.node {
                 // We look for the first contract of the list that is a function contract.
                 let domains = annots.contracts().find_map(|c| {
-                    if let TypeF::Arrow(domain, mut codomain) = &c.typ {
+                    if let TypeF::Arrow(domain, mut codomain) = c.typ {
                         let mut domains =
                             vec![UnifType::from_type((*domain).clone(), &ctxt.term_env)];
 
