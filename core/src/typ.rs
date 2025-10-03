@@ -856,6 +856,8 @@ trait Subcontract {
     ///
     /// # Arguments
     ///
+    /// - `pos_table` is the table to be used to convert position index to actual positions, or to
+    ///   allocate new ones, in the generated contracts.
     /// - `vars` is an environment mapping type variables to contracts. Type variables are
     ///   introduced locally when opening a `forall`. Note that we don't need to keep separate
     ///   environments for different kind of type variables, as by shadowing, one name can only
@@ -866,7 +868,7 @@ trait Subcontract {
     ///   [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
@@ -889,7 +891,7 @@ fn get_var_contract(
 impl Subcontract for Type {
     fn subcontract(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         mut vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
@@ -974,7 +976,7 @@ impl Subcontract for Type {
                 mk_app!(
                     internals::forall(),
                     sealing_key,
-                    Term::from(pol),
+                    NickelValue::from(pol),
                     body.subcontract(pos_table, vars, pol, sy)?
                 )
             }
@@ -1104,7 +1106,7 @@ impl EnumRows {
 impl Subcontract for EnumRows {
     fn subcontract(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
@@ -1178,10 +1180,10 @@ impl Subcontract for EnumRows {
                         data: PatternData::Enum(EnumPattern {
                             tag: row.id,
                             pattern: arg_pattern,
-                            pos: row.id.pos,
+                            pos: pos_table.push_block(row.id.pos),
                         }),
                         alias: None,
-                        pos: row.id.pos,
+                        pos: pos_table.push_block(row.id.pos),
                     };
 
                     branches.push(MatchBranch {
@@ -1219,7 +1221,7 @@ impl Subcontract for EnumRows {
             pattern: Pattern {
                 data: PatternData::Wildcard,
                 alias: None,
-                pos: default_pos,
+                pos: pos_table.push_block(default_pos),
             },
             guard: None,
             body: default,
@@ -1480,15 +1482,14 @@ impl RecordRows {
                             else {
                                 let fresh_var = LocIdent::fresh();
 
-                                let excluded_ncl: NickelValue = Term::Array(
+                                let excluded_ncl = NickelValue::array_posless(
                                     Array::from_iter(
                                         excluded
                                             .iter()
-                                            .map(|id| Term::Str(NickelString::from(*id)).into()),
+                                            .map(|id| NickelValue::string_posless(*id)),
                                     ),
-                                    Default::default(),
-                                )
-                                .into();
+                                    Vec::new(),
+                                );
 
                                 contract_env.insert(
                                     fresh_var.ident(),
@@ -1523,7 +1524,7 @@ impl RecordRows {
 impl Subcontract for RecordRows {
     fn subcontract(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         vars: Environment<Ident, NickelValue>,
         pol: Polarity,
         sy: &mut i32,
@@ -1553,13 +1554,13 @@ impl Subcontract for RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = NickelValue::from(Term::Record(RecordData::with_field_values(fcs)));
+        let rec = NickelValue::record_posless(RecordData::with_field_values(fcs));
 
         Ok(mk_app!(
             internals::record_type(),
             rec,
             tail,
-            Term::Bool(has_tail)
+            NickelValue::bool_value_posless(has_tail)
         ))
     }
 }
@@ -1609,7 +1610,7 @@ impl Type {
     /// typing.
     pub fn contract_static(
         self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
     ) -> Result<NickelValue, UnboundTypeVariableError> {
         let mut sy = 0;
         let mut contract_env = Environment::new();
@@ -1620,7 +1621,7 @@ impl Type {
 
     /// Return the contract corresponding to a type. Said contract must then be applied using the
     /// `ApplyContract` primitive operation.
-    pub fn contract(&self, pos_table: &PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
+    pub fn contract(&self, pos_table: &mut PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
         increment!(format!("gen_contract:{}", self.pretty_print_cap(40)));
 
         let mut sy = 0;
@@ -1650,7 +1651,7 @@ impl Type {
             | TypeF::Var(_)
             | TypeF::Record(_)
             | TypeF::Enum(_) => true,
-            TypeF::Contract(rt) if rt.as_ref().is_atom() => true,
+            TypeF::Contract(ctr) => ctr.fmt_is_atom(),
             _ => false,
         }
     }
@@ -1956,7 +1957,7 @@ impl PrettyPrintCap for Type {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
+    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat, position::PosTable};
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
@@ -1974,9 +1975,10 @@ mod tests {
     /// type variable error.
     #[track_caller]
     fn assert_simplifies_to(orig: &str, target: &str) {
+        let mut pos_table = PosTable::new();
         let parsed = parse_type(orig);
 
-        parsed.clone().contract_static().unwrap();
+        parsed.clone().contract_static(&pos_table).unwrap();
 
         let simplified = parsed.simplify(
             &mut Environment::new(),

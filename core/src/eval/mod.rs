@@ -459,15 +459,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             match current_evaled.value.content_ref() {
                 ValueContentRef::Record(RecordBody(record_data)) => {
                     let Some(next_field) = record_data.fields.get(id).cloned() else {
+                        let pos_op = self.pos_table.push_block(id.pos);
+
                         return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
                             field_names: record_data.field_names(RecordOpKind::IgnoreEmptyOpt),
-                            operator: String::from("extract_field"),
+                            operator: "extract_field".to_owned(),
                             pos_record: prev_pos_idx,
                             // TODO: we need to push back the position in the table, which isn't
                             // too bad, but is a bit useless. Maybe we should have a runtime
                             // version of identifiers with `PosIdx` instead of `TermPos`?
-                            pos_op: self.pos_table.push_block(id.pos),
+                            pos_op,
                         });
                     };
 
@@ -632,14 +634,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         get_var(&self.pos_table, id, &self.initial_env, env, pos_idx)
     }
 
-    /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
-    /// `?` operator on [crate::error::EvalErrorData], and only at the missing context to make it
-    /// an [crate:error::EvalError] once at the end.
-    fn eval_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
-        self.eval_closure_impl(closure)
-            .map_err(|err| self.err_with_ctxt(err))
-    }
-
     /// The main loop of evaluation.
     ///
     /// Implement the evaluation loop of the core language. The specific implementations of
@@ -656,7 +650,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Either:
     ///  - an evaluation error
     ///  - the evaluated term with its final environment
-    pub fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, EvalErrorData> {
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
+        self.eval_closure_impl(closure)
+            .map_err(|err| self.err_with_ctxt(err))
+    }
+
+    /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
+    /// `?` operator on [crate::error::EvalErrorData], and only at the missing context to make it
+    /// an [crate:error::EvalError] once at the end.
+    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, EvalErrorData> {
         #[cfg(feature = "metrics")]
         let start_time = std::time::Instant::now();
 

@@ -947,7 +947,7 @@ impl CacheHub {
                 Ok(cache_op) => return Ok(cache_op),
                 Err(_) => {
                     let alloc = AstAlloc::new();
-                    self.sources.parse_nickel(&alloc, file_id)?.to_mainline()
+                    self.sources.parse_nickel(&alloc, file_id)?.to_mainline(pos_table)
                 }
             }
         } else {
@@ -1440,9 +1440,9 @@ impl CacheHub {
 
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
-    pub fn add_repl_bindings(&mut self, term: &NickelValue) -> Result<(), NotARecord> {
+    pub fn add_repl_bindings(&mut self, pos_table: &PosTable, term: &NickelValue) -> Result<(), NotARecord> {
         let (slice, asts) = self.split_asts();
-        asts.add_type_bindings(slice, term)
+        asts.add_type_bindings(pos_table, slice, term)
     }
 
     /// Converts an AST and all of its transitive dependencies to the runtime representation,
@@ -1483,7 +1483,7 @@ impl CacheHub {
                         })?;
 
                 TermEntry {
-                    value: ast_entry.ast.to_mainline(),
+                    value: ast_entry.ast.to_mainline(pos_table),
                     format: ast_entry.format,
                     state: TermEntryState::default(),
                 }
@@ -2749,7 +2749,7 @@ mod ast_cache {
                 );
                 slice.wildcards.wildcards.insert(
                     file_id,
-                    wildcards_map.iter().map(ToMainline::to_mainline).collect(),
+                    wildcards_map.iter().map(|typ| typ.to_mainline(todo!("no pos table, man"))).collect(),
                 );
                 Ok(())
             })?;
@@ -2842,7 +2842,7 @@ mod ast_cache {
                 });
             let typ = typ?;
 
-            let target: mainline_typ::Type = typ.to_mainline();
+            let target: mainline_typ::Type = typ.to_mainline(todo!("I said no pos table!"));
 
             // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
             // must be populated
@@ -2933,13 +2933,14 @@ mod ast_cache {
         /// defined through interpolation.
         pub fn add_type_bindings(
             &mut self,
+            pos_table: &PosTable,
             mut slice: CacheHubView<'_>,
             term: &NickelValue,
         ) -> Result<(), NotARecord> {
             self.with_mut(|slf| {
                 // It's sad, but for now, we have to convert the term back to an AST to insert it in
                 // the type environment.
-                let ast = term.to_ast(slf.alloc);
+                let ast = term.to_ast(slf.alloc, pos_table);
                 let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
 
                 let ret = typecheck::env_add_term(

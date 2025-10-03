@@ -2,6 +2,7 @@
 use serde::Serialize;
 
 use crate::{
+    bytecode::value::{NickelValue, ValueContentRef, RecordBody, TermBody},
     identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
     term::{
@@ -208,17 +209,17 @@ fn render_query_result<R: QueryPrinter>(
     fn write_fields<R: QueryPrinter>(
         out: &mut impl Write,
         renderer: &R,
-        value: &Term,
+        value: &NickelValue,
     ) -> io::Result<()> {
         writeln!(out)?;
 
-        match value {
-            Term::Record(record) if !record.fields.is_empty() => {
+        match value.content_ref() {
+            ValueContentRef::Record(RecordBody(record)) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter().map(LocIdent::ident))
             }
-            Term::RecRecord(record, includes, dyn_fields, ..) if !record.fields.is_empty() => {
+            ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..))) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
                 fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                 fields.sort();
@@ -226,7 +227,7 @@ fn render_query_result<R: QueryPrinter>(
                 fields.extend(dyn_fields.iter().map(|_| dynamic));
                 renderer.write_fields(out, fields.into_iter())
             }
-            Term::Record(..) | Term::RecRecord(..) => renderer.write_metadata(out, "value", "{}"),
+            ValueContentRef::Record(..) | ValueContentRef::Term(TermBody(Term::RecRecord(..))) => renderer.write_metadata(out, "value", "{}"),
             _ => Ok(()),
         }
     }
@@ -302,8 +303,8 @@ fn render_query_result<R: QueryPrinter>(
         _ => (),
     }
 
-    match field.value {
-        Some(ref value) if selected_attrs.value => write_fields(out, renderer, value.as_ref())?,
+    match &field.value {
+        Some(value) if selected_attrs.value => write_fields(out, renderer, value)?,
         _ => (),
     };
 

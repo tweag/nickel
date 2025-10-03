@@ -13,21 +13,22 @@ use malachite::base::num::conversion::traits::ToSci;
 use ouroboros::self_referencing;
 
 use crate::{
-    bytecode::ast::{
-        alloc::{AstAlloc, CloneTo},
-        compat::ToMainline as _,
-        typ::{EnumRow, RecordRow, Type},
+    bytecode::{
+        ast::{
+            Ast,
+            alloc::{AstAlloc, CloneTo},
+            compat::ToMainline as _,
+            typ::{EnumRow, RecordRow, Type},
+        },
         value::{EnumVariantBody, NickelValue},
-        Ast,
     },
     cache::InputFormat,
     eval::callstack::CallStack,
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     label::{
-        self,
+        self, MergeKind, MergeLabel,
         ty_path::{self, PathSpan},
-        MergeKind, MergeLabel,
     },
     parser::{
         self,
@@ -38,8 +39,8 @@ use crate::{
     position::{PosIdx, PosTable, RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer},
-    term::{pattern::Pattern, record::FieldMetadata, Number},
-    typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
+    term::{Number, pattern::Pattern, record::FieldMetadata},
+    typ::{TypeF, VarKindDiscriminant},
 };
 
 pub mod report;
@@ -763,7 +764,7 @@ pub enum ImportError {
     NoPackageMap { pos: TermPos },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExportError {
     /// The position table, mapping position indices to spans.
     pub pos_table: PosTable,
@@ -818,7 +819,7 @@ pub enum ReplError {
     InvalidQueryPath(ParseError),
 }
 
-impl From<EvalErrorData> for Error {
+impl From<EvalError> for Error {
     fn from(error: EvalError) -> Error {
         Error::EvalError(error)
     }
@@ -1068,8 +1069,7 @@ impl ParseError {
     }
 }
 
-pub const INTERNAL_ERROR_MSG: &str =
-    "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider \
+pub const INTERNAL_ERROR_MSG: &str = "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider \
  reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
@@ -1247,6 +1247,7 @@ impl IntoDiagnostics for Error {
 impl IntoDiagnostics for EvalError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         let pos_table = self.ctxt.pos_table;
+
         match self.error {
             EvalErrorData::BlameError {
                 evaluated_arg,
@@ -1301,9 +1302,11 @@ impl IntoDiagnostics for EvalError {
                     }
                 }
 
-                let diags = vec![Diagnostic::error()
-                    .with_message(format!("missing definition for `{id}`",))
-                    .with_labels(labels)];
+                let diags = vec![
+                    Diagnostic::error()
+                        .with_message(format!("missing definition for `{id}`",))
+                        .with_labels(labels),
+                ];
 
                 diags
             }
@@ -1343,20 +1346,24 @@ impl IntoDiagnostics for EvalError {
                     }
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("dynamic type error")
-                    .with_labels(labels)
-                    .with_notes(vec![message])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("dynamic type error")
+                        .with_labels(labels)
+                        .with_notes(vec![message]),
+                ]
             }
             EvalErrorData::ParseError(parse_error) => parse_error.into_diagnostics(files),
-            EvalErrorData::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
-                .with_message("not a function")
-                .with_labels(vec![
-                    primary_term(&pos_table, &t, files)
-                        .with_message("this term is applied, but it is not a function"),
-                    secondary_alt(pos_table.get(pos_opt), format!("({t}) ({arg})"), files)
-                        .with_message("applied here"),
-                ])],
+            EvalErrorData::NotAFunc(t, arg, pos_opt) => vec![
+                Diagnostic::error()
+                    .with_message("not a function")
+                    .with_labels(vec![
+                        primary_term(&pos_table, &t, files)
+                            .with_message("this term is applied, but it is not a function"),
+                        secondary_alt(pos_table.get(pos_opt), format!("({t}) ({arg})"), files)
+                            .with_message("applied here"),
+                    ]),
+            ],
             EvalErrorData::FieldMissing {
                 id: name,
                 field_names,
@@ -1368,7 +1375,7 @@ impl IntoDiagnostics for EvalError {
                 let mut notes = Vec::new();
                 let field = escape(name.as_ref());
 
-                if let Some(span) = self.ctxt.pos_table.get(pos_op).into_opt() {
+                if let Some(span) = pos_table.get(pos_op).into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(format!("this requires the field `{field}` to exist")),
@@ -1379,7 +1386,7 @@ impl IntoDiagnostics for EvalError {
                     ));
                 }
 
-                if let Some(span) = self.ctxt.pos_table.get(pos_record).as_opt_ref() {
+                if let Some(span) = pos_table.get(pos_record).as_opt_ref() {
                     labels.push(
                         secondary(span)
                             .with_message(format!("this record lacks the field `{field}`")),
@@ -1388,10 +1395,12 @@ impl IntoDiagnostics for EvalError {
 
                 suggest::add_suggestion(&mut notes, &field_names, &name);
 
-                vec![Diagnostic::error()
-                    .with_message(format!("missing field `{field}`"))
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("missing field `{field}`"))
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
             EvalErrorData::NotEnoughArgs(count, op, span_opt) => {
                 let mut labels = Vec::new();
@@ -1407,10 +1416,12 @@ impl IntoDiagnostics for EvalError {
                     notes.push(msg);
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("not enough arguments")
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("not enough arguments")
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
             EvalErrorData::MergeIncompatibleArgs {
                 left_arg,
@@ -1518,28 +1529,32 @@ impl IntoDiagnostics for EvalError {
                     }
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("non mergeable terms")
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("non mergeable terms")
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
-            EvalErrorData::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
-                .with_message(format!("unbound identifier `{ident}`"))
-                .with_labels(vec![primary_alt(
-                    span_opt.into_opt(),
-                    ident.to_string(),
-                    files,
-                )
-                .with_message("this identifier is unbound")])],
-            EvalErrorData::InfiniteRecursion(_call_stack, span_opt) => {
-                let labels = span_opt
+            EvalErrorData::UnboundIdentifier(ident, span_opt) => vec![
+                Diagnostic::error()
+                    .with_message(format!("unbound identifier `{ident}`"))
+                    .with_labels(vec![
+                        primary_alt(span_opt.into_opt(), ident.to_string(), files)
+                            .with_message("this identifier is unbound"),
+                    ]),
+            ],
+            EvalErrorData::InfiniteRecursion(_call_stack, pos_idx) => {
+                let labels = pos_table.get(pos_idx)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("recursive reference")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message("infinite recursion")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("infinite recursion")
+                        .with_labels(labels),
+                ]
             }
             EvalErrorData::Other(msg, span_opt) => {
                 let labels = pos_table
@@ -1557,10 +1572,12 @@ impl IntoDiagnostics for EvalError {
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("internal error: {msg}"))
-                    .with_labels(labels)
-                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("internal error: {msg}"))
+                        .with_labels(labels)
+                        .with_notes(vec![String::from(INTERNAL_ERROR_MSG)]),
+                ]
             }
             EvalErrorData::SerializationError(err) => err.into_diagnostics(files),
             EvalErrorData::DeserializationError(format, msg, span_opt) => {
@@ -1570,9 +1587,11 @@ impl IntoDiagnostics for EvalError {
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("{format} parse error: {msg}"))
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("{format} parse error: {msg}"))
+                        .with_labels(labels),
+                ]
             }
             EvalErrorData::DeserializationErrorWithInner { format, inner, pos } => {
                 let mut diags = inner.into_diagnostics(files);
@@ -1614,12 +1633,14 @@ impl IntoDiagnostics for EvalError {
                 let left_type = push_label("left", &left);
                 let right_type = push_label("right", &right);
 
-                vec![Diagnostic::error()
-                    .with_message("cannot compare values for equality")
-                    .with_labels(labels)
-                    .with_notes(vec![format!(
-                        "A {left_type} can't be meaningfully compared with a {right_type}"
-                    )])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("cannot compare values for equality")
+                        .with_labels(labels)
+                        .with_notes(vec![format!(
+                            "A {left_type} can't be meaningfully compared with a {right_type}"
+                        )]),
+                ]
             }
             EvalErrorData::NonExhaustiveEnumMatch {
                 expected,
@@ -1666,9 +1687,11 @@ impl IntoDiagnostics for EvalError {
                         .with_message("this value doesn't match any branch"),
                 );
 
-                vec![Diagnostic::error()
-                    .with_message("unmatched pattern")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("unmatched pattern")
+                        .with_labels(labels),
+                ]
             }
             EvalErrorData::FailedDestructuring { value, pattern } => {
                 let mut labels = Vec::new();
@@ -1682,9 +1705,11 @@ impl IntoDiagnostics for EvalError {
                         .with_message("this value failed to match"),
                 );
 
-                vec![Diagnostic::error()
-                    .with_message("destructuring failed")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("destructuring failed")
+                        .with_labels(labels),
+                ]
             }
             EvalErrorData::IllegalPolymorphicTailAccess {
                 action,
@@ -1790,9 +1815,11 @@ impl IntoDiagnostics for EvalError {
                     primary_term(&pos_table, &value, files).with_message(label)
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("tried to query field of a non-record")
-                    .with_labels(vec![label])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("tried to query field of a non-record")
+                        .with_labels(vec![label]),
+                ]
             }
         }
     }
@@ -1807,9 +1834,8 @@ mod blame_error {
         eval::callstack::CallStack,
         files::{FileId, Files},
         label::{
-            self,
+            self, Polarity,
             ty_path::{self, PathSpan},
-            Polarity,
         },
         position::{PosIdx, PosTable, TermPos},
         typ::Type,
@@ -1923,11 +1949,21 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, pos_table: &PosTable, files: &Files, call_stack: &CallStack);
+        fn extend_with_call_stack(
+            &mut self,
+            pos_table: &PosTable,
+            files: &Files,
+            call_stack: &CallStack,
+        );
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, pos_table: &PosTable, files: &Files, call_stack: &CallStack) {
+        fn extend_with_call_stack(
+            &mut self,
+            pos_table: &PosTable,
+            files: &Files,
+            call_stack: &CallStack,
+        ) {
             let (calls, curr_call) = call_stack.group_by_calls(pos_table, files);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
@@ -1935,18 +1971,20 @@ mod blame_error {
                     .map(|ident| ident.to_string())
                     .unwrap_or_else(|| String::from("<func>"));
                 Diagnostic::note().with_labels(vec![
-                    primary(&cdescr.span).with_message(format!("While calling to {name}"))
+                    primary(&cdescr.span).with_message(format!("While calling to {name}")),
                 ])
             });
-            let diags =
-                calls.into_iter().enumerate().map(|(i, cdescr)| {
-                    let name = cdescr
-                        .head
-                        .map(|ident| ident.to_string())
-                        .unwrap_or_else(|| String::from("<func>"));
-                    Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
-                        .with_message(format!("({}) calling {}", i + 1, name))])
-                });
+            let diags = calls.into_iter().enumerate().map(|(i, cdescr)| {
+                let name = cdescr
+                    .head
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| String::from("<func>"));
+                Diagnostic::note().with_labels(vec![secondary(&cdescr.span).with_message(format!(
+                    "({}) calling {}",
+                    i + 1,
+                    name
+                ))])
+            });
 
             self.extend(diag_curr_call);
             self.extend(diags);
@@ -1958,7 +1996,7 @@ mod blame_error {
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
     pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
-        use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
+        use crate::parser::{ErrorTolerantParserCompat, grammar::FixedTypeParser, lexer::Lexer};
 
         ty_path::span(path.iter().peekable(), ty)
             .or_else(|| {
@@ -2384,7 +2422,9 @@ impl IntoDiagnostics for ParseError {
 /// Returns the available attributes for each supported sigil
 // It's currently trivial, but might be expanded in the future
 fn available_sigil_attrs_note(selector: &str) -> String {
-    format!("No attributes are available for sigil selector `{selector}`. Use the selector directly as in `@{selector}:<argument>`")
+    format!(
+        "No attributes are available for sigil selector `{selector}`. Use the selector directly as in `@{selector}:<argument>`"
+    )
 }
 
 impl IntoDiagnostics for TypecheckError {
@@ -2425,72 +2465,81 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(format!("type error: missing row `{id}`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which contains the field `{id}`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which does not contain the field `{id}`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(format!("type error: missing row `{id}`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which contains the field `{id}`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which does not contain the field `{id}`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::MissingDynTail {
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(String::from("type error: missing dynamic tail `; Dyn`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which contains the tail `; Dyn`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which does not contain the tail `; Dyn`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(String::from("type error: missing dynamic tail `; Dyn`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which contains the tail `; Dyn`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which does not contain the tail `; Dyn`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::ExtraRow {
                 id,
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(format!("type error: extra row `{id}`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which does not contain the field `{id}`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which contains the extra field `{id}`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(format!("type error: extra row `{id}`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which does not contain the field `{id}`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which contains the extra field `{id}`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::ExtraDynTail {
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(String::from("type error: extra dynamic tail `; Dyn`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which does not contain the tail `; Dyn`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which contains the extra tail `; Dyn`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
-            TypecheckErrorData::UnboundTypeVariable(ident) => vec![Diagnostic::error()
+            } => vec![
+                Diagnostic::error()
+                    .with_message(String::from("type error: extra dynamic tail `; Dyn`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which does not contain the tail `; Dyn`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which contains the extra tail `; Dyn`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
+            TypecheckErrorData::UnboundTypeVariable(ident) => {
+                vec![Diagnostic::error()
                 .with_message(format!("unbound type variable `{ident}`"))
                 .with_labels(vec![primary_alt(
                     ident.pos.into_opt(),
@@ -2500,7 +2549,8 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 .with_message("this type variable is unbound")])
                 .with_notes(vec![format!(
                     "Did you forget to put a `forall {ident}.` somewhere in the enclosing type?"
-                )])],
+                )])]
+            }
             TypecheckErrorData::TypeMismatch {
                 expected,
                 inferred,
@@ -2519,20 +2569,22 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     "These types are not compatible"
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("incompatible types")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        format!("{}{}", mk_expected_msg(expected), addendum(expected),),
-                        format!("{}{}", mk_inferred_msg(inferred), addendum(inferred),),
-                        String::from(last_note),
-                    ])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("incompatible types")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            format!("{}{}", mk_expected_msg(expected), addendum(expected),),
+                            format!("{}{}", mk_inferred_msg(inferred), addendum(inferred),),
+                            String::from(last_note),
+                        ]),
+                ]
             }
             TypecheckErrorData::RecordRowMismatch {
                 id,
                 expected,
                 inferred,
-                cause: ref err,
+                cause: err,
                 pos,
             } => {
                 let mut err = err;
@@ -2587,14 +2639,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     mk_inferred_msg(inferred)
                 };
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("incompatible record rows declaration")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        note1,
-                        note2,
-                        format!("Could not match the two declarations of `{field}`"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("incompatible record rows declaration")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            note1,
+                            note2,
+                            format!("Could not match the two declarations of `{field}`"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separate error but a more
@@ -2640,14 +2694,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     mk_inferred_msg(inferred)
                 };
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("incompatible enum rows declaration")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        note1,
-                        note2,
-                        format!("Could not match the two declarations of `{id}`"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("incompatible enum rows declaration")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            note1,
+                            note2,
+                            format!("Could not match the two declarations of `{id}`"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error if any, but append a prefix to
                 // the error message to make it clear that this is not a separate error but a more
@@ -2740,12 +2796,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 cause,
                 pos,
             } => {
+                // We locally convert the type to their runtime representation as a way to reuse
+                // the code of `blame_error::path_span`, which works on the latter.
+                let mut pos_table = PosTable::new();
+
                 let PathSpan {
                     span: expd_span, ..
-                } = blame_error::path_span(files, type_path, &expected.to_mainline());
+                } = blame_error::path_span(files, type_path, &expected.to_mainline(&mut pos_table));
                 let PathSpan {
                     span: actual_span, ..
-                } = blame_error::path_span(files, type_path, &inferred.to_mainline());
+                } = blame_error::path_span(files, type_path, &inferred.to_mainline(&mut pos_table));
 
                 let mut labels = vec![
                     secondary(&expd_span).with_message("this part of the expected type"),
@@ -2754,14 +2814,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 ];
                 labels.extend(mk_expr_label(pos));
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("function types mismatch")
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        mk_expected_msg(expected),
-                        mk_inferred_msg(inferred),
-                        String::from("Could not match the two function types"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("function types mismatch")
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            mk_expected_msg(expected),
+                            mk_inferred_msg(inferred),
+                            String::from("Could not match the two function types"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
@@ -2792,16 +2854,18 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     VarKindDiscriminant::EnumRows => "enum tail",
                     VarKindDiscriminant::RecordRows => "record tail",
                 };
-                vec![Diagnostic::error()
-                    .with_message(format!(
-                        "values of type `{violating_type}` are not guaranteed to be compatible \
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "values of type `{violating_type}` are not guaranteed to be compatible \
                         with polymorphic {tail_kind} `{tail}`"
-                    ))
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
+                        ))
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
                         "Type variables introduced in a `forall` range over all possible types."
                             .to_owned(),
-                    ])]
+                    ]),
+                ]
             }
             TypecheckErrorData::CtrTypeInTermPos { contract, pos_type } => {
                 vec![Diagnostic::error()
@@ -2830,20 +2894,22 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     labels.push(secondary(span).with_message("this polymorphic type variable"));
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("invalid polymorphic generalization".to_string())
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        "While the type of this expression is still undetermined, it appears \
+                vec![
+                    Diagnostic::error()
+                        .with_message("invalid polymorphic generalization".to_string())
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "While the type of this expression is still undetermined, it appears \
                             indirectly in the type of another expression introduced before \
                             the `forall` block."
-                            .into(),
-                        format!(
-                            "The type of this expression escapes the scope of the \
+                                .into(),
+                            format!(
+                                "The type of this expression escapes the scope of the \
                                 corresponding `forall` and can't be generalized to the \
                                 polymorphic type variable `{constant}`"
-                        ),
-                    ])]
+                            ),
+                        ]),
+                ]
             }
             TypecheckErrorData::InhomogeneousRecord {
                 pos,
@@ -2860,20 +2926,24 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     ])]
             }
             TypecheckErrorData::OrPatternVarsMismatch { var, pos } => {
-                let mut labels = vec![primary_alt(var.pos.into_opt(), var.into_label(), files)
-                    .with_message("this variable must occur in all branches")];
+                let mut labels = vec![
+                    primary_alt(var.pos.into_opt(), var.into_label(), files)
+                        .with_message("this variable must occur in all branches"),
+                ];
 
                 if let Some(span) = pos.as_opt_ref() {
                     labels.push(secondary(span).with_message("in this or-pattern"));
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("or-pattern variable mismatch".to_string())
-                    .with_labels(labels)
-                    .with_notes(vec![
+                vec![
+                    Diagnostic::error()
+                        .with_message("or-pattern variable mismatch".to_string())
+                        .with_labels(labels)
+                        .with_notes(vec![
                         "All branches of an or-pattern must bind exactly the same set of variables"
                             .into(),
-                    ])]
+                    ]),
+                ]
             }
             // clone() here is unfortunate, but I haven't found a better way to interface typecheck
             // errors - which can generate a diagnostic by reference - from other errors (import
@@ -2894,9 +2964,11 @@ impl IntoDiagnostics for ImportError {
                     .map(|span| vec![secondary(span).with_message("imported here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("import of {path} failed: {error}"))
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("import of {path} failed: {error}"))
+                        .with_labels(labels),
+                ]
             }
             ImportError::ParseErrors(error, span_opt) => {
                 let mut diagnostic: Vec<Diagnostic<FileId>> = error
@@ -2938,10 +3010,16 @@ impl IntoDiagnostics for ImportError {
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("imported here")])
                     .unwrap_or_default();
-                vec![Diagnostic::error()
-                    .with_message("tried to import from a package, but no package manifest found")
-                    .with_labels(labels)
-                    .with_notes(vec!["did you forget a --manifest-path argument?".to_owned()])]
+                vec![
+                    Diagnostic::error()
+                        .with_message(
+                            "tried to import from a package, but no package manifest found",
+                        )
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "did you forget a --manifest-path argument?".to_owned(),
+                        ]),
+                ]
             }
         }
     }
@@ -2958,17 +3036,21 @@ impl IntoDiagnostics for ExportError {
         let pos_table = self.pos_table;
 
         match self.data {
-            ExportErrorData::NotAString(rt) => vec![Diagnostic::error()
-                .with_message(format!(
-                    "raw export expects a String value, but got {}",
-                    rt.type_of().unwrap_or("<unevaluated>")
-                ))
-                .with_labels(vec![primary_term(&pos_table, &rt, files)])
-                .with_notes(notes)],
-            ExportErrorData::UnsupportedNull(format, rt) => vec![Diagnostic::error()
-                .with_message(format!("{format} format doesn't support null values"))
-                .with_labels(vec![primary_term(&pos_table, &rt, files)])
-                .with_notes(notes)],
+            ExportErrorData::NotAString(rt) => vec![
+                Diagnostic::error()
+                    .with_message(format!(
+                        "raw export expects a String value, but got {}",
+                        rt.type_of().unwrap_or("<unevaluated>")
+                    ))
+                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                    .with_notes(notes),
+            ],
+            ExportErrorData::UnsupportedNull(format, rt) => vec![
+                Diagnostic::error()
+                    .with_message(format!("{format} format doesn't support null values"))
+                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                    .with_notes(notes),
+            ],
             ExportErrorData::NonSerializable(rt) => {
                 notes.extend([
                     "Nickel only supports serializing to and from strings, booleans, numbers, \
@@ -2983,18 +3065,22 @@ impl IntoDiagnostics for ExportError {
                         .into(),
                 ]);
 
-                vec![Diagnostic::error()
-                    .with_message("non serializable term")
-                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("non serializable term")
+                        .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::NoDocumentation(rt) => {
                 notes.push("documentation can only be collected from a record.".to_owned());
 
-                vec![Diagnostic::error()
-                    .with_message("no documentation found")
-                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("no documentation found")
+                        .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::NumberOutOfRange { term, value } => {
                 notes.push(format!(
@@ -3003,20 +3089,24 @@ impl IntoDiagnostics for ExportError {
                     f64::MAX
                 ));
 
-                vec![Diagnostic::error()
-                    .with_message(format!(
-                        "The number {} is too large (in absolute value) to be serialized.",
-                        value.to_sci()
-                    ))
-                    .with_labels(vec![primary_term(&pos_table, &term, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "The number {} is too large (in absolute value) to be serialized.",
+                            value.to_sci()
+                        ))
+                        .with_labels(vec![primary_term(&pos_table, &term, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::Other(msg) => {
                 notes.push(msg);
 
-                vec![Diagnostic::error()
-                    .with_message("serialization failed")
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("serialization failed")
+                        .with_notes(notes),
+                ]
             }
         }
     }
@@ -3033,11 +3123,13 @@ impl IntoDiagnostics for IOError {
 impl IntoDiagnostics for ReplError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
-            ReplError::UnknownCommand(s) => vec![Diagnostic::error()
-                .with_message(format!("unknown command `{s}`"))
-                .with_notes(vec![String::from(
-                    "type `:?` or `:help` for a list of available commands.",
-                )])],
+            ReplError::UnknownCommand(s) => vec![
+                Diagnostic::error()
+                    .with_message(format!("unknown command `{s}`"))
+                    .with_notes(vec![String::from(
+                        "type `:?` or `:help` for a list of available commands.",
+                    )]),
+            ],
             ReplError::InvalidQueryPath(err) => err.into_diagnostics(files),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
@@ -3048,9 +3140,11 @@ impl IntoDiagnostics for ReplError {
                     "type `:? {cmd}` or `:help {cmd}` for more information."
                 ));
 
-                vec![Diagnostic::error()
-                    .with_message(format!("{cmd}: missing argument"))
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("{cmd}: missing argument"))
+                        .with_notes(notes),
+                ]
             }
         }
     }
