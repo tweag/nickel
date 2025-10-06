@@ -23,6 +23,7 @@ use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use nickel_lang_core::{
+    deserialize::RustDeserializationError as DeserializationError,
     error::{report::DiagnosticsWrapper, IntoDiagnostics, NullReporter},
     eval::{cache::CacheImpl, Closure, Environment},
     files::Files,
@@ -509,6 +510,29 @@ impl Expr {
     /// evaluate this expression further.
     pub fn is_value(&self) -> bool {
         self.rt.as_ref().is_eff_whnf()
+    }
+
+    /// Converts this expression into any type that implements `serde::Deserialize`.
+    ///
+    /// This expression should be fully evaluated, or the conversion will fail. The
+    /// conversion might also fail if the expression doesn't match the expected shape
+    /// of the deserializable type.
+    ///
+    /// Unlike Nickel's `std.serialize` function, this conversion *does* support
+    /// Nickel enum variants.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// #[derive(serde::Deserialize)]
+    /// struct Point { x: f64, y: f64 }
+    ///
+    /// let mut context = nickel_lang::Context::default();
+    /// let p: Point = context.eval_deep("{ x = 1, y = 2.3 }").unwrap().to_serde().unwrap();
+    /// assert_eq!(p.x, 1.0);
+    /// ```
+    pub fn to_serde<'de, T: serde::Deserialize<'de>>(&self) -> Result<T, DeserializationError> {
+        T::deserialize(self.rt.clone())
     }
 }
 
