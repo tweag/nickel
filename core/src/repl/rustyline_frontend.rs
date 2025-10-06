@@ -29,7 +29,7 @@ fn color_mode_from_opt(c: ColorOpt) -> rustyline::config::ColorMode {
 }
 
 /// Main loop of the REPL.
-pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
+pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitError> {
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::stderr());
 
     match repl.load_stdlib() {
@@ -47,7 +47,9 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
 
     let mut editor = Editor::with_config(config(color_opt))
         .map_err(|readline_err| InitError::ReadlineError(format!("{readline_err}")))?;
-    let _ = editor.load_history(&histfile);
+    if let Some(histfile) = histfile.as_ref() {
+        let _ = editor.load_history(histfile);
+    }
     editor.set_helper(Some(validator));
 
     let result = loop {
@@ -139,12 +141,16 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
             }
             Err(ReadlineError::Interrupted) => (),
             Err(err) => {
-                let _ = editor.save_history(&histfile);
+                if let Some(histfile) = histfile.as_ref() {
+                    let _ = editor.save_history(histfile);
+                }
                 repl.report(Error::IOError(IOError(format!("{err}"))), color_opt);
             }
         }
     };
 
-    let _ = editor.save_history(&histfile);
+    if let Some(histfile) = histfile.as_ref() {
+        let _ = editor.save_history(histfile);
+    }
     result
 }
