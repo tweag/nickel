@@ -241,7 +241,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ..Default::default()
                 }
                 .with_diagnostic_message("cannot merge unequal arrays")
-                .append_diagnostic_note(
+                .with_append_diagnostic_note(
                     "\
                     This equality contract was auto-generated from a merge operation on two arrays. \
                     Arrays can only be merged if they are equal.",

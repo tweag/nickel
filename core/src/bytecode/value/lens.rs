@@ -30,7 +30,9 @@ use std::{
 /// [std::rc::Rc::unwrap_or_clone].
 ///
 /// [Self] can either be consumed using `take()`, returning the owned content of the body, or
-/// reverted back to the original value using `restore()`.
+/// reverted back to the original value using `restore()`. When the structure of the lens isn't
+/// enough to check if the content should be taken or not, [Self] also provides [Self::peek] which
+/// returns a reference to the inner value, so that it can be examined arbitrarily.
 ///
 /// See also [super::ValueContent].
 pub struct ValueLens<T> {
@@ -43,6 +45,11 @@ impl<T> ValueLens<T> {
     /// Do not access the body and restore the original value unchanged.
     pub fn restore(self) -> NickelValue {
         self.value
+    }
+
+    /// Peeks at the underlying value, without consuming the lens.
+    pub fn peek(&self) -> &NickelValue {
+        &self.value
     }
 
     /// Consumes the value and return the content of the body. If the block is unique, it is
