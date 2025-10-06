@@ -188,23 +188,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
+                mk_type_error!(op_name = $op_name, $expected, value = value)
+            };
+            (op_name=$op_name:expr, $expected:expr, value=$value:expr) => {
                 Err(EvalErrorData::UnaryPrimopTypeError {
                     primop: String::from($op_name),
                     expected: String::from($expected),
                     pos_arg,
-                    arg_evaluated: value,
+                    arg_evaluated: $value,
                 })
             };
             ($expected:expr) => {
                 mk_type_error!(op_name = u_op.to_string(), $expected)
             };
+            ($expected:expr, value=$value:expr) => {
+                mk_type_error!(op_name = u_op.to_string(), $expected, value = $value)
+            };
+            ($expected:expr, value=$value:expr) => {};
             ($expected:expr, $arg_number:expr) => {
+                mk_type_error!($expected, $arg_number, value = value)
+            };
+            ($expected:expr, $arg_number:expr, value=$value:expr) => {
                 Err(EvalErrorData::NAryPrimopTypeError {
                     primop: u_op.to_string(),
                     expected: String::from($expected),
                     arg_number: $arg_number,
                     pos_arg,
-                    arg_evaluated: value,
+                    arg_evaluated: $value,
                     pos_op,
                 })
             };
@@ -293,18 +303,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Bool")
                 }
             }
-            UnaryOp::Blame => {
-                if let ValueContent::Label(lens) = value.content() {
+            UnaryOp::Blame => match value.content() {
+                ValueContent::Label(lens) => {
                     let label = lens.take().0;
 
                     Err(EvalErrorData::BlameError {
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                         label,
                     })
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
             // match_sharedterm!(match (t) {
             //     Term::Lbl(label) => Err(EvalErrorData::BlameError {
             //         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
@@ -347,9 +358,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     let mut cases = match cases_val.content() {
                         ValueContent::Record(lens) => lens.take().0.fields,
-                        ValueContent::Inline(lens)
-                            if matches!(lens.take(), InlineValue::EmptyRecord) =>
-                        {
+                        ValueContent::Inline(lens) if lens.peek().is_empty_record() => {
                             Default::default()
                         }
                         _ => panic!("invalid argument for %match%"),
@@ -378,63 +387,65 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Enum", 2)
                 }
             }
-            UnaryOp::LabelFlipPol => {
-                if let ValueContent::Label(lens) = value.content() {
+            UnaryOp::LabelFlipPol => match value.content() {
+                ValueContent::Label(lens) => {
                     let mut label = lens.take().0;
                     label.polarity = label.polarity.flip();
                     Ok(NickelValue::label(label, pos_op_inh).into())
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
             UnaryOp::LabelPol => {
                 if let Some(label) = value.as_label() {
-                    Ok(label
-                        .0
-                        .polarity
-                        .into::<NickelValue>()
+                    Ok(NickelValue::from(label.0.polarity)
                         .with_pos_idx(&mut self.pos_table, pos_op_inh)
                         .into())
                 } else {
                     mk_type_error!("Label")
                 }
             }
-            UnaryOp::LabelGoDom => {
-                if let ValueContent::Label(lens) = value.content() {
+            UnaryOp::LabelGoDom => match value.content() {
+                ValueContent::Label(lens) => {
                     let mut label = lens.take().0;
                     label.path.push(ty_path::Elem::Domain);
                     Ok(NickelValue::label(label, pos_op_inh).into())
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
-            UnaryOp::LabelGoCodom => {
-                if let ValueContent::Label(lens) = value.content() {
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
+            UnaryOp::LabelGoCodom => match value.content() {
+                ValueContent::Label(lens) => {
                     let mut label = lens.take().0;
                     label.path.push(ty_path::Elem::Codomain);
                     Ok(NickelValue::label(label, pos_op_inh).into())
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
-            UnaryOp::LabelGoArray => {
-                if let ValueContent::Label(lens) = value.content() {
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
+            UnaryOp::LabelGoArray => match value.content() {
+                ValueContent::Label(lens) => {
                     let mut label = lens.take().0;
                     label.path.push(ty_path::Elem::Array);
                     Ok(NickelValue::label(label, pos_op_inh).into())
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
-            UnaryOp::LabelGoDict => {
-                if let ValueContent::Label(lens) = value.content() {
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
+            UnaryOp::LabelGoDict => match value.content() {
+                ValueContent::Label(lens) => {
                     let mut label = lens.take().0;
                     label.path.push(ty_path::Elem::Dict);
                     Ok(NickelValue::label(label, pos_op_inh).into())
-                } else {
-                    mk_type_error!("Label")
                 }
-            }
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
+            },
             UnaryOp::RecordAccess(id) => {
                 if let Some(RecordBody(record)) = value.as_record() {
                     // We have to apply potentially pending contracts. Right now, this
@@ -533,37 +544,43 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EvalErrorData::NotEnoughArgs(2, String::from("array/map"), pos_op)
                 })?;
 
-                if let ValueContent::Array(lens) = value.content() {
-                    let array_body = lens.take();
-                    let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
+                match value.content() {
+                    ValueContent::Array(lens) => {
+                        let array_body = lens.take();
+                        let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
 
-                    // Array elements are closurized to preserve laziness of data
-                    // structures. It maintains the invariant that any data structure only
-                    // contain indices (that is, currently, variables).
-                    let ts = array_body
-                        .array
-                        .into_iter()
-                        .map(|t| {
-                            let t_with_ctrs = RuntimeContract::apply_all(
-                                t,
-                                array_body.pending_contracts.iter().cloned(),
-                                pos,
-                            );
+                        // Array elements are closurized to preserve laziness of data
+                        // structures. It maintains the invariant that any data structure only
+                        // contain indices (that is, currently, variables).
+                        let ts = array_body
+                            .array
+                            .into_iter()
+                            .map(|t| {
+                                let t_with_ctrs = RuntimeContract::apply_all(
+                                    t,
+                                    array_body.pending_contracts.iter().cloned(),
+                                    pos,
+                                );
 
-                            NickelValue::term(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
+                                NickelValue::term(
+                                    Term::App(f_as_var.clone(), t_with_ctrs),
+                                    pos_op_inh,
+                                )
                                 .closurize(&mut self.context.cache, env.clone())
-                        })
-                        .collect();
+                            })
+                            .collect();
 
-                    Ok(NickelValue::array_force_pos(
-                        &mut self.pos_table,
-                        ts,
-                        Vec::new(),
-                        pos_op_inh,
-                    )
-                    .into())
-                } else {
-                    mk_type_error!("Array")
+                        Ok(NickelValue::array_force_pos(
+                            &mut self.pos_table,
+                            ts,
+                            Vec::new(),
+                            pos_op_inh,
+                        )
+                        .into())
+                    }
+                    lens => {
+                        mk_type_error!("Array", value = lens.restore())
+                    }
                 }
             }
             UnaryOp::ArrayGen => {
@@ -602,7 +619,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // currently, variables).
                 let ts = (0..n_int)
                     .map(|n| {
-                        mk_app!(f_closure.clone(), NickelValue::number_posless(n.into()))
+                        mk_app!(f_closure.clone(), NickelValue::number_posless(n))
                             .closurize(&mut self.context.cache, env.clone())
                     })
                     .collect();
@@ -675,7 +692,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         )
                         .into())
                     }
-                    _ => mk_type_error!("Record", 1),
+                    lens => mk_type_error!("Record", 1, value = lens.restore()),
                 }
             }
             UnaryOp::Seq => self
@@ -747,7 +764,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Ok(terms.into())
                     }
                     ValueContentRef::EnumVariant(EnumVariantBody {
-                        tag,
+                        tag: _,
                         arg: Some(arg),
                     }) => Ok(Closure {
                         value: seq_terms(std::iter::once(arg.clone()), pos_op),
@@ -819,7 +836,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env: env_chunks,
                         })
                     } else {
-                        Ok(NickelValue::string(acc.into(), pos_op_inh).into())
+                        Ok(NickelValue::string(acc, pos_op_inh).into())
                     }
                 } else {
                     // Since the error halts the evaluation, we don't bother cleaning the stack of
@@ -1081,11 +1098,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             )
                         });
 
-                        let cont = NickelValue::record_force_pos(
-                            &mut self.pos_table,
-                            RecordData { fields, ..record },
-                            pos.to_inherited_block(&mut self.pos_table),
-                        );
+                        let pos_inh = pos.to_inherited_block(&mut self.pos_table);
+                        // unwrap(): will go away soon
+                        let cont =
+                            NickelValue::record(RecordData { fields, ..record }, pos_inh).unwrap();
 
                         Ok(seq_terms(&mut self.pos_table, terms, pos_op, cont).into())
                     }
@@ -1170,6 +1186,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }),
                 }
             }
+            UnaryOp::RecordEmptyWithTail => {
+                let lens = value.content();
+
+                let ValueContent::Record(lens) = lens else {
+                    return mk_type_error!("Record", value = lens.restore());
+                };
+
+                let record = lens.take().0;
+                let mut result = RecordData::empty();
+                result.sealed_tail = record.sealed_tail;
+
+                Ok(Closure {
+                    // unwrap(): will go away soon
+                    value: NickelValue::record(result, pos_op_inh).unwrap(),
+                    env,
+                })
+            }
             UnaryOp::RecordFreeze => {
                 // If the record is already frozen, there's nothing to do.
                 if matches!(value.as_record(), Some(RecordBody(record)) if record.attrs.frozen) {
@@ -1186,7 +1219,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 match value.content() {
                     ValueContent::Record(lens) => {
-                        let mut record = lens.take().0;
+                        let record = lens.take().0;
 
                         // It's not clear what the semantics of freezing a record with a sealed tail
                         // would be, as their might be dependencies between the sealed part and the
@@ -1235,7 +1268,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         })
                     }
-                    _ => mk_type_error!("Record"),
+                    lens => mk_type_error!("Record", value = lens.restore()),
                 }
             }
             UnaryOp::Trace => {
@@ -1260,7 +1293,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         env,
                     })
                 }
-                _ => mk_type_error!("Label"),
+                lens => {
+                    mk_type_error!("Label", value = lens.restore())
+                }
             },
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
@@ -1302,7 +1337,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumMakeVariant => {
-                let Some(tag) = value.as_string() else {
+                let Some(StringBody(tag)) = value.as_string() else {
                     return mk_type_error!("String");
                 };
 
@@ -1313,7 +1348,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let arg = NickelValue::thunk(Thunk::new(arg_clos), arg_pos);
 
                 Ok(NickelValue::enum_variant(
-                    LocIdent::new(tag.0).with_pos(self.pos_table.get(pos)),
+                    LocIdent::new(&tag).with_pos(self.pos_table.get(pos)),
                     Some(arg),
                     pos_op_inh,
                 )
@@ -1368,7 +1403,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         Ok(cont)
                     }
-                    _ => mk_type_error!("Record"),
+                    lens => mk_type_error!("Record", value = lens.restore()),
                 }
             }
             UnaryOp::ContractCustom => {
@@ -2028,7 +2063,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .and_then(|field| field.value.as_ref())
                         .and_then(NickelValue::as_string)
                     {
-                        label = label.with_diagnostic_message(msg.0.into_inner());
+                        label = label.with_diagnostic_message(msg.0.clone().into_inner());
                     }
 
                     if let Some(notes) = record_data
@@ -2039,12 +2074,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     {
                         let notes = notes
                             .array
-                            .into_iter()
+                            .iter()
                             .map(|element| {
                                 if let Some(s) = element.as_string() {
-                                    Ok(s.0.into_inner())
+                                    Ok(s.0.clone().into_inner())
                                 } else {
-                                    mk_type_error!("String (notes)", 1, element)
+                                    mk_type_error!("String (notes)", 1, element.clone())
                                 }
                             })
                             .collect::<Result<Vec<_>, _>>()?;
@@ -2177,7 +2212,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let mut label = label.0.clone();
                 label
                     .path
-                    .push(ty_path::Elem::Field(field.0.into_inner().into()));
+                    .push(ty_path::Elem::Field(field.0.clone().into_inner().into()));
                 Ok(NickelValue::label(label, pos_op_inh).into())
             }
             BinaryOp::RecordGet => {
@@ -2239,8 +2274,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ext_kind,
                 op_kind,
             } => {
+                // Since we take ownership of the data hidden in `RecordInsert`, we can't pretty
+                // print it anymore. However we do need a string representation for the error case,
+                // which we reconstruct here.
+                let op_name = || {
+                    BinaryOp::RecordInsert {
+                        ext_kind,
+                        op_kind,
+                        metadata: Box::new(FieldMetadata::default()),
+                        pending_contracts: Vec::new(),
+                    }
+                    .to_string()
+                };
+
                 let Some(StringBody(id)) = value1.as_string() else {
-                    return mk_type_error!("String", 1, value1);
+                    return mk_type_error!(op_name = op_name(), "String", 1, value1);
                 };
 
                 let mut value2 = value2;
@@ -2253,7 +2301,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let ValueContentRefMut::Record(RecordBody(record)) = value2.content_make_mut()
                 else {
-                    return mk_type_error!("Record", 2, value2);
+                    return mk_type_error!(op_name = op_name(), "Record", 2, value2);
                 };
 
                 // If a defined value is expected for this field, it must be
@@ -2286,9 +2334,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     {
                         Err(EvalErrorData::Other(
                             format!(
-                                "record/insert: \
-                                            tried to extend a record with the field {id}, \
-                                            but it already exists"
+                                "{}: \
+                                tried to extend a record with the field {id}, \
+                                but it already exists",
+                                op_name(),
                             ),
                             pos_op,
                         ))
@@ -2368,7 +2417,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 Ok(NickelValue::bool_value(matches!(
-                            record.fields.get(&LocIdent::from(id.into_inner())),
+                            record.fields.get(&LocIdent::from(id.clone().into_inner())),
                             Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
                     self.pos_table.make_inline(pos_op_inh)
@@ -2385,7 +2434,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 Ok(NickelValue::bool_value(
                         matches!(
-                            record.fields.get(&LocIdent::from(id.into_inner())),
+                            record.fields.get(&LocIdent::from(id.clone().into_inner())),
                             Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
                         self.pos_table.make_inline(pos_op_inh),
@@ -2398,7 +2447,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     value1 = NickelValue::empty_array_block(pos1);
                 }
 
-                let ValueContentRefMut::Array(array_data1) = value1.content_make_mut() else {
+                let Some(array_data1) = value1.as_array() else {
                     return mk_type_error!("Array", 1, value1);
                 };
 
@@ -2406,103 +2455,159 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Array", 2, value2);
                 };
 
-                let mut array1 = array_data1.array;
-                //TODO[seen at RFC007]: this is unsound, because it might change the order in which
-                //contracts are applied (common contracts are delayed), but the order of
-                //application might be relied upon by the users.
+                // In all generality, we need to apply the pending contracts on both sides, as they
+                // can differ. Even if some are common, the order of contracts is meaningful, so
+                // deduplicating the common part is not trivial.
                 //
-                // We have two sets of contracts from the LHS and RHS arrays.
-                // - Common contracts between the two sides can be put into
-                // `pending_contracts` of the resulting concatenation as they're
-                // shared by all elements: we don't have to apply them just yet.
-                // - Contracts thats are specific to the LHS or the RHS have to
-                // applied because we don't have a way of tracking which elements
-                // should take which contracts.
+                // Still, there's a simple common case that we can handle: if both arrays have only
+                // one pending contract, and it's the same, we can keep it lazy.
+                match (
+                    array_data1.pending_contracts.as_slice(),
+                    array_data2.pending_contracts.as_slice(),
+                ) {
+                    // We don't deduplicate polymorphic contracts, because
+                    // they're not idempotent.
+                    ([ctr1], [ctr2])
+                        if !ctr1.can_have_poly_ctrs()
+                            && contract_eq(&ctr1.contract, &env1, &ctr2.contract, &env2) =>
+                    {
+                        let result = array_data1
+                            .array
+                            .iter()
+                            .chain(array_data2.array.iter())
+                            .cloned()
+                            .collect();
 
-                // Separate contracts between the parts that aren't common, and
-                // must be applied right away, and the common part, which can be
-                // kept lazy.
-                let ctrs_left = array_data1.pending_contracts;
-                // We use a vector of `Option` so that we can set the elements to
-                // remove to `None` and make a single pass at the end
-                // to retain the remaining ones.
-                let mut ctrs_right_sieve: Vec<_> =
-                    array_data2.pending_contracts.iter().map(Some).collect();
-                let mut ctrs_common = Vec::new();
-
-                // We basically compute the intersection (`ctr_common`),
-                // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                let ctrs_left_dedup: Vec<_> = ctrs_left
-                    .into_iter()
-                    .filter(|ctr| {
-                        // We don't deduplicate polymorphic contracts, because
-                        // they're not idempotent.
-                        if ctr.can_have_poly_ctrs() {
-                            return true;
-                        }
-
-                        // We check if there is a remaining contract in
-                        // `ctrs_right_sieve` which matches `ctr`: in this case,
-                        // `twin_index` will hold its index.
-                        let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
-                            other_ctr.as_ref().is_some_and(|other_ctr| {
-                                contract_eq(&ctr.contract, &env1, &other_ctr.contract, &env2)
+                        Ok(NickelValue::array(result, vec![ctr1.clone()], pos_op_inh)
+                            .unwrap()
+                            .into())
+                    }
+                    _ => {
+                        // We need to collect in two phases, since the mapped closures capture
+                        // `&mut self.cache`, so chaining the iterators first wouldn't work.
+                        let mut result: Array = array_data1
+                            .array
+                            .iter()
+                            .cloned()
+                            .map(|elt| {
+                                RuntimeContract::apply_all(
+                                    elt,
+                                    array_data1.pending_contracts.iter().cloned(),
+                                    pos1,
+                                )
+                                .closurize(&mut self.context.cache, env1.clone())
                             })
-                        });
+                            .collect();
 
-                        if let Some(index) = twin_index {
-                            // unwrap(): we know that the contract at this index is
-                            // `Some`, because all elements are initially some when
-                            // creating `ctrs_right_sieve` and then we don't
-                            // consider `None` values when computing a new `index`
-                            // in the `position` above.
-                            let common = ctrs_right_sieve[index].take().unwrap().clone();
-                            ctrs_common.push(common);
-                            false
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
-
-                let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
-                let ctrs_left_empty = ctrs_left_dedup.is_empty();
-                let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten().cloned();
-
-                let result = if ctrs_right_empty && ctrs_left_empty {
-                    array1.extend(array_data2.array.iter().cloned());
-
-                    array1
-                } else if ctrs_left_empty {
-                    array1.extend(array_data2.array.iter().cloned().map(|t| {
-                        RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
-                            .closurize(&mut self.context.cache, env1.clone())
-                    }));
-
-                    array1
-                } else {
-                    let mut array = Array::default();
-
-                    array.extend(array1.into_iter().map(|t| {
-                        RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
-                            .closurize(&mut self.context.cache, env1.clone())
-                    }));
-
-                    array.extend(array_data2.array.into_iter().map(|t| {
-                        RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                        result.extend(array_data2.array.iter().cloned().map(|elt| {
+                            RuntimeContract::apply_all(
+                                elt,
+                                array_data2.pending_contracts.iter().cloned(),
+                                pos2,
+                            )
                             .closurize(&mut self.context.cache, env2.clone())
-                    }));
+                        }));
 
-                    array
-                };
-
-                Ok(NickelValue::array_force_pos(
-                    &mut self.pos_table,
-                    result,
-                    ctrs_common,
-                    pos_op_inh,
-                )
-                .into())
+                        Ok(NickelValue::array(result, Vec::new(), pos_op_inh)
+                            .unwrap()
+                            .into())
+                    }
+                }
+                //
+                // let mut array1 = &array_data1.array;
+                // //TODO[seen at RFC007]: this is unsound, because it might change the order in which
+                // //contracts are applied (common contracts are delayed), but the order of
+                // //application might be relied upon by the users.
+                // //
+                // // We have two sets of contracts from the LHS and RHS arrays.
+                // // - Common contracts between the two sides can be put into
+                // // `pending_contracts` of the resulting concatenation as they're
+                // // shared by all elements: we don't have to apply them just yet.
+                // // - Contracts thats are specific to the LHS or the RHS have to
+                // // applied because we don't have a way of tracking which elements
+                // // should take which contracts.
+                //
+                // // Separate contracts between the parts that aren't common, and
+                // // must be applied right away, and the common part, which can be
+                // // kept lazy.
+                // let ctrs_left = &array_data1.pending_contracts;
+                // // We use a vector of `Option` so that we can set the elements to
+                // // remove to `None` and make a single pass at the end
+                // // to retain the remaining ones.
+                // let mut ctrs_right_sieve: Vec<_> =
+                //     array_data2.pending_contracts.iter().map(Some).collect();
+                // let mut ctrs_common = Vec::new();
+                //
+                // // We basically compute the intersection (`ctr_common`),
+                // // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
+                // let ctrs_left_dedup: Vec<_> = ctrs_left
+                //     .into_iter()
+                //     .filter(|ctr| {
+                //         // We don't deduplicate polymorphic contracts, because
+                //         // they're not idempotent.
+                //         if ctr.can_have_poly_ctrs() {
+                //             return true;
+                //         }
+                //
+                //         // We check if there is a remaining contract in
+                //         // `ctrs_right_sieve` which matches `ctr`: in this case,
+                //         // `twin_index` will hold its index.
+                //         let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
+                //             other_ctr.as_ref().is_some_and(|other_ctr| {
+                //                 contract_eq(&ctr.contract, &env1, &other_ctr.contract, &env2)
+                //             })
+                //         });
+                //
+                //         if let Some(index) = twin_index {
+                //             // unwrap(): we know that the contract at this index is
+                //             // `Some`, because all elements are initially some when
+                //             // creating `ctrs_right_sieve` and then we don't
+                //             // consider `None` values when computing a new `index`
+                //             // in the `position` above.
+                //             let common = ctrs_right_sieve[index].take().unwrap().clone();
+                //             ctrs_common.push(common);
+                //             false
+                //         } else {
+                //             true
+                //         }
+                //     })
+                //     .collect();
+                //
+                // let ctrs_right_empty = ctrs_right_sieve.iter().all(Option::is_none);
+                // let ctrs_left_empty = ctrs_left_dedup.is_empty();
+                // let ctrs_right_dedup = ctrs_right_sieve.iter().flatten().map(|ctr| (*ctr).clone());
+                //
+                // let result = if ctrs_right_empty && ctrs_left_empty {
+                //     array1.extend(array_data2.array.iter().cloned());
+                //
+                //     array1
+                // } else if ctrs_left_empty {
+                //     array1.extend(array_data2.array.iter().cloned().map(|t| {
+                //         RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
+                //             .closurize(&mut self.cache, env1.clone())
+                //     }));
+                //
+                //     array1
+                // } else {
+                //     let mut array = Array::default();
+                //
+                //     array.extend(array1.iter().map(|t| {
+                //         RuntimeContract::apply_all(t.clone(), ctrs_left_dedup.iter().cloned(), pos1)
+                //             .closurize(&mut self.cache, env1.clone())
+                //     }));
+                //
+                //     array.extend(array_data2.array.iter().map(|t| {
+                //         RuntimeContract::apply_all(t.clone(), ctrs_right_dedup.clone(), pos2)
+                //             .closurize(&mut self.cache, env2.clone())
+                //     }));
+                //
+                //     array
+                // };
+                //
+                // // unwrap(): will go away soon
+                // Ok(NickelValue::array(result, ctrs_common, pos_op_inh)
+                //     .unwrap()
+                //     .into())
             }
             BinaryOp::ArrayAt => {
                 let Some(array_data) = value1.as_array() else {
@@ -2557,7 +2662,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             ),
             BinaryOp::Hash => {
                 let mk_err_fst =
-                    || mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, value1);
+                    || mk_type_error!("[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]", 1, value1.clone());
 
                 let Some(enum_data) = value1.as_enum_variant() else {
                     return mk_err_fst();
@@ -2595,10 +2700,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     _ => return mk_err_fst(),
                 };
 
-                Ok(NickelValue::string(result.into(), pos_op_inh).into())
+                Ok(NickelValue::string(result, pos_op_inh).into())
             }
             BinaryOp::Serialize => {
-                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1);
+                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1.clone());
 
                 let Some(enum_data) = value1.as_enum_variant() else {
                     return mk_err_fst();
@@ -2628,15 +2733,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 serialize::validate(format, &v2_subst)?;
 
                 Ok(
-                    NickelValue::string(
-                        serialize::to_string(format, &v2_subst)?.into(),
-                        pos_op_inh,
-                    )
-                    .into(),
+                    NickelValue::string(serialize::to_string(format, &v2_subst)?, pos_op_inh)
+                        .into(),
                 )
             }
             BinaryOp::Deserialize => {
-                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1);
+                let mk_err_fst = || mk_type_error!(ENUM_FORMAT, 1, value1.clone());
 
                 let Some(enum_data) = value1.as_enum_variant() else {
                     return mk_err_fst();
@@ -2688,12 +2790,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::StringSplit => self.binary_string_fn(
                 |input, sep| {
-                    NickelValue::array_force_pos(
-                        &mut self.pos_table,
-                        input.split(sep),
-                        Vec::new(),
-                        pos_op_inh,
-                    )
+                    //unwrap(): will go away soon
+                    NickelValue::array(input.split(sep), Vec::new(), pos_op_inh).unwrap()
                 },
                 value1,
                 value2,
@@ -2814,6 +2912,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ctr_val.clone(),
                         NickelValue::string(id, self.pos_table.push_block(id.pos))
                     )
+                    .with_pos_idx(&mut self.pos_table, pos)
                     .closurize(&mut self.context.cache, ctr_env.clone())
                 };
 
@@ -2852,7 +2951,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                label.set_diagnostic_message(message.into_inner());
+                label.set_diagnostic_message(message.clone().into_inner());
                 Ok(value2.into())
             }
             BinaryOp::LabelWithNotes => {
@@ -2862,13 +2961,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let val1_subst = subst(
                     &self.pos_table,
                     &self.context.cache,
-                    value1,
+                    value1.clone(),
                     &Environment::new(),
                     &env1,
                 );
 
-                let Some(array_data) = value1.as_array() else {
+                let Some(array_data) = val1_subst.as_array() else {
                     return mk_type_error!("Array", 1, value1);
+                };
+
+                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
                 let notes = array_data
@@ -2876,16 +2979,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .iter()
                     .map(|element| {
                         if let Some(StringBody(s)) = element.as_string() {
-                            Ok(s.into_inner())
+                            Ok(s.clone().into_inner())
                         } else {
                             mk_type_error!("String", 1, element.clone())
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-
-                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
-                    return mk_type_error!("Label", 2, value2);
-                };
+                label.set_diagnostic_notes(notes);
 
                 Ok(value2.into())
             }
@@ -2898,6 +2998,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, value2);
                 };
 
+                label.append_diagnostic_note(&note.0);
                 Ok(value2.into())
             }
             BinaryOp::LabelLookupTypeVar => {
@@ -2934,13 +3035,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let left_only = NickelValue::record_posless(RecordData {
                     fields: left,
-                    sealed_tail: record1.sealed_tail,
+                    sealed_tail: record1.sealed_tail.clone(),
                     attrs: record1.attrs,
                 });
 
                 let right_only = NickelValue::record_posless(RecordData {
                     fields: right,
-                    sealed_tail: record2.sealed_tail,
+                    sealed_tail: record2.sealed_tail.clone(),
                     attrs: record2.attrs,
                 });
 
@@ -3009,7 +3110,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // original body of the record. In that case, the unsealed tail might have an
                 // additional sealed tail itself (tail can be sealed multiple times in a nested
                 // way), and the right behavior (tm) is to just keep it.
-                let sealed_tail = match (record1.sealed_tail, record2.sealed_tail) {
+                let sealed_tail = match (record1.sealed_tail.clone(), record2.sealed_tail.clone()) {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
                         return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
@@ -3024,7 +3125,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // of each record are already closurized, so we don't really care about
                 // environments. Should that invariant change, we might get into trouble (trouble
                 // meaning undue `UnboundIdentifier` errors).
-                record1.fields.extend(record2.fields);
+                record1.fields.extend(record2.fields.clone());
                 record1.attrs = Combine::combine(record1.attrs, record2.attrs);
                 record1.sealed_tail = sealed_tail;
 
@@ -3192,12 +3293,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         // exactly the right number of argument: if it is not the case, this is a bug, and we panic.
         match n_op {
             NAryOp::StringReplace | NAryOp::StringReplaceRegex => {
-                let mut args_wo_env = args
-                    .into_iter()
-                    .map(|(arg, pos)| (arg.value, arg.value.pos_idx(), pos));
-                let (arg1, pos1, arg_pos1) = args_wo_env.next().unwrap();
-                let (arg2, pos2, arg_pos2) = args_wo_env.next().unwrap();
-                let (arg3, pos3, arg_pos3) = args_wo_env.next().unwrap();
+                let mut args_wo_env = args.into_iter().map(|(arg, pos)| (arg.value, pos));
+                let (arg1, arg_pos1) = args_wo_env.next().unwrap();
+                let (arg2, arg_pos2) = args_wo_env.next().unwrap();
+                let (arg3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
                 let Some(StringBody(s)) = arg1.as_string() else {
@@ -3224,12 +3323,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::string(result, pos_op_inh).into())
             }
             NAryOp::StringSubstr => {
-                let mut args_wo_env = args
-                    .into_iter()
-                    .map(|(arg, pos)| (arg.value, arg.value.pos_idx(), pos));
-                let (arg1, pos1, arg_pos1) = args_wo_env.next().unwrap();
-                let (arg2, pos2, arg_pos2) = args_wo_env.next().unwrap();
-                let (arg3, pos3, arg_pos3) = args_wo_env.next().unwrap();
+                let mut args_wo_env = args.into_iter().map(|(arg, pos)| (arg.value, pos));
+                let (arg1, arg_pos1) = args_wo_env.next().unwrap();
+                let (arg2, arg_pos2) = args_wo_env.next().unwrap();
+                let (arg3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
                 let Some(StringBody(s)) = arg1.as_string() else {
@@ -3409,6 +3506,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 r.sealed_tail
+                    .as_ref()
                     .and_then(|tail| tail.unseal(s).cloned())
                     .ok_or_else(|| EvalErrorData::BlameError {
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
@@ -3514,8 +3612,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg3 = NickelValue::empty_array_block(arg3.pos_idx());
                 }
 
-                let ValueContentRefMut::Array(ArrayBody { mut array, .. }) =
-                    arg3.content_make_mut()
+                let ValueContentRefMut::Array(ArrayBody { array, .. }) = arg3.content_make_mut()
                 else {
                     return mk_type_error("Array", 3, arg_pos3, arg3);
                 };
