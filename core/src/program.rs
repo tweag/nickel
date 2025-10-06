@@ -21,21 +21,24 @@
 //! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    bytecode::ast::{compat::ToMainline, AstAlloc},
+    bytecode::{
+        ast::{AstAlloc, compat::ToMainline},
+        value::NickelValue,
+    },
     cache::*,
     closurize::Closurize as _,
-    error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
-    eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
+    error::{Error, EvalError, IOError, ParseError, Reporter, warning::Warning},
+    eval::{Closure, VirtualMachine, cache::Cache as EvalCache},
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
     metrics::{increment, measure_runtime},
     package::PackageMap,
-    position::{RawSpan, TermPos},
+    position::{PosIdx, PosTable, RawSpan, TermPos},
     term::{
+        BinaryOp, Import, MergePriority, RuntimeContract, Term,
         make::{self as mk_term, builder},
         record::Field,
-        BinaryOp, Import, MergePriority, RichTerm, RuntimeContract, Term,
     },
     typecheck::TypecheckMode,
 };
@@ -69,7 +72,7 @@ impl FieldPath {
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
     pub fn parse(caches: &mut CacheHub, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
-            grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
+            ErrorTolerantParserCompat, grammar::StaticFieldPathParser, lexer::Lexer,
         };
 
         let input_id = caches.replace_string(SourcePath::Query, input);
@@ -131,7 +134,7 @@ impl FieldOverride {
     /// Parse an assignment `path.to.field=value` to a field override, with the priority given as a
     /// separate argument.
     ///
-    /// Internally, the parser entirely parses the `value` part to a [crate::term::RichTerm] (have
+    /// Internally, the parser entirely parses the `value` part to a [crate::term::NickelValue] (have
     /// it accept anything after the equal sign is in fact harder than actually parsing it), but
     /// what we need at this point is just a string. Thus, `parse` uses the span to extract back
     /// the `value` part of the input string.
@@ -152,9 +155,9 @@ impl FieldOverride {
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
         use crate::parser::{
+            ErrorTolerantParserCompat,
             grammar::{CliFieldAssignmentParser, StaticFieldPathParser},
             lexer::{Lexer, NormalToken, Token},
-            ErrorTolerantParserCompat,
         };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
@@ -297,7 +300,7 @@ impl<EC: EvalCache> Program<EC> {
             }
         };
 
-        let vm = VirtualMachine::new(cache, trace, reporter);
+        let vm = VirtualMachine::new(PosTable::new(), cache, trace, reporter);
         Ok(Self {
             main_id,
             vm,
@@ -334,7 +337,7 @@ impl<EC: EvalCache> Program<EC> {
                     let path = path.into();
                     let format = InputFormat::from_path(&path).unwrap_or_default();
 
-                    RichTerm::from(Term::Import(Import::Path { path, format }))
+                    NickelValue::from(Term::Import(Import::Path { path, format }))
                 }
                 Input::Source(source, name) => {
                     let path = PathBuf::from(name.into());
@@ -342,7 +345,7 @@ impl<EC: EvalCache> Program<EC> {
                         .sources
                         .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(Import::Path {
+                    NickelValue::from(Term::Import(Import::Path {
                         path: path.into(),
                         format: InputFormat::Nickel,
                     }))
@@ -356,7 +359,7 @@ impl<EC: EvalCache> Program<EC> {
             format!("{merge_term}"),
         );
 
-        let vm = VirtualMachine::new(cache, trace, reporter);
+        let vm = VirtualMachine::new(PosTable::new(), cache, trace, reporter);
 
         Ok(Self {
             main_id,
@@ -511,8 +514,8 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Only parse the program (and any additional attached contracts), don't typecheck or
-    /// evaluate. Returns the [`RichTerm`] AST
-    pub fn parse(&mut self) -> Result<RichTerm, Error> {
+    /// evaluate. Returns the [`NickelValue`] AST
+    pub fn parse(&mut self) -> Result<NickelValue, Error> {
         self.vm
             .import_resolver_mut()
             .parse_to_ast(self.main_id)
@@ -549,7 +552,7 @@ impl<EC: EvalCache> Program<EC> {
         mut transform: F,
     ) -> Result<(), TermCacheError<E>>
     where
-        F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(&mut CacheHub, NickelValue) -> Result<NickelValue, E>,
     {
         self.vm
             .import_resolver_mut()
@@ -607,15 +610,18 @@ impl<EC: EvalCache> Program<EC> {
                         ("env", None) => match std::env::var(&value) {
                             Ok(env_var) => {
                                 record = record.path(ovd.path.0).priority(ovd.priority).value(
-                                    RichTerm::new(
-                                        Term::Str(env_var.into()),
-                                        RawSpan::from_range(
-                                            value_file_id,
-                                            value_sep + 1..value_unparsed.len(),
-                                        )
-                                        .into(),
+                                    NickelValue::string(
+                                        env_var,
+                                        self.vm.pos_table.push_block(
+                                            RawSpan::from_range(
+                                                value_file_id,
+                                                value_sep + 1..value_unparsed.len(),
+                                            )
+                                            .into(),
+                                        ),
                                     ),
                                 );
+
                                 Ok(())
                             }
                             Err(std::env::VarError::NotPresent) => Err(Error::IOError(IOError(
@@ -680,18 +686,19 @@ impl<EC: EvalCache> Program<EC> {
                 match contract {
                     ProgramContract::Term(contract) => Ok(contract.clone()),
                     ProgramContract::Source(file_id) => {
+                        self.vm.prepare_eval(*file_id)?;
                         let cache = self.vm.import_resolver_mut();
-                        cache.prepare(*file_id)?;
+                        // cache.prepare(*file_id)?;
 
                         // unwrap(): we just prepared the file above, so it must be in the cache.
-                        let term = cache.terms.get_owned(*file_id).unwrap();
+                        let value = cache.terms.get_owned(*file_id).unwrap();
 
                         // The label needs a position to show where the contract application is coming from.
                         // Since it's not really coming from source code, we reconstruct the CLI argument
                         // somewhere in the source cache.
-                        let pos = term.pos;
+                        let pos = value.pos_idx();
                         let typ = crate::typ::Type {
-                            typ: crate::typ::TypeF::Contract(term.clone()),
+                            typ: crate::typ::TypeF::Contract(value.clone()),
                             pos,
                         };
 
@@ -704,7 +711,7 @@ impl<EC: EvalCache> Program<EC> {
                         let span = cache.sources.files().source_span(arg_id);
 
                         Ok(RuntimeContract::new(
-                            term,
+                            value,
                             Label {
                                 typ: std::rc::Rc::new(typ),
                                 span: Some(span),
@@ -731,7 +738,7 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
-    pub fn eval(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
@@ -742,13 +749,13 @@ impl<EC: EvalCache> Program<EC> {
     /// as the main term. The closure should already have been prepared for
     /// evaluation, with imports resolved and any necessary transformations
     /// applied.
-    pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
         self.vm.reset();
         Ok(self.vm.eval_closure(closure)?.value)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
-    pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_full(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
@@ -768,7 +775,7 @@ impl<EC: EvalCache> Program<EC> {
     ///   A stub record is then built, which has all fields defined by `overrides`, and values are
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
-    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_full_for_export(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
@@ -776,7 +783,7 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
-    pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_deep(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         self.vm.reset();
@@ -786,7 +793,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Same as `eval_closure`, but does a full evaluation and does not substitute all variables.
     ///
     /// (Or, same as `eval_deep` but takes a closure.)
-    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
         self.vm.reset();
         self.vm.eval_deep_closure(closure)
     }
@@ -911,7 +918,7 @@ impl<EC: EvalCache> Program<EC> {
     /// [^missing-field-def]: Because we want to handle partial configurations as well,
     /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
-    pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(false)
     }
 
@@ -934,15 +941,17 @@ impl<EC: EvalCache> Program<EC> {
     /// particular, the closurized version is more useful if you intend to
     /// further evaluate any record fields, while the non-closurized version is
     /// more useful if you intend to do further static analysis.
-    pub fn eval_closurized_record_spine(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_closurized_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(true)
     }
 
-    fn maybe_closurized_eval_record_spine(&mut self, closurize: bool) -> Result<RichTerm, Error> {
+    fn maybe_closurized_eval_record_spine(
+        &mut self,
+        closurize: bool,
+    ) -> Result<NickelValue, Error> {
         use crate::{
             eval::Environment,
-            match_sharedterm,
-            term::{record::RecordData, RuntimeContract},
+            term::{RuntimeContract, record::RecordData},
         };
 
         let prepared = self.prepare_eval()?;
@@ -992,10 +1001,10 @@ impl<EC: EvalCache> Program<EC> {
         // hands over the meat of the work to `do_eval`.
         fn eval_guarded<EC: EvalCache>(
             vm: &mut VirtualMachine<CacheHub, EC>,
-            term: RichTerm,
+            term: NickelValue,
             env: Environment,
             closurize: bool,
-        ) -> Result<RichTerm, Error> {
+        ) -> Result<NickelValue, Error> {
             vm.reset();
 
             let curr_thunk = term.as_ref().try_as_closure();
@@ -1038,10 +1047,10 @@ impl<EC: EvalCache> Program<EC> {
         // contracts.
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<CacheHub, EC>,
-            term: RichTerm,
+            term: NickelValue,
             env: Environment,
             closurize: bool,
-        ) -> Result<RichTerm, Error> {
+        ) -> Result<NickelValue, Error> {
             let evaled = vm.eval_closure(Closure { value: term, env })?;
 
             match_sharedterm!(match (evaled.body.term) {
@@ -1071,7 +1080,7 @@ impl<EC: EvalCache> Program<EC> {
                         })
                         .collect::<Result<_, Error>>()?;
 
-                    Ok(RichTerm::new(
+                    Ok(NickelValue::new(
                         Term::Record(RecordData { fields, ..data }),
                         evaled.body.pos,
                     ))
@@ -1143,12 +1152,12 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::error::{Error, ExportErrorData, IOError};
-    use crate::term::{RichTerm, Term};
+    use crate::term::{NickelValue, Term};
     use comrak::arena_tree::{Children, NodeEdge};
     use comrak::nodes::{
         Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
     };
-    use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
+    use comrak::{Arena, ComrakOptions, format_commonmark, parse_document};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::io::Write;
@@ -1181,7 +1190,7 @@ mod doc {
     }
 
     impl ExtractedDocumentation {
-        pub fn extract_from_term(rt: &RichTerm) -> Option<Self> {
+        pub fn extract_from_term(rt: &NickelValue) -> Option<Self> {
             match rt.term.as_ref() {
                 Term::Record(record) | Term::RecRecord(record, ..) => {
                     let fields = record
@@ -1448,7 +1457,7 @@ mod tests {
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
-    fn eval_full(s: &str) -> Result<RichTerm, Error> {
+    fn eval_full(s: &str) -> Result<NickelValue, Error> {
         let src = Cursor::new(s);
 
         let mut p: Program<CacheImpl> =
@@ -1482,7 +1491,7 @@ mod tests {
     fn evaluation_full() {
         use crate::{
             mk_array, mk_record,
-            term::{make as mk_term, Term},
+            term::{Term, make as mk_term},
         };
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
