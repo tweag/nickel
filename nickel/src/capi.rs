@@ -1,6 +1,41 @@
 //! C bindings for the Nickel language
 //!
-//! TODO: example
+//! These bindings cover
+//! - evaluation (including lazy/partial evaluation),
+//! - inspection of the results as structured values,
+//! - serialization to JSON, TOML, and YAML,
+//! - error reporting.
+//!
+//! Here is a basic example that evaluates a Nickel expression
+//! and inspects the result. For more examples, see the C api
+//! tests in the Nickel repository.
+//!
+//! ```c
+//! nickel_context *ctx = nickel_context_alloc();
+//! nickel_expr *expr = nickel_expr_alloc();
+//!
+//! /* Passing a null pointer as the "error" param is the easy option, but we won't get
+//!    nice diagnostics. */
+//! nickel_result result = nickel_context_eval_deep(ctx, "{ foo | Number = 1 }", expr, NULL);
+//! assert(result == NICKEL_RESULT_OK);
+//!
+//! /* Now the result of evaluation is in `expr`. It's a record with one element */
+//! assert(nickel_expr_is_record(expr));
+//! nickel_record const *rec = nickel_expr_as_record(expr);
+//! assert(nickel_record_len(rec) == 1);
+//!
+//! /* The single element of the record has key "foo" and value `1` */
+//! char const* key;
+//! uintptr_t len;
+//! nickel_expr *val = nickel_expr_alloc();
+//! nickel_record_key_value_by_index(rec, 0, &key, &len, val);
+//!
+//! /* Careful: the strings coming from the nickel API are not null-terminated! */
+//! assert(len == 3);
+//! assert(!strncmp(key, "foo", 3));
+//! assert(nickel_expr_is_number(val));
+//! assert(nickel_expr_as_i64(val) == 1);
+//! ```
 
 #![allow(clippy::missing_safety_doc)]
 #![allow(non_camel_case_types)]
@@ -275,13 +310,16 @@ pub unsafe extern "C" fn nickel_context_set_source_name(
 }
 
 /// Perform some sort of evaluation, and return the error appropriately.
-unsafe fn do_eval<F: FnOnce(&mut crate::Context, &str) -> Result<Expr, Error>>(
+unsafe fn do_eval<F>(
     f: F,
     mut ctx: *mut nickel_context,
     src: *const c_char,
     mut out_expr: *mut nickel_expr,
     out_error: *mut nickel_error,
-) -> nickel_result {
+) -> nickel_result
+where
+    F: FnOnce(&mut crate::Context, &str) -> Result<Expr, Error>,
+{
     let src = CStr::from_ptr(src).to_str().unwrap();
     match f(nickel_context::as_rust_mut(&mut ctx), src) {
         Ok(expr) => {
@@ -992,6 +1030,7 @@ pub unsafe extern "C" fn nickel_error_display(
 ///
 /// This is like `nickel_error_format`, but writes the error to a string instead
 /// of via a callback function.
+#[no_mangle]
 pub unsafe extern "C" fn nickel_error_format_as_string(
     err: *const nickel_error,
     out_string: *mut nickel_string,
