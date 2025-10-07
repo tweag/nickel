@@ -343,7 +343,7 @@ impl RuntimeContract {
     /// Generate a runtime contract from a type used as a static type annotation and a label. Use
     /// the guarantees of the static type system to optimize and simplify the contract.
     pub fn from_static_type(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         labeled_typ: LabeledType,
     ) -> Result<Self, UnboundTypeVariableError> {
         Ok(RuntimeContract {
@@ -354,7 +354,7 @@ impl RuntimeContract {
 
     /// Generate a runtime contract from a type used as a contract annotation and a label.
     pub fn from_type(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         labeled_ty: LabeledType,
     ) -> Result<Self, UnboundTypeVariableError> {
         Ok(RuntimeContract::new(
@@ -2473,7 +2473,7 @@ pub mod make {
     }
 
     pub fn apply_contract<T>(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         typ: Type,
         l: Label,
         t: T,

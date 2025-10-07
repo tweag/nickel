@@ -4,7 +4,7 @@ use crate::{
     error::EvalErrorData,
     identifier::{Ident, LocIdent},
     label::Label,
-    position::{TermPos, PosIdx},
+    position::{PosIdx, TermPos},
 };
 use std::{collections::HashSet, rc::Rc};
 
@@ -416,7 +416,11 @@ impl RecordData {
                     let pos = v.pos_idx();
                     Some(Ok((
                         id.ident(),
-                        RuntimeContract::apply_all(v.clone(), field.pending_contracts.iter().cloned(), pos),
+                        RuntimeContract::apply_all(
+                            v.clone(),
+                            field.pending_contracts.iter().cloned(),
+                            pos,
+                        ),
                     )))
                 }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {

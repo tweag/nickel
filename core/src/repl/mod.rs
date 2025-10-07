@@ -7,15 +7,15 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::{value::NickelValue, ast::AstAlloc},
+    bytecode::{ast::AstAlloc, value::NickelValue},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
-    eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
+    eval::{self, Closure, VirtualMachine, cache::Cache as EvalCache},
     files::FileId,
     identifier::LocIdent,
-    parser::{grammar, lexer, ErrorTolerantParser},
-    program::FieldPath,
+    parser::{ErrorTolerantParser, grammar, lexer},
     position::PosTable,
+    program::FieldPath,
     term::record::Field,
     typ::Type,
     typecheck::TypecheckMode,
@@ -33,8 +33,8 @@ use std::{
 #[cfg(feature = "repl")]
 use crate::{
     error::{
-        report::{self, ColorOpt, ErrorFormat},
         IntoDiagnostics,
+        report::{self, ColorOpt, ErrorFormat},
     },
     term::Term,
 };
@@ -175,7 +175,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
 
-        self.vm.import_resolver_mut().prepare_repl(self.vm.pos_table_mut(), file_id)?;
+        self.vm
+            .import_resolver_mut()
+            .prepare_repl(self.vm.pos_table_mut(), file_id)?;
         let value = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
         let pos = value.pos_idx();
 

@@ -12,11 +12,12 @@
 //! The `gen_pending_contracts` phase implemented by this module must be run before
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
-    bytecode::value::{lens::TermContent, NickelValue, ValueContent},
+    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
+    position::PosTable,
     term::{
-        record::{Field, RecordData},
         IndexMap, RuntimeContract, Term,
+        record::{Field, RecordData},
     },
     typ::UnboundTypeVariableError,
 };
@@ -31,9 +32,12 @@ use crate::{
 ///
 /// The pending contracts are expected to be initially empty. This function will override any
 /// previous pending contract.
-pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariableError> {
+pub fn with_pending_contracts(
+    pos_table: &mut PosTable,
+    field: Field,
+) -> Result<Field, UnboundTypeVariableError> {
     // We simply add the contracts to the pending contract fields
-    let pending_contracts = field.metadata.annotation.pending_contracts()?;
+    let pending_contracts = field.metadata.annotation.pending_contracts(pos_table)?;
     // Type annotations are different: the contract is generated statically, because as opposed
     // to contract annotations, type anntotations don't propagate.
     let value = field
@@ -41,7 +45,7 @@ pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariable
         .map(|v| -> Result<NickelValue, UnboundTypeVariableError> {
             if let Some(labeled_ty) = &field.metadata.annotation.typ {
                 let pos_idx = v.pos_idx();
-                let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
+                let contract = RuntimeContract::from_static_type(pos_table, labeled_ty.clone())?;
                 Ok(contract.apply(v, pos_idx))
             } else {
                 Ok(v)

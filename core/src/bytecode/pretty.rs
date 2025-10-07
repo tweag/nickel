@@ -1081,7 +1081,9 @@ impl<'a> Pretty<'a, Allocator> for &FieldPathElem<'_> {
                 }
                 Node::ParseError(_) => allocator.text("%<parse error>"),
                 _ => {
-                    panic!("pretty printer: unexpected content of field path element (was not chunks or parse error)");
+                    panic!(
+                        "pretty printer: unexpected content of field path element (was not chunks or parse error)"
+                    );
                 }
             },
         }

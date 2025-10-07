@@ -427,11 +427,7 @@ impl NickelValue {
     /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record that
     /// will be mutated in a second step.
     pub fn empty_record_block(pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(
-            RecordBody(RecordData::empty()),
-            pos_idx,
-        )
-        .into()
+        ValueBlockRc::encode(RecordBody(RecordData::empty()), pos_idx).into()
     }
 
     /// Allocates a new thunk value.

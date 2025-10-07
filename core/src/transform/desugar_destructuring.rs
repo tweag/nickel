@@ -4,11 +4,11 @@
 use smallvec::SmallVec;
 
 use crate::{
-    bytecode::value::{lens::TermContent, NickelValue, ValueContent},
-    error::EvalError,
+    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
+    error::EvalErrorData,
     identifier::LocIdent,
     position::PosTable,
-    term::{make, pattern::*, BinaryOp, BindingType, LetAttrs, Term},
+    term::{BinaryOp, BindingType, LetAttrs, Term, make, pattern::*},
 };
 
 use self::{bindings::Bindings, compile::CompilePart};
@@ -126,7 +126,7 @@ pub fn desugar_let(
         ));
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalError::FailedDestructuring {
+            Term::RuntimeError(EvalErrorData::FailedDestructuring {
                 value: rhs.clone(),
                 pattern: pat.clone(),
             }),

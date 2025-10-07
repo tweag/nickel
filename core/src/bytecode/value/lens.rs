@@ -10,10 +10,10 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        pattern::Pattern,
-        record::{Field, Include, RecordData, RecordDeps},
         BinaryOp, Import, LetAttrs, MatchData, NAryOp, SealingKey, StrChunk, Term, TypeAnnotation,
         UnaryOp,
+        pattern::Pattern,
+        record::{Field, Include, RecordData, RecordDeps},
     },
 };
 
@@ -243,9 +243,7 @@ impl TermContent {
 
         // Safety: since the value was extracted from `TermContent`, it must a value block with a
         // term inside.
-        unsafe {
-            ValueLens::<TermBody>::body_lens(value).take().0
-        }
+        unsafe { ValueLens::<TermBody>::body_lens(value).take().0 }
     }
 }
 
