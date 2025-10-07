@@ -73,7 +73,9 @@ use nickel_lang_core::term::Term;
 use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record, Trace, VirtualMachine};
 
 /// The main entry point.
-pub struct nickel_context {}
+pub struct nickel_context {
+    inner: Context,
+}
 
 impl nickel_context {
     /// Convert a `*mut nickel_contest` to a `&mut Context`.
@@ -82,7 +84,7 @@ impl nickel_context {
     ///
     /// Assumes that `this` was originally a valid pointer to `Context`.
     unsafe fn as_rust_mut(this: &mut *mut Self) -> &mut Context {
-        (*this as *mut Context).as_mut().unwrap()
+        &mut this.as_mut().unwrap().inner
     }
 }
 
@@ -101,9 +103,9 @@ pub struct nickel_error {
 ///
 /// This might be fully evaluated (for example, if you got it from [`nickel_context_eval_deep`])
 /// or might have unevaluated sub-expressions (if you got it from [`nickel_context_eval_shallow`]).
-// This is only used to hide `Expr`, and to attach C-API-specific documentation to.
-// We only ever use pointers to `nickel_expr`, which are secretly pointers to `Expr`.
-pub struct nickel_expr {}
+pub struct nickel_expr {
+    inner: Expr,
+}
 
 impl nickel_expr {
     /// Convert a `*nickel_expr` to a `&Expr`.
@@ -112,7 +114,7 @@ impl nickel_expr {
     ///
     /// Assumes that `this` was originally a valid pointer to `Expr`.
     unsafe fn as_rust(this: &*const Self) -> &Expr {
-        (*this as *const Expr).as_ref().unwrap()
+        &(*this).as_ref().unwrap().inner
     }
 
     /// Convert a `*mut nickel_expr` to a `&mut Expr`.
@@ -121,7 +123,7 @@ impl nickel_expr {
     ///
     /// Assumes that `this` was originally a valid pointer to `Expr`.
     unsafe fn as_rust_mut(this: &mut *mut Self) -> &mut Expr {
-        (*this as *mut Expr).as_mut().unwrap()
+        &mut (*this).as_mut().unwrap().inner
     }
 }
 
@@ -231,13 +233,15 @@ pub struct nickel_virtual_machine {
 /// Returns a newly-allocated [`nickel_context`] that can be freed with [`nickel_context_free`].
 #[no_mangle]
 pub unsafe extern "C" fn nickel_context_alloc() -> *mut nickel_context {
-    Box::into_raw(Box::new(Context::default())) as *mut nickel_context
+    Box::into_raw(Box::new(nickel_context {
+        inner: Context::default(),
+    }))
 }
 
 /// Free a [`nickel_context`] that was created with [`nickel_context_alloc`].
 #[no_mangle]
 pub unsafe extern "C" fn nickel_context_free(ctx: *mut nickel_context) {
-    let _ = Box::from_raw(ctx as *mut Context);
+    let _ = Box::from_raw(ctx);
 }
 
 /// A callback function for writing data.
@@ -557,9 +561,11 @@ pub unsafe extern "C" fn nickel_context_eval_shallow(
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn nickel_expr_alloc() -> *mut nickel_expr {
-    Box::into_raw(Box::new(Expr {
-        rt: Term::Null.into(),
-    })) as *mut nickel_expr
+    Box::into_raw(Box::new(nickel_expr {
+        inner: Expr {
+            rt: Term::Null.into(),
+        },
+    }))
 }
 
 /// Free a Nickel expression.
@@ -567,7 +573,7 @@ pub unsafe extern "C" fn nickel_expr_alloc() -> *mut nickel_expr {
 /// See [`nickel_expr_alloc`].
 #[no_mangle]
 pub unsafe extern "C" fn nickel_expr_free(expr: *mut nickel_expr) {
-    let _ = Box::from_raw(expr as *mut Expr);
+    let _ = Box::from_raw(expr);
 }
 
 /// Is this expression a boolean?
