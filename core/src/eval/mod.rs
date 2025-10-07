@@ -961,7 +961,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                                 Ok((
                                     incl.ident,
-                                    gen_pending_contracts::with_pending_contracts(field)?,
+                                    gen_pending_contracts::with_pending_contracts(&mut self.pos_table, field)?,
                                 ))
                             })
                             .collect();
@@ -1093,8 +1093,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
-                    let static_contract = annot.static_contract(&self.pos_table);
-                    let contracts = annot.pending_contracts(&self.pos_table)?;
+                    let static_contract = annot.static_contract(&mut self.pos_table);
+                    let contracts = annot.pending_contracts(&mut self.pos_table)?;
                     let pos_idx = inner.pos_idx();
                     let inner = inner.clone();
 
@@ -1141,7 +1141,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     if let Some((arg, _)) = self.stack.pop_arg(&self.context.cache) {
                         Closure {
                             value: data.clone().compile(
-                                &self.pos_table,
+                                &mut self.context.pos_table,
                                 arg.value.closurize(&mut self.context.cache, arg.env),
                                 pos_idx,
                             ),
@@ -1269,6 +1269,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let mut ret = Vec::new();
         inner(self, &mut ret, value, recursion_limit);
         ret
+    }
+
+    /// This is a temporary, ugly work-around for the fact that the VM owns both the position table
+    /// and the cache, but [crate::program::Program] sometimes need to access both at the same
+    /// time, mutably. Ideally, either the VM would borrow them, or the position table would be
+    /// owned by something else and just passed for evaluation, or any other design - but it sounds
+    /// abusive that the VM owns the two, which should be able to survive it or be initialized
+    /// before it.
+    pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T where F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T {
+        f(&mut self.pos_table, &mut self.import_resolver)
+    }
+
+    pub(crate) fn pos_table_mut(&mut self) -> &mut PosTable {
+        &mut self.pos_table
     }
 }
 

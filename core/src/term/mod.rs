@@ -716,7 +716,7 @@ impl TypeAnnotation {
     /// aren't treated the same since they don't propagate through merging.
     pub fn pending_contracts(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
     ) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.contracts
             .iter()
@@ -729,7 +729,7 @@ impl TypeAnnotation {
     /// optimizations along the way.
     pub fn static_contract(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
     ) -> Option<Result<RuntimeContract, UnboundTypeVariableError>> {
         self.typ
             .as_ref()
@@ -742,7 +742,7 @@ impl TypeAnnotation {
     /// type annotation.
     pub fn all_contracts(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
     ) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.typ
             .as_ref()

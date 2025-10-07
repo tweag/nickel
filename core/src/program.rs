@@ -80,7 +80,9 @@ impl FieldPath {
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict_compat(input_id, Lexer::new(s))
+            // This doesn't use the position table at all, since `LocIdent` currently stores a
+            // TermPos directly 
+            .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -177,7 +179,8 @@ impl FieldOverride {
                 Some(Ok((start_at, Token::Normal(NormalToken::At), _))),
             ) if end_eq == start_at => {
                 let path = StaticFieldPathParser::new()
-                    .parse_strict_compat(input_id, Lexer::new(&s[..start_eq]))
+                    // we don't use the position table for pure field paths
+                    .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(&s[..start_eq]))
                     // We just need to report one error here
                     .map_err(|mut errs| {
                         errs.errors.pop().expect(
@@ -195,7 +198,9 @@ impl FieldOverride {
             }
             _ => {
                 let (path, _, span_value) = CliFieldAssignmentParser::new()
-                    .parse_strict_compat(input_id, Lexer::new(s))
+                    // once again, we ditch the value, so no PosIdx leaks outside of
+                    // `parse_strict_compat` and we can thus ignore the position table entirely
+                    .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(s))
                     // We just need to report one error here
                     .map_err(|mut errs| {
                         errs.errors.pop().expect(
@@ -612,7 +617,7 @@ impl<EC: EvalCache> Program<EC> {
                                 record = record.path(ovd.path.0).priority(ovd.priority).value(
                                     NickelValue::string(
                                         env_var,
-                                        self.vm.pos_table.push_block(
+                                        self.vm.pos_table_mut().push_block(
                                             RawSpan::from_range(
                                                 value_file_id,
                                                 value_sep + 1..value_unparsed.len(),
@@ -698,7 +703,7 @@ impl<EC: EvalCache> Program<EC> {
                         let pos = value.pos_idx();
                         let typ = crate::typ::Type {
                             typ: crate::typ::TypeF::Contract(value.clone()),
-                            pos,
+                            pos: self.vm.pos_table_mut().get(pos),
                         };
 
                         let source_name = cache.sources.name(*file_id).to_string_lossy();
@@ -723,9 +728,9 @@ impl<EC: EvalCache> Program<EC> {
             .collect();
 
         prepared_body =
-            RuntimeContract::apply_all(prepared_body, runtime_contracts?, TermPos::None);
+            RuntimeContract::apply_all(prepared_body, runtime_contracts?, PosIdx::NONE);
 
-        let prepared = Closure::atomic_closure(prepared_body);
+        let prepared : Closure = prepared_body.into();
 
         let result = if for_query {
             prepared

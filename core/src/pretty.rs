@@ -660,11 +660,7 @@ trait NickelDocBuilderExt {
 
 impl NickelDocBuilderExt for DocBuilder<'_, Allocator> {
     fn parens_if(self, parens: bool) -> Self {
-        if parens {
-            self.parens()
-        } else {
-            self
-        }
+        if parens { self.parens() } else { self }
     }
 }
 
@@ -1318,11 +1314,11 @@ impl<'a> Pretty<'a, Allocator> for &Type {
             Symbol => allocator.text("Symbol"),
             Contract(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
-            Forall { var, ref body, .. } => {
+            Forall { var, body, .. } => {
                 let mut curr = body.as_ref();
                 let mut foralls = vec![var];
                 while let Type {
-                    typ: Forall { var, ref body, .. },
+                    typ: Forall { var, body, .. },
                     ..
                 } = curr
                 {
@@ -1445,11 +1441,13 @@ pub trait PrettyPrintCap: ToString {
 
 #[cfg(test)]
 mod tests {
-    use crate::files::Files;
-    use crate::parser::lexer::Lexer;
-    use crate::parser::{
-        grammar::{FixedTypeParser, TermParser},
-        ErrorTolerantParserCompat,
+    use crate::{
+        files::Files,
+        parser::{
+            ErrorTolerantParserCompat,
+            grammar::{FixedTypeParser, TermParser},
+            lexer::Lexer,
+        },
     };
     use pretty::Doc;
 
@@ -1459,18 +1457,20 @@ mod tests {
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
         let id = Files::new().add("<test>", s);
+        let mut pos_table = PosTable::new();
 
         FixedTypeParser::new()
-            .parse_strict_compat(id, Lexer::new(s))
+            .parse_strict_compat(pos_table, id, Lexer::new(s))
             .unwrap()
     }
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> NickelValue {
         let id = Files::new().add("<test>", s);
+        let mut pos_table = PosTable::new();
 
         TermParser::new()
-            .parse_strict_compat(id, Lexer::new(s))
+            .parse_strict_compat(pos_table, id, Lexer::new(s))
             .unwrap()
     }
 

@@ -366,7 +366,7 @@ Applicative: UniTerm<'ast> = {
             // function application. However, for convenience, we made the syntax
             // the same. So we now have to detect cases like `'Foo {x=1}` and
             // convert that to a proper enum variant.
-            if let (Node::EnumVariant { ref tag, arg: None }, 1)
+            if let (Node::EnumVariant { tag, arg: None }, 1)
                 = (&head.node, args.len()) {
                 Ok(alloc.enum_variant(*tag, args.pop()).into())
             }

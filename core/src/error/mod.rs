@@ -1246,14 +1246,14 @@ impl IntoDiagnostics for Error {
 
 impl IntoDiagnostics for EvalError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
-        let pos_table = self.ctxt.pos_table;
+        let mut pos_table = self.ctxt.pos_table;
 
         match self.error {
             EvalErrorData::BlameError {
                 evaluated_arg,
                 label,
             } => blame_error::blame_diagnostics(
-                &pos_table,
+                &mut pos_table,
                 files,
                 label,
                 evaluated_arg,
@@ -1717,7 +1717,7 @@ impl IntoDiagnostics for EvalError {
                 label: contract_label,
                 evaluated_arg,
             } => blame_error::blame_diagnostics(
-                &pos_table,
+                &mut pos_table,
                 files,
                 contract_label,
                 evaluated_arg,
@@ -1996,7 +1996,12 @@ mod blame_error {
     /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
-    pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
+    pub fn path_span(
+        pos_table: &mut PosTable,
+        files: &mut Files,
+        path: &[ty_path::Elem],
+        ty: &Type,
+    ) -> PathSpan {
         use crate::parser::{ErrorTolerantParserCompat, grammar::FixedTypeParser, lexer::Lexer};
 
         ty_path::span(path.iter().peekable(), ty)
@@ -2005,7 +2010,7 @@ mod blame_error {
                 let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
 
                 let (ty_with_pos, _) = FixedTypeParser::new()
-                    .parse_tolerant_compat(file_id, Lexer::new(&type_pprinted))
+                    .parse_tolerant_compat(pos_table, file_id, Lexer::new(&type_pprinted))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
@@ -2018,12 +2023,16 @@ mod blame_error {
 
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
     /// (Nickel) label.
-    pub fn report_ty_path(files: &mut Files, l: &label::Label) -> Label<FileId> {
+    pub fn report_ty_path(
+        pos_table: &mut PosTable,
+        files: &mut Files,
+        l: &label::Label,
+    ) -> Label<FileId> {
         let PathSpan {
             span,
             last,
             last_arrow_elem,
-        } = path_span(files, &l.path, &l.typ);
+        } = path_span(pos_table, files, &l.path, &l.typ);
 
         let msg = match (last, last_arrow_elem) {
             // The type path doesn't contain any arrow, and the failing subcontract is the
@@ -2086,7 +2095,7 @@ is None but last_arrow_elem is Some"
     /// leading "contract broken by .." and the custom contract diagnostic message in tail
     /// position.
     pub fn blame_diagnostics(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         files: &mut Files,
         mut label: label::Label,
         evaluated_arg: Option<NickelValue>,
@@ -2129,7 +2138,7 @@ is None but last_arrow_elem is Some"
         let contract_notes = head_contract_diagnostic
             .map(|diag| diag.notes)
             .unwrap_or_default();
-        let path_label = report_ty_path(files, &label);
+        let path_label = report_ty_path(pos_table,files,  &label);
 
         let labels = build_diagnostic_labels(pos_table, evaluated_arg, &label, path_label, files);
 
@@ -2800,13 +2809,15 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 // We locally convert the type to their runtime representation as a way to reuse
                 // the code of `blame_error::path_span`, which works on the latter.
                 let mut pos_table = PosTable::new();
+                let expected_mline = expected.to_mainline(&mut pos_table);
+                let inferred_mline = inferred.to_mainline(&mut pos_table);
 
                 let PathSpan {
                     span: expd_span, ..
-                } = blame_error::path_span(files, type_path, &expected.to_mainline(&mut pos_table));
+                } = blame_error::path_span(&mut pos_table, files, type_path, &expected_mline);
                 let PathSpan {
                     span: actual_span, ..
-                } = blame_error::path_span(files, type_path, &inferred.to_mainline(&mut pos_table));
+                } = blame_error::path_span(&mut pos_table, files, type_path, &inferred_mline);
 
                 let mut labels = vec![
                     secondary(&expd_span).with_message("this part of the expected type"),
