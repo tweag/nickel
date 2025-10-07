@@ -26,8 +26,8 @@ use crate::{
 };
 
 use malachite::{
-    base::num::conversion::traits::{FromSciString, FromStringBase},
     Integer,
+    base::num::conversion::traits::{FromSciString, FromStringBase},
 };
 
 pub struct ParseNumberError;
@@ -554,7 +554,7 @@ pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
 
     for (index, chunk) in chunks.iter_mut().enumerate() {
         match chunk {
-            StringChunk::Literal(ref mut s) => {
+            StringChunk::Literal(s) => {
                 let mut buffer = String::new();
                 for c in s.chars() {
                     match c {
@@ -605,7 +605,7 @@ pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
 
                 *s = buffer;
             }
-            StringChunk::Expr(_, ref mut indent) => {
+            StringChunk::Expr(_, indent) => {
                 if start_line {
                     debug_assert!(current >= min);
                     debug_assert!(expr_on_line.is_none());
@@ -621,7 +621,7 @@ pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
 
     for index in unindent.into_iter() {
         match chunks.get_mut(index) {
-            Some(StringChunk::Expr(_, ref mut indent)) => *indent = 0,
+            Some(StringChunk::Expr(_, indent)) => *indent = 0,
             _ => unreachable!(
                 "all elements in `unindent` should be expressions, but found a literal"
             ),

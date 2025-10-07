@@ -3,10 +3,14 @@ use std::path::PathBuf;
 
 use super::{command::Command, *};
 
-use crate::{error::report::ColorOpt, eval::cache::CacheImpl};
+use crate::{
+    bytecode::value::{RecordBody, TermBody, ValueContentRef},
+    error::report::ColorOpt,
+    eval::cache::CacheImpl,
+};
 
 use anstyle::Style;
-use rustyline::{error::ReadlineError, Config, EditMode, Editor};
+use rustyline::{Config, EditMode, Editor, error::ReadlineError};
 
 /// The config of rustyline's editor.
 pub fn config(color_opt: ColorOpt) -> Config {
@@ -61,14 +65,14 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
             Ok(line) if line.starts_with(':') => {
                 let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                 let result = match cmd {
-                    Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.as_ref() {
-                        Term::Record(record) => {
+                    Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.content_ref() {
+                        ValueContentRef::Record(RecordBody(record)) => {
                             println!(
                                 "Loaded {} symbol(s) in the environment.",
                                 record.fields.len()
                             )
                         }
-                        Term::RecRecord(record, includes, dyn_fields, ..) => {
+                        ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..))) => {
                             if !dyn_fields.is_empty() {
                                 println!(
                                     "Warning: loading dynamic fields is currently not supported. \

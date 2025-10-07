@@ -362,8 +362,10 @@ impl PosIdx {
 
         if let TermPos::Original(raw_span) = pos {
             table.push_inline(TermPos::Inherited(raw_span))
+        } else if let Ok(inl) = InlinePosIdx::try_from(self) {
+            inl
         } else {
-            self
+            table.push_inline(pos)
         }
     }
 

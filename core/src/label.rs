@@ -10,8 +10,8 @@ use crate::{
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{
-        record::{Field, RecordData},
         SealingKey, Term,
+        record::{Field, RecordData},
     },
     typ::{Type, TypeF},
 };
@@ -467,7 +467,7 @@ impl Label {
         self
     }
 
-    /// Same as [Self::with_append_diagnostic_note], but mutates `self` in place. 
+    /// Same as [Self::with_append_diagnostic_note], but mutates `self` in place.
     pub fn append_diagnostic_note(&mut self, note: impl Into<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
             current.append_note(note);

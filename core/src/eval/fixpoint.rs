@@ -60,7 +60,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     // and contracts). Constants don't need an environment, which is why it is
                     // dropped.
                     debug_assert!(value.is_constant());
-                    let closure : Closure = value.clone().into();
+                    let closure: Closure = value.clone().into();
 
                     cache.add(closure, BindingType::Normal)
                 };
@@ -72,8 +72,8 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     value.pos_idx(),
                 );
 
-                let final_closure : Closure = with_ctr_applied.into();
- 
+                let final_closure: Closure = with_ctr_applied.into();
+
                 (id.ident(), cache.add(final_closure, BindingType::Normal))
             } else {
                 let error = EvalErrorData::MissingFieldDef {
@@ -88,7 +88,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     pos_access: PosIdx::NONE,
                 };
 
-                let closure : Closure = NickelValue::from(Term::RuntimeError(error)).into();
+                let closure: Closure = NickelValue::from(Term::RuntimeError(error)).into();
 
                 (id.ident(), cache.add(closure, BindingType::Normal))
             }

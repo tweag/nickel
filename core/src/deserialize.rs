@@ -14,7 +14,7 @@ use crate::{
     eval::cache::CacheImpl,
     identifier::LocIdent,
     program::{Input, Program},
-    term::{record::Field, IndexMap},
+    term::{IndexMap, record::Field},
 };
 
 macro_rules! deserialize_number {
@@ -698,10 +698,9 @@ impl<'de> EnumAccess<'de> for EnumDeserializer {
 impl std::fmt::Display for RustDeserializationError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            RustDeserializationError::InvalidType {
-                ref expected,
-                ref occurred,
-            } => write!(f, "invalid type: {occurred}, expected: {expected}"),
+            RustDeserializationError::InvalidType { expected, occurred } => {
+                write!(f, "invalid type: {occurred}, expected: {expected}")
+            }
             RustDeserializationError::MissingValue => write!(f, "missing value"),
             RustDeserializationError::EmptyRecordField => write!(f, "empty Metavalue"),
             RustDeserializationError::InvalidRecordLength(len) => {
@@ -710,10 +709,10 @@ impl std::fmt::Display for RustDeserializationError {
             RustDeserializationError::InvalidArrayLength(len) => {
                 write!(f, "invalid array length, expected {len}")
             }
-            RustDeserializationError::UnimplementedType { ref occurred } => {
+            RustDeserializationError::UnimplementedType { occurred } => {
                 write!(f, "unimplemented conversion from type: {occurred}")
             }
-            RustDeserializationError::Other(ref err) => write!(f, "{err}"),
+            RustDeserializationError::Other(err) => write!(f, "{err}"),
         }
     }
 }

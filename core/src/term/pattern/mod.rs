@@ -1,9 +1,9 @@
 //! Pattern matching and destructuring of Nickel values.
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 use super::{
-    record::{Field, RecordData},
     NickelString, Number, TypeAnnotation,
+    record::{Field, RecordData},
 };
 
 use crate::{
@@ -199,7 +199,7 @@ impl RecordPattern {
                     return Err(ParseError::DuplicateIdentInRecordPattern {
                         ident: binding,
                         prev_ident: occupied_entry.remove_entry().1,
-                    })
+                    });
                 }
                 Entry::Vacant(vacant_entry) => {
                     vacant_entry.insert(binding);

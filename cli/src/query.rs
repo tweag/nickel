@@ -8,7 +8,7 @@ use nickel_lang_core::{
     program::Program,
     repl::query_print,
     serialize::{self, MetadataExportFormat},
-    term::{record::Field, LabeledType, MergePriority, Term},
+    term::{LabeledType, MergePriority, Term, record::Field},
 };
 use serde::Serialize;
 
@@ -174,7 +174,9 @@ impl QueryCommand {
         match self.format {
             Markdown => {
                 if self.output.is_some() {
-                    eprintln!("Output query result in markdown format to a file is currently not supported.")
+                    eprintln!(
+                        "Output query result in markdown format to a file is currently not supported."
+                    )
                 } else {
                     let found = program.query().map(|field| {
                         query_print::write_query_result(

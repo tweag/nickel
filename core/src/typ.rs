@@ -53,8 +53,8 @@ use crate::{
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
-        make as mk_term, pattern::compile::Compile, record::RecordData, string::NickelString,
-        IndexMap, MatchBranch, MatchData, SealingKey, Term,
+        IndexMap, MatchBranch, MatchData, SealingKey, Term, make as mk_term,
+        pattern::compile::Compile, record::RecordData, string::NickelString,
     },
     traverse::*,
 };
@@ -1112,8 +1112,8 @@ impl Subcontract for EnumRows {
         sy: &mut i32,
     ) -> Result<NickelValue, UnboundTypeVariableError> {
         use crate::term::{
-            pattern::{EnumPattern, Pattern, PatternData},
             BinaryOp,
+            pattern::{EnumPattern, Pattern, PatternData},
         };
 
         let mut branches = Vec::new();
@@ -1484,9 +1484,7 @@ impl RecordRows {
 
                                 let excluded_ncl = NickelValue::array_posless(
                                     Array::from_iter(
-                                        excluded
-                                            .iter()
-                                            .map(|id| NickelValue::string_posless(*id)),
+                                        excluded.iter().map(|id| NickelValue::string_posless(*id)),
                                     ),
                                     Vec::new(),
                                 );
@@ -1621,7 +1619,10 @@ impl Type {
 
     /// Return the contract corresponding to a type. Said contract must then be applied using the
     /// `ApplyContract` primitive operation.
-    pub fn contract(&self, pos_table: &mut PosTable) -> Result<NickelValue, UnboundTypeVariableError> {
+    pub fn contract(
+        &self,
+        pos_table: &mut PosTable,
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
         increment!(format!("gen_contract:{}", self.pretty_print_cap(40)));
 
         let mut sy = 0;
@@ -1957,7 +1958,9 @@ impl PrettyPrintCap for Type {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat, position::PosTable};
+    use crate::parser::{
+        ErrorTolerantParserCompat, grammar::FixedTypeParser, lexer::Lexer, position::PosTable,
+    };
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
@@ -2001,7 +2004,7 @@ mod tests {
         // Big but entirely positive type
         assert_simplifies_to(
             "{foo : Array {bar : String, baz : Number}, qux: [| 'Foo, 'Bar, 'Baz Dyn |], pweep: {single : Array Bool}}",
-            "Dyn"
+            "Dyn",
         );
         // Mixed type with arrows inside the return value
         assert_simplifies_to(

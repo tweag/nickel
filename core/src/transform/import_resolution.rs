@@ -5,7 +5,7 @@ use super::ImportResolver;
 
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
-    use super::{tolerant, ImportResolver};
+    use super::{ImportResolver, tolerant};
     use crate::{
         bytecode::value::NickelValue, error::ImportError, files::FileId, position::PosTable,
     };
@@ -163,7 +163,7 @@ pub mod tolerant {
     {
         match value.content_ref() {
             ValueContentRef::Term(TermBody(Term::Import(import))) => {
-                match resolver.resolve(import, parent, &value.pos(pos_table)) {
+                match resolver.resolve(pos_table, import, parent, &value.pos(pos_table)) {
                     Ok((_, file_id)) => (
                         NickelValue::term(Term::ResolvedImport(file_id), value.pos_idx()),
                         None,

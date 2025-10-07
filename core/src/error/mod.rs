@@ -1545,7 +1545,8 @@ impl IntoDiagnostics for EvalError {
                     ]),
             ],
             EvalErrorData::InfiniteRecursion(_call_stack, pos_idx) => {
-                let labels = pos_table.get(pos_idx)
+                let labels = pos_table
+                    .get(pos_idx)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("recursive reference")])
                     .unwrap_or_default();
@@ -2540,14 +2541,14 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
             ],
             TypecheckErrorData::UnboundTypeVariable(ident) => {
                 vec![Diagnostic::error()
-                .with_message(format!("unbound type variable `{ident}`"))
-                .with_labels(vec![primary_alt(
-                    ident.pos.into_opt(),
-                    ident.to_string(),
-                    files,
-                )
-                .with_message("this type variable is unbound")])
-                .with_notes(vec![format!(
+                    .with_message(format!("unbound type variable `{ident}`"))
+                    .with_labels(vec![primary_alt(
+                        ident.pos.into_opt(),
+                        ident.to_string(),
+                        files,
+                    )
+                    .with_message("this type variable is unbound")])
+                    .with_notes(vec![format!(
                     "Did you forget to put a `forall {ident}.` somewhere in the enclosing type?"
                 )])]
             }

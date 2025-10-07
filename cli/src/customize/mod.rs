@@ -12,8 +12,8 @@ use nickel_lang_core::{
     identifier::LocIdent,
     program::{FieldPath, Program},
     term::{
-        record::{Field, RecordData},
         LabeledType, MergePriority, RuntimeContract, Term,
+        record::{Field, RecordData},
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
@@ -287,7 +287,7 @@ impl CustomizeOptions {
                 return CliResult::Err(Error::CliUsage {
                     error,
                     files: program.files(),
-                })
+                });
             }
         };
 
@@ -318,7 +318,7 @@ impl CustomizeOptions {
                 return CliResult::Err(Error::CliUsage {
                     error,
                     files: program.files(),
-                })
+                });
             }
         };
 
