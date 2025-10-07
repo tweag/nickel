@@ -61,7 +61,7 @@ pub fn transform_no_free_vars(
                 // again one level down. This results in a potentially non-linear cost in the size
                 // of the AST. This was witnessed on Terraform-Nickel, causing examples using huge
                 // auto-generated contracts (several of MBs) to not terminate in reasonable time.
-                Ok(gen_pending_contracts::transform_one(value)?)
+                Ok(gen_pending_contracts::transform_one(pos_table, value)?)
             },
             TraverseOrder::BottomUp,
         )
