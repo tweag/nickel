@@ -39,12 +39,12 @@
 //! equality ought to stay reasonably cheap. We choose to just set an arbitrary limit (the gas) on
 //! the number of variable links that the type equality may follow. Doing so, we don't have to
 //! worry about loops anymore.
-use super::{cache::lazy::Thunk, Environment};
+use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
     bytecode::value::{EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef},
     identifier::LocIdent,
-    term::{record::Field, IndexMap, StrChunk, Term, UnaryOp},
+    term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
     typ::{
         EnumRowF, EnumRows, EnumRowsIteratorItem, RecordRowF, RecordRows, RecordRowsIteratorItem,
         Type, TypeF,
@@ -483,9 +483,7 @@ fn contract_eq_fields(
         && field1.metadata.priority == field2.metadata.priority;
 
     let value_eq = match (&field1.value, &field2.value) {
-        (Some(value1), Some(value2)) => {
-            contract_eq_bounded(state, value1, env1, value2, env2)
-        }
+        (Some(value1), Some(value2)) => contract_eq_bounded(state, value1, env1, value2, env2),
         (None, None) => true,
         _ => false,
     };

@@ -609,7 +609,9 @@ impl SourceCache {
             InputFormat::Json => serde_json::from_str(source)
                 .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
-            InputFormat::Yaml => crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id)),
+            InputFormat::Yaml => {
+                crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id))
+            }
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
                 .map(|v| attach_pos(pos_table, v))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
@@ -905,7 +907,9 @@ impl CacheHub {
                 Ok(cache_op) => return Ok(cache_op),
                 Err(_) => {
                     let alloc = AstAlloc::new();
-                    self.sources.parse_nickel(&alloc, file_id)?.to_mainline(pos_table)
+                    self.sources
+                        .parse_nickel(&alloc, file_id)?
+                        .to_mainline(pos_table)
                 }
             }
         } else {
@@ -1017,11 +1021,13 @@ impl CacheHub {
             result = CacheOp::Done(());
         }
 
-        let transform_res = self.compile_and_transform(pos_table, file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res =
+            self.compile_and_transform(pos_table, file_id)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error(
+                        "cache::prepare(): expected source to be parsed before transformations",
+                    )
+                })?;
 
         if transform_res == CacheOp::Done(()) {
             result = CacheOp::Done(());
@@ -1070,11 +1076,13 @@ impl CacheHub {
 
         done = done || matches!(typecheck_res, CacheOp::Done(_));
 
-        let transform_res = self.compile_and_transform(pos_table, file_id).map_err(|cache_err| {
-            cache_err.unwrap_error(
-                "cache::prepare(): expected source to be parsed before transformations",
-            )
-        })?;
+        let transform_res =
+            self.compile_and_transform(pos_table, file_id)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error(
+                        "cache::prepare(): expected source to be parsed before transformations",
+                    )
+                })?;
 
         done = done || matches!(transform_res, CacheOp::Done(_));
 
@@ -1113,7 +1121,10 @@ impl CacheHub {
     }
 
     /// Converts the parsed standard library to the runtime representation.
-    pub fn compile_stdlib(&mut self, pos_table: &mut PosTable) -> Result<CacheOp<()>, AstCacheError<()>> {
+    pub fn compile_stdlib(
+        &mut self,
+        pos_table: &mut PosTable,
+    ) -> Result<CacheOp<()>, AstCacheError<()>> {
         let mut ret = CacheOp::Cached(());
 
         for (_, file_id) in self.sources.stdlib_modules() {
@@ -1398,7 +1409,11 @@ impl CacheHub {
 
     /// Add the bindings of a record to the REPL type environment. Ignore fields whose name are
     /// defined through interpolation.
-    pub fn add_repl_bindings(&mut self, pos_table: &PosTable, term: &NickelValue) -> Result<(), NotARecord> {
+    pub fn add_repl_bindings(
+        &mut self,
+        pos_table: &PosTable,
+        term: &NickelValue,
+    ) -> Result<(), NotARecord> {
         let (slice, asts) = self.split_asts();
         asts.add_type_bindings(pos_table, slice, term)
     }
@@ -1415,7 +1430,11 @@ impl CacheHub {
     /// program transformations through [Self::compile_and_transform]. It should preferably not be
     /// observable as an atomic transition, although as far as I can tell, this shouldn't cause
     /// major troubles to do so.
-    pub fn compile(&mut self, pos_table: &mut PosTable, main_id: FileId) -> Result<CacheOp<()>, AstCacheError<ImportError>> {
+    pub fn compile(
+        &mut self,
+        pos_table: &mut PosTable,
+        main_id: FileId,
+    ) -> Result<CacheOp<()>, AstCacheError<ImportError>> {
         if self.terms.contains(main_id) {
             return Ok(CacheOp::Cached(()));
         }
@@ -2707,7 +2726,10 @@ mod ast_cache {
                 );
                 slice.wildcards.wildcards.insert(
                     file_id,
-                    wildcards_map.iter().map(|typ| typ.to_mainline(todo!("no pos table, man"))).collect(),
+                    wildcards_map
+                        .iter()
+                        .map(|typ| typ.to_mainline(todo!("no pos table, man")))
+                        .collect(),
                 );
                 Ok(())
             })?;

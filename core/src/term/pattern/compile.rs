@@ -25,12 +25,13 @@
 use super::*;
 use crate::{
     bytecode::value::NickelValue,
+    error::EvalErrorData,
     metrics::increment,
     mk_app,
     position::PosTable,
     term::{
-        make, record::FieldMetadata, BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind,
-        RecordOpKind, Term, UnaryOp,
+        BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind, RecordOpKind, Term, UnaryOp, make,
+        record::FieldMetadata,
     },
 };
 
@@ -1015,9 +1016,9 @@ impl Compile for MatchData {
         }
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalError::NonExhaustiveMatch {
+            Term::RuntimeError(EvalErrorData::NonExhaustiveMatch {
                 value: value.clone(),
-                pos: pos_table.get(pos_idx),
+                pos: pos_idx,
             }),
             pos_idx,
         );

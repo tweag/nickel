@@ -822,7 +822,7 @@ impl<'input> Lexer<'input> {
             // Ignore comment
             NormalToken::LineComment => return self.next(),
             NormalToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
             }
             _ => (),
         };
@@ -868,7 +868,7 @@ impl<'input> Lexer<'input> {
                 }
             }
             StringToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
             }
             token => Token::Str(token),
         };
@@ -948,7 +948,7 @@ impl<'input> Lexer<'input> {
                         opening_delimiter: data.opening_delimiter.clone(),
                         closing_delimiter: span,
                     },
-                )))
+                )));
             }
             // If we encounter a `CandidateEnd` token with the same number of `%`s as the
             // starting token then it is the end of a multiline string
@@ -963,7 +963,7 @@ impl<'input> Lexer<'input> {
             }
             // Early report errors for now. This could change in the future
             MultiStringToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
             }
             token => Token::MultiStr(token),
         };

@@ -1,7 +1,7 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::{error::InvalidRecordTypeError, *};
 use error::ParseError;
-use indexmap::{map::Entry, IndexMap};
+use indexmap::{IndexMap, map::Entry};
 
 use crate::{
     bytecode::ast::{
@@ -444,7 +444,7 @@ impl<'ast> UniRecord<'ast> {
                             FieldPathElem::Expr(_) => {
                                 return Err(InvalidRecordTypeError::InterpolatedField(
                                     field_def.pos.unwrap(),
-                                ))
+                                ));
                             }
                         };
                         if let Some(prev_id) = fields_seen.insert(id.ident(), id) {
@@ -604,20 +604,13 @@ impl VarKindCell {
             }
             (Some(data), var_kind) if data == &var_kind => Ok(()),
             (
-                Some(VarKind::RecordRows {
-                    excluded: ref mut ex1,
-                }),
+                Some(VarKind::RecordRows { excluded: ex1 }),
                 VarKind::RecordRows { excluded: ex2 },
             ) => {
                 ex1.extend(ex2);
                 Ok(())
             }
-            (
-                Some(VarKind::EnumRows {
-                    excluded: ref mut ex1,
-                }),
-                VarKind::EnumRows { excluded: ex2 },
-            ) => {
+            (Some(VarKind::EnumRows { excluded: ex1 }), VarKind::EnumRows { excluded: ex2 }) => {
                 ex1.extend(ex2);
                 Ok(())
             }
