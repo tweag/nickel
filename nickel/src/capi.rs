@@ -298,7 +298,7 @@ pub unsafe extern "C" fn nickel_context_set_trace_callback(
 /// This is used to format error messages. If you read the main input
 /// program from a file, its path is a good choice.
 ///
-/// `name` should be a UTF-8-encoded, nul-terminated string. It is only
+/// `name` should be a UTF-8-encoded, null-terminated string. It is only
 /// borrowed temporarily; the pointer need not remain valid.
 #[no_mangle]
 pub unsafe extern "C" fn nickel_context_set_source_name(
@@ -342,7 +342,7 @@ where
 /// "Deeply" means that we recursively evaluate records and arrays. For
 /// an alternative, see [`nickel_context_eval_shallow`].
 ///
-/// - `src` is a nul-terminated string containing UTF-8-encoded Nickel source.
+/// - `src` is a null-terminated string containing UTF-8-encoded Nickel source.
 /// - `out_expr` either NULL or something that was created with [`nickel_expr_alloc`]
 /// - `out_error` can be NULL if you aren't interested in getting detailed
 ///   error messages
@@ -369,7 +369,7 @@ pub unsafe extern "C" fn nickel_context_eval_deep(
 /// This differs from [`nickel_context_eval_deep`] in that it ignores
 /// fields marked as `not_exported`.
 ///
-/// - `src` is a nul-terminated string containing UTF-8-encoded Nickel source.
+/// - `src` is a null-terminated string containing UTF-8-encoded Nickel source.
 /// - `out_expr` either NULL or something that was created with [`nickel_expr_alloc`]
 /// - `out_error` can be NULL if you aren't interested in getting detailed
 ///   error messages
@@ -407,7 +407,7 @@ pub unsafe extern "C" fn nickel_context_eval_deep_for_export(
 /// Together with the expression, this returns a Nickel virtual machine that
 /// can be used to further evaluate unevaluated sub-expressions.
 ///
-/// - `src` is a nul-terminated string containing UTF-8-encoded Nickel source.
+/// - `src` is a null-terminated string containing UTF-8-encoded Nickel source.
 /// - `out_expr` is either NULL or something that was created with [`nickel_expr_alloc`]
 /// - `out_error` can be NULL if you aren't interested in getting detailed
 ///   error messages
@@ -594,7 +594,7 @@ pub unsafe extern "C" fn nickel_expr_as_bool(expr: *const nickel_expr) -> c_int 
 /// If this expression is a string, returns that string.
 ///
 /// A pointer to the string contents, which are UTF-8 encoded, is returned in
-/// `out_str`. These contents are *not* nul-terminated. The return value of this
+/// `out_str`. These contents are *not* null-terminated. The return value of this
 /// function is the length of these contents.
 ///
 /// The returned string contents are owned by this `Expr`, and will be invalidated
@@ -629,7 +629,7 @@ pub unsafe extern "C" fn nickel_expr_as_number(expr: *const nickel_expr) -> *con
 /// If this expression is an enum tag, returns its string value.
 ///
 /// A pointer to the string contents, which are UTF-8 encoded, is returned in
-/// `out_str`. These contents are *not* nul-terminated. The return value of this
+/// `out_str`. These contents are *not* null-terminated. The return value of this
 /// function is the length of these contents.
 ///
 /// The returned string contents point to an interned string and will never be
@@ -651,7 +651,7 @@ pub unsafe extern "C" fn nickel_expr_as_enum_tag(
 /// If this expression is an enum variant, returns its string value and its payload.
 ///
 /// A pointer to the string contents, which are UTF-8 encoded, is returned in
-/// `out_str`. These contents are *not* nul-terminated. The return value of this
+/// `out_str`. These contents are *not* null-terminated. The return value of this
 /// function is the length of these contents.
 ///
 /// The returned string contents point to an interned string and will never be
@@ -906,7 +906,7 @@ pub unsafe extern "C" fn nickel_string_free(s: *mut nickel_string) {
 /// Retrieve the data inside a string.
 ///
 /// A pointer to the string contents, which are UTF-8 encoded, is written to
-/// `data`. These contents are *not* nul-terminated, but their length (in bytes)
+/// `data`. These contents are *not* null-terminated, but their length (in bytes)
 /// is written to `len`. The string contents will be invalidated when `s` is
 /// freed or overwritten.
 #[no_mangle]
