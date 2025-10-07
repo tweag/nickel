@@ -307,9 +307,9 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
-    /// Constructor that abstracts over an iterator of Inputs (file, strings,
-    /// etc). Published for those that need abstraction over the kind of Input
-    /// or want to mix multiple different kinds of Input.
+    /// Constructor that abstracts over an iterator of Inputs (file, strings, etc). Published for
+    /// those that need abstraction over the kind of Input or want to mix multiple different kinds
+    /// of Input.
     ///
     /// The format of each input is Nickel by default. However, for [Input::Path]s, the format is
     /// determined from the file extension. This is useful to merge Nickel and non-Nickel files, or
