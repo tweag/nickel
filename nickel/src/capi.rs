@@ -36,6 +36,28 @@
 //! assert(nickel_expr_is_number(val));
 //! assert(nickel_expr_as_i64(val) == 1);
 //! ```
+//!
+//! # Ownership and lifetimes
+//!
+//! We have a uniform interface for owned data: all of the owning types (`nickel_context`,
+//! `nickel_expr`, `nickel_error`, `nickel_string`) are only made available to C via
+//! opaque pointers. For example, a `nickel_context` can only be created by `nickel_context_alloc`,
+//! which returns a `*mut nickel_context` pointing to some data on the Rust heap. That
+//! data is now owned by the `*mut nickel_context` pointer -- there is no longer any
+//! owner on the Rust side to move out the data and invalidate the pointer.
+//!
+//! The data behind a `*mut nickel_context` pointer can be modified by various API
+//! functions (like `nickel_context_eval_deep`), but it will only be destroyed
+//! through a call to `nickel_context_free`.
+//!
+//! The other owned data types are similar: you create a `*mut nickel_expr` with
+//! `nickel_expr_alloc`, modify that allocated expression with various API functions,
+//! and then ultimately free it with `nickel_expr_free`.
+
+// Note to future maintainers: preserve the invariant describe above! Pointers to
+// the owning types should only come from `nickel_something_alloc` functions, and
+// in particular should never be temporary pointers to things owned on the Rust
+// side.
 
 #![allow(clippy::missing_safety_doc)]
 #![allow(non_camel_case_types)]
@@ -54,6 +76,11 @@ use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record, Trace, Vir
 pub struct nickel_context {}
 
 impl nickel_context {
+    /// Convert a `*mut nickel_contest` to a `&mut Context`.
+    ///
+    /// # Safety
+    ///
+    /// Assumes that `this` was originally a valid pointer to `Context`.
     unsafe fn as_rust_mut(this: &mut *mut Self) -> &mut Context {
         (*this as *mut Context).as_mut().unwrap()
     }
@@ -79,20 +106,20 @@ pub struct nickel_error {
 pub struct nickel_expr {}
 
 impl nickel_expr {
-    /// Convert a *nickel_expr to a &Expr.
+    /// Convert a `*nickel_expr` to a `&Expr`.
     ///
     /// # Safety
     ///
-    /// Assumes that `this` was originally a valid pointer to Expr.
+    /// Assumes that `this` was originally a valid pointer to `Expr`.
     unsafe fn as_rust(this: &*const Self) -> &Expr {
         (*this as *const Expr).as_ref().unwrap()
     }
 
-    /// Convert a *mut nickel_expr to a &mut Expr.
+    /// Convert a `*mut nickel_expr` to a `&mut Expr`.
     ///
     /// # Safety
     ///
-    /// Assumes that `this` was originally a valid pointer to Expr.
+    /// Assumes that `this` was originally a valid pointer to `Expr`.
     unsafe fn as_rust_mut(this: &mut *mut Self) -> &mut Expr {
         (*this as *mut Expr).as_mut().unwrap()
     }
@@ -107,6 +134,11 @@ impl nickel_expr {
 pub struct nickel_array {}
 
 impl nickel_array {
+    /// Convert a `*nickel_array` to an `Array`.
+    ///
+    /// # Safety
+    ///
+    /// Assumes that `this` was originally a valid pointer to a `term::array::Array`.
     unsafe fn as_rust(this: &*const Self) -> Array<'_> {
         Array {
             array: (*this as *const nickel_lang_core::term::array::Array)
@@ -131,6 +163,11 @@ impl<'a> From<Array<'a>> for *const nickel_array {
 pub struct nickel_record {}
 
 impl nickel_record {
+    /// Convert a `*nickel_record` to a `Record`.
+    ///
+    /// # Safety
+    ///
+    /// Assumes that `this` was originally a valid pointer to a `term::record::RecordData`.
     unsafe fn as_rust(this: &*const Self) -> Record<'_> {
         Record {
             data: (*this as *const nickel_lang_core::term::record::RecordData)
@@ -164,6 +201,11 @@ pub struct nickel_string {
 pub struct nickel_number {}
 
 impl nickel_number {
+    /// Convert a `*nickel_number` to a `Number`.
+    ///
+    /// # Safety
+    ///
+    /// Assumes that `this` was originally a valid pointer to a `term::Number`.
     unsafe fn as_rust(this: &*const Self) -> Number<'_> {
         Number {
             num: (*this as *const nickel_lang_core::term::Number)
@@ -310,6 +352,13 @@ pub unsafe extern "C" fn nickel_context_set_source_name(
 }
 
 /// Perform some sort of evaluation, and return the error appropriately.
+///
+/// # Safety
+///
+/// `src` must be a null-terminated string, and all of the nickel_xxx pointers
+/// must be valid (i.e. allocated by the corresponding `nickel_xxx_alloc` function)
+/// or null. We panic on a null `ctx`, but null `out_expr` and/or `out_error` are
+/// allowed.
 unsafe fn do_eval<F>(
     f: F,
     mut ctx: *mut nickel_context,
@@ -698,6 +747,12 @@ pub unsafe extern "C" fn nickel_expr_as_array(expr: *const nickel_expr) -> *cons
     nickel_expr::as_rust(&expr).as_array().unwrap().into()
 }
 
+/// Converts a Rust result into a reasonable C format.
+///
+/// # Safety
+///
+/// `out_string` and `out_err` must be valid must be valid (i.e. allocated by
+/// the corresponding `nickel_xxx_alloc` function) or null.
 unsafe fn export_result(
     result: Result<String, Error>,
     out_string: *mut nickel_string,
