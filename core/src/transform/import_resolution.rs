@@ -44,7 +44,7 @@ pub mod strict {
     /// elements of this stack are returned. The caller is responsible for performing
     /// transformations (including import resolution) on the resolved terms, if needed.
     pub fn resolve_imports<R>(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
     ) -> Result<ResolveResult, ImportError>
@@ -62,7 +62,7 @@ pub mod strict {
     /// function is not recursive, and is to be used in conjunction with e.g.
     /// [crate::traverse::Traverse].
     pub fn transform_one<R>(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,
@@ -106,7 +106,7 @@ pub mod tolerant {
 
     /// Performs imports resolution in an error tolerant way.
     pub fn resolve_imports<R>(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
     ) -> ResolveResult
@@ -153,7 +153,7 @@ pub mod tolerant {
     /// the resolution fails, the original term is returned unchanged. In the latter case, the
     /// error is returned as well, as a second component of the tuple.
     pub fn transform_one<R>(
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,

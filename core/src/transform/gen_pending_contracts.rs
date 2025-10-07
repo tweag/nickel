@@ -60,13 +60,14 @@ pub fn with_pending_contracts(
     })
 }
 
-pub fn transform_one(value: NickelValue) -> Result<NickelValue, UnboundTypeVariableError> {
+pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> Result<NickelValue, UnboundTypeVariableError> {
     fn attach_to_fields(
+        pos_table: &mut PosTable,
         fields: IndexMap<LocIdent, Field>,
     ) -> Result<IndexMap<LocIdent, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
-            .map(|(id, field)| Ok((id, with_pending_contracts(field)?)))
+            .map(|(id, field)| Ok((id, with_pending_contracts(pos_table, field)?)))
             .collect()
     }
 
@@ -80,7 +81,7 @@ pub fn transform_one(value: NickelValue) -> Result<NickelValue, UnboundTypeVaria
                 sealed_tail,
             } = lens.take().0;
 
-            let fields = attach_to_fields(fields)?;
+            let fields = attach_to_fields(pos_table, fields)?;
 
             // unwrap(): since we took the position from `value` which is a record, its position
             // index must be an inline position index.
@@ -104,10 +105,10 @@ pub fn transform_one(value: NickelValue) -> Result<NickelValue, UnboundTypeVaria
                     sealed_tail,
                 } = record_data;
 
-                let fields = attach_to_fields(fields)?;
+                let fields = attach_to_fields(pos_table, fields)?;
                 let dyn_fields = dyn_fields
                     .into_iter()
-                    .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
+                    .map(|(id_term, field)| Ok((id_term, with_pending_contracts(pos_table, field)?)))
                     .collect::<Result<_, _>>()?;
 
                 NickelValue::term(

@@ -1078,14 +1078,14 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                 FieldPathElem::Ident(id) => {
                     let mut fields = IndexMap::new();
                     fields.insert(*id, acc);
-                    term::record::Field::from(NickelValue::record_force_pos(
-                        pos_table,
+                    // unwrap(): will go away soon
+                    term::record::Field::from(NickelValue::record(
                         term::record::RecordData {
                             fields,
                             ..Default::default()
                         },
                         pos_table.push_block(pos),
-                    ))
+                    ).unwrap())
                 }
                 FieldPathElem::Expr(expr) => {
                     let pos = expr.pos;
@@ -1099,14 +1099,13 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         let mut fields = IndexMap::new();
                         fields.insert(id, acc);
 
-                        term::record::Field::from(NickelValue::record_force_pos(
-                            pos_table,
+                        term::record::Field::from(NickelValue::record(
                             term::record::RecordData {
                                 fields,
                                 ..Default::default()
                             },
                             pos_table.push_block(pos),
-                        ))
+                        ).unwrap())
                     } else {
                         // The record we create isn't recursive, because it is only comprised of
                         // one dynamic field. It's just simpler to use the infrastructure of
@@ -1425,7 +1424,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
             Node::Null => NickelValue::null().with_inline_pos_idx(pos_table.push_inline(ast.pos)),
             Node::Bool(b) => NickelValue::bool_value(*b, pos_table.push_inline(ast.pos)),
             Node::Number(n) => NickelValue::number((**n).clone(), pos_table.push_block(ast.pos)),
-            Node::String(s) => NickelValue::string((*s).into(), pos_table.push_block(ast.pos)),
+            Node::String(s) => NickelValue::string(*s, pos_table.push_block(ast.pos)),
             Node::StringChunks(chunks) => {
                 let chunks = chunks
                     .iter()
@@ -1671,7 +1670,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
 
         // See [^merge-label-span]
         if let ValueContentRefMut::Term(TermBody(term::Term::Op2(
-            term::BinaryOp::Merge(ref mut label),
+            term::BinaryOp::Merge(label),
             _,
             _,
         ))) = result.content_make_mut()

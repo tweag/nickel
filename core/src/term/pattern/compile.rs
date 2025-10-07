@@ -114,7 +114,7 @@ fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent
 ///   record_id
 /// ```
 pub(crate) fn with_default_value(
-    pos_table: &PosTable,
+    pos_table: &mut PosTable,
     record_id: LocIdent,
     field: LocIdent,
     default: NickelValue,
@@ -158,7 +158,7 @@ pub(crate) fn with_default_value(
 /// record_id & { "<id>" = <field> }
 /// ```
 fn update_with_merge(
-    pos_table: &PosTable,
+    pos_table: &mut PosTable,
     record_id: LocIdent,
     id: LocIdent,
     field: Field,
@@ -186,7 +186,7 @@ fn update_with_merge(
     //
     // unwrap(): typechecking ensures that there are no unbound variables at this point
     let singleton =
-        crate::transform::gen_pending_contracts::transform_one(singleton.into()).unwrap();
+        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton.into()).unwrap();
 
     let span = annot
         .iter()
@@ -226,7 +226,7 @@ pub trait CompilePart {
     /// a variable, they are free to share without risk of duplicating work.
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue;
@@ -242,7 +242,7 @@ impl CompilePart for Pattern {
     // <pattern_data.compile()> arg bindings
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -271,7 +271,7 @@ impl CompilePart for Pattern {
 impl CompilePart for PatternData {
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -293,7 +293,7 @@ impl CompilePart for PatternData {
 impl CompilePart for ConstantPattern {
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -302,7 +302,7 @@ impl CompilePart for ConstantPattern {
 }
 
 impl CompilePart for ConstantPatternData {
-    fn compile_part(&self, _: &PosTable, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
+    fn compile_part(&self, _: &mut PosTable, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
         let compile_constant = |nickel_type: &str, value: NickelValue| {
             // if %typeof% value_id == '<nickel_type> && value_id == <value> then
             //   bindings_id
@@ -359,7 +359,7 @@ impl CompilePart for OrPattern {
     //  <end fold>
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -451,7 +451,7 @@ impl CompilePart for RecordPattern {
     //   null
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -718,7 +718,7 @@ impl CompilePart for ArrayPattern {
     //   null
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -861,7 +861,7 @@ impl CompilePart for ArrayPattern {
 impl CompilePart for EnumPattern {
     fn compile_part(
         &self,
-        pos_table: &PosTable,
+        pos_table: &mut PosTable,
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
@@ -930,7 +930,7 @@ impl CompilePart for EnumPattern {
 pub trait Compile {
     /// Compile a match expression to a Nickel expression with the provided `value_id` as a
     /// free variable (representing a placeholder for the matched expression).
-    fn compile(self, pos_table: &PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue;
+    fn compile(self, pos_table: &mut PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue;
 }
 
 impl Compile for MatchData {
@@ -951,7 +951,7 @@ impl Compile for MatchData {
     //    else
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
-    fn compile(mut self, pos_table: &PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
+    fn compile(mut self, pos_table: &mut PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
         increment!("pattern_compile");
 
         if self.branches.iter().all(|branch| {
@@ -1117,7 +1117,7 @@ struct TagsOnlyMatch {
 }
 
 impl Compile for TagsOnlyMatch {
-    fn compile(self, _: &PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
+    fn compile(self, _: &mut PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
         increment!("pattern_comile(tags_only_match)");
 
         // We simply use the corresponding specialized primop in that case.
