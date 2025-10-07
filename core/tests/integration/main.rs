@@ -21,6 +21,7 @@ mod free_vars;
 mod pretty;
 mod query;
 mod stdlib_typecheck;
+mod program_api;
 
 #[test_resources("core/tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
