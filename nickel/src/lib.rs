@@ -37,7 +37,21 @@ use nickel_lang_core::{
     },
 };
 
-pub use nickel_lang_core::error::report::ErrorFormat;
+/// Available export formats for error diagnostics.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub enum ErrorFormat {
+    /// Text with ANSI color codes.
+    #[default]
+    AnsiText,
+    /// Text without ANSI color codes.
+    Text,
+    Json,
+    Yaml,
+    Toml,
+}
+
+#[cfg(feature = "capi")]
+pub mod capi;
 
 /// Provides a destination for the output of `std.trace`.
 #[derive(Clone)]
@@ -87,6 +101,7 @@ pub enum Color {
 }
 
 /// A Nickel evaluation error.
+#[derive(Clone)]
 pub struct Error {
     error: Box<nickel_lang_core::error::Error>,
     files: nickel_lang_core::files::Files,
@@ -100,25 +115,22 @@ impl std::fmt::Debug for Error {
 
 impl Error {
     pub fn format<W: Write>(
-        mut self,
+        &self,
         write: &mut W,
         format: ErrorFormat,
-        color: Color,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let diagnostics = DiagnosticsWrapper::from(self.error.into_diagnostics(&mut self.files));
+        let mut err = self.clone();
+        let diagnostics = DiagnosticsWrapper::from(err.error.into_diagnostics(&mut err.files));
         match format {
-            ErrorFormat::Text => {
+            ErrorFormat::Text | ErrorFormat::AnsiText => {
                 let mut ansi;
                 let mut no_color;
-                let writer: &mut dyn WriteColor = match color {
-                    Color::Ansi => {
-                        ansi = Ansi::new(write);
-                        &mut ansi
-                    }
-                    Color::Off => {
-                        no_color = NoColor::new(write);
-                        &mut no_color
-                    }
+                let writer: &mut dyn WriteColor = if format == ErrorFormat::AnsiText {
+                    ansi = Ansi::new(write);
+                    &mut ansi
+                } else {
+                    no_color = NoColor::new(write);
+                    &mut no_color
                 };
                 let config = codespan_reporting::term::Config::default();
                 diagnostics.diagnostics.iter().try_for_each(|d| {
@@ -297,7 +309,7 @@ impl VirtualMachine {
 /// A Nickel expression.
 ///
 /// This might be fully evaluated (for example, if you got it from [`Context::eval_deep`])
-/// or might have unevaluated thunks (if you got it from [`Context::eval_shallow`]).
+/// or might have unevaluated sub-expressions (if you got it from [`Context::eval_shallow`]).
 #[derive(Clone)]
 pub struct Expr {
     rt: RichTerm,
@@ -367,6 +379,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// JSON: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_json(&self) -> Result<String, Error> {
         self.export(ExportFormat::Json)
     }
@@ -375,6 +388,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// YAML: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_yaml(&self) -> Result<String, Error> {
         self.export(ExportFormat::Yaml)
     }
@@ -383,6 +397,7 @@ impl Expr {
     ///
     /// This is fallible because enum variants have no canonical conversion to
     /// TOML: if the expression contains any enum variants, this will fail.
+    /// This also fails if the expression contains any unevaluated sub-expressions.
     pub fn to_toml(&self) -> Result<String, Error> {
         self.export(ExportFormat::Toml)
     }
@@ -504,7 +519,7 @@ impl Expr {
     /// Has this expression been evaluated?
     ///
     /// An evaluated expression is either null, or it's a number, bool, string,
-    /// record, array, or enum. Is this expression is not a value, you probably
+    /// record, array, or enum. If this expression is not a value, you probably
     /// got it from looking inside the result of [`Context::eval_shallow`],
     /// and you can use the [`VirtualMachine`] you got from `eval_shallow` to
     /// evaluate this expression further.
@@ -558,9 +573,9 @@ impl Record<'_> {
 
     /// Return the field name and value at the given index.
     ///
-    /// If this record was fully evaluated, every defined field will have a value
+    /// If this record was deeply evaluated, every defined field will have a value
     /// (i.e. the `Option<Expr>` returned here will never be `None`). However,
-    /// partially evaluated records may have fields with no value.
+    /// shallowly evaluated records may have fields with no value.
     pub fn key_value_by_index(&self, idx: usize) -> Option<(&str, Option<Expr>)> {
         self.data.fields.get_index(idx).map(|(key, fld)| {
             (

@@ -10,6 +10,12 @@ repository.workspace = true
 homepage.workspace = true
 readme.workspace = true
 
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[features]
+capi = []
+
 [dependencies]
 codespan-reporting.workspace = true
 indexmap.workspace = true

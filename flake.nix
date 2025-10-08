@@ -356,6 +356,24 @@
               } // extraArgs;
             });
 
+          buildCApi = { pnameSuffix ? "", extraBuildArgs ? "", extraArgs ? { } }:
+            craneLib.buildPackage ({
+              inherit
+                pname
+                pnameSuffix
+                src
+                version
+                cargoArtifacts;
+
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --features capi --package nickel-lang";
+              CARGO_PROFILE = profile;
+
+              postInstall = ''
+                mkdir -p $out/include
+                ${pkgs.rust-cbindgen}/bin/cbindgen nickel --lockfile ./Cargo.lock --output $out/include/nickel_lang.h --cpp-compat
+              '';
+            } // extraArgs);
+
           # In addition to external dependencies, we build the lalrpop file in a
           # separate derivation because it's expensive to build but needs to be
           # rebuilt infrequently.
@@ -434,6 +452,24 @@
               extraArgs = { meta.mainProgram = "nickel"; };
             });
 
+          nickel-lang-c = buildCApi { pnameSuffix = "-c-api"; };
+
+          nickel-lang-c-test = pkgs.stdenv.mkDerivation {
+            name = "nickel-lang-c-test";
+            inherit version;
+            src = ./nickel/capi-tests;
+
+            buildPhase = ''
+              mkdir -p $out/bin
+              $CC -I "${nickel-lang-c}/include/" run_tests.c "${nickel-lang-c}/lib/libnickel_lang.a" -lm -o $out/bin/run_tests
+            '';
+
+            doCheck = true;
+            checkPhase = ''
+              $out/bin/run_tests
+            '';
+          };
+
           benchmarks = craneLib.mkCargoDerivation {
             inherit pname src version cargoArtifacts env;
 
@@ -490,6 +526,7 @@
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
+          pkgs.rust-cbindgen
           pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.yarn
@@ -666,6 +703,7 @@
           nickel-lang
           nickel-lang-pkg
           nickel-lang-nix
+          nickel-lang-c
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
@@ -710,6 +748,7 @@
           clippy
           checkRustDoc
           nickel-lang
+          nickel-lang-c-test
           rustfmt;
         nickelWasm = buildNickelWasm { profile = "dev"; };
         inherit vscodeExtension stdlibTests;
