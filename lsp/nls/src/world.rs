@@ -387,12 +387,11 @@ impl World {
                 let message = match phase {
                     FailedPhase::Parsing(format) => &format!(
                         "This import could not be resolved \
-                                because its content could not be parsed as {}.",
-                        format.to_str()
+                         because its content could not be parsed as {format}."
                     ),
                     FailedPhase::Typechecking => {
                         "This import could not be resolved \
-                                because its content has failed to typecheck correctly."
+                         because its content has failed to typecheck correctly."
                     }
                 };
 

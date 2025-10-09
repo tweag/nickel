@@ -1548,8 +1548,7 @@ impl IntoDiagnostics for EvalError {
                         diag.labels
                             .push(secondary(span).with_message("deserialized here"));
                     }
-                    diag.notes
-                        .push(format!("while parsing {}", format.to_str()));
+                    diag.notes.push(format!("while parsing {format}"));
                 }
                 diags
             }
