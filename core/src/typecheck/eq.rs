@@ -653,9 +653,9 @@ impl<'ast> TypeEqBounded<'ast> for UnifType<'ast> {
             }
             (UnifType::UnifVar { id: id1, .. }, UnifType::UnifVar { id: id2, .. }) => {
                 debug_assert!(
-                false,
-                "we shouldn't come across unification variables during type equality computation"
-            );
+                    false,
+                    "we shouldn't come across unification variables during type equality computation"
+                );
                 id1 == id2
             }
             (UnifType::Constant(i1), UnifType::Constant(i2)) => i1 == i2,

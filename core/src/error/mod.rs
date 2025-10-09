@@ -13,20 +13,22 @@ use malachite::base::num::conversion::traits::ToSci;
 use ouroboros::self_referencing;
 
 use crate::{
-    bytecode::ast::{
-        alloc::{AstAlloc, CloneTo},
-        compat::ToMainline as _,
-        typ::{EnumRow, RecordRow, Type},
-        Ast,
+    bytecode::{
+        ast::{
+            Ast,
+            alloc::{AstAlloc, CloneTo},
+            compat::ToMainline as _,
+            typ::{EnumRow, RecordRow, Type},
+        },
+        value::{EnumVariantBody, NickelValue},
     },
     cache::InputFormat,
     eval::callstack::CallStack,
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     label::{
-        self,
+        self, MergeKind, MergeLabel,
         ty_path::{self, PathSpan},
-        MergeKind, MergeLabel,
     },
     parser::{
         self,
@@ -34,10 +36,10 @@ use crate::{
         lexer::Token,
         utils::mk_span,
     },
-    position::{RawSpan, TermPos},
+    position::{PosIdx, PosTable, RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer},
-    term::{pattern::Pattern, record::FieldMetadata, Number, RichTerm, Term},
+    term::{Number, pattern::Pattern, record::FieldMetadata},
     typ::{TypeF, VarKindDiscriminant},
 };
 
@@ -101,7 +103,7 @@ impl<E> Reporter<E> for NullReporter {
 }
 
 /// A general error occurring during either parsing or evaluation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
@@ -112,25 +114,38 @@ pub enum Error {
     ReplError(ReplError),
 }
 
+/// Runtime errors might need additional context to be properly reported. The most important one is
+/// the position table, which is need to map position indices stored inside a [NickelValue] back to
+/// a [TermPos]. Additional data is useful, such as the callstack.
+#[derive(Debug, Default, PartialEq)]
+pub struct EvalCtxt {
+    pub pos_table: PosTable,
+    pub call_stack: CallStack,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct EvalError {
+    pub ctxt: EvalCtxt,
+    pub error: EvalErrorData,
+}
+
 /// An error occurring during evaluation.
-#[derive(Debug, Clone, PartialEq)]
-pub enum EvalError {
+#[derive(Debug, PartialEq, Clone)]
+pub enum EvalErrorData {
     /// A blame occurred: a contract has been broken somewhere.
     BlameError {
         /// The argument failing the contract. If the argument has been forced by the contract,
         /// `evaluated_arg` provides the final value.
-        evaluated_arg: Option<RichTerm>,
+        evaluated_arg: Option<NickelValue>,
         /// The label of the corresponding contract.
         label: label::Label,
-        /// The callstack when the blame error was raised.
-        call_stack: CallStack,
     },
     /// A field required by a record contract is missing a definition.
     MissingFieldDef {
         id: LocIdent,
         metadata: FieldMetadata,
-        pos_record: TermPos,
-        pos_access: TermPos,
+        pos_record: PosIdx,
+        pos_access: PosIdx,
     },
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError {
@@ -138,34 +153,34 @@ pub enum EvalError {
         expected: String,
         /// A freeform message.
         message: String,
-        /// Position of the original unevaluated expression.
-        orig_pos: TermPos,
+        /// Position index of the original unevaluated expression.
+        orig_pos: PosIdx,
         /// The evaluated expression.
-        term: RichTerm,
+        term: NickelValue,
     },
     /// `TypeError` when evaluating a unary primop
     UnaryPrimopTypeError {
         primop: String,
         expected: String,
-        arg_pos: TermPos,
-        arg_evaluated: RichTerm,
+        pos_arg: PosIdx,
+        arg_evaluated: NickelValue,
     },
     /// `TypeError` when evaluating a binary primop
     NAryPrimopTypeError {
         primop: String,
         expected: String,
         arg_number: usize,
-        arg_pos: TermPos,
-        arg_evaluated: RichTerm,
-        op_pos: TermPos,
+        pos_arg: PosIdx,
+        arg_evaluated: NickelValue,
+        pos_op: PosIdx,
     },
     /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(ParseError),
     /// A term which is not a function has been applied to an argument.
     NotAFunc(
-        /* term */ RichTerm,
-        /* arg */ RichTerm,
-        /* app position */ TermPos,
+        /* term */ NickelValue,
+        /* arg */ NickelValue,
+        /* app position */ PosIdx,
     ),
     /// A field access, or another record operation requiring the existence of a specific field,
     /// has been performed on a record missing that field.
@@ -177,37 +192,37 @@ pub enum EvalError {
         // The primitive operation that required the field to exist.
         operator: String,
         // The position of the record value which is missing the field.
-        pos_record: TermPos,
+        pos_record: PosIdx,
         // The position of the primitive operation application.
-        pos_op: TermPos,
+        pos_op: PosIdx,
     },
     /// Too few arguments were provided to a builtin function.
     NotEnoughArgs(
         /* required arg count */ usize,
         /* primitive */ String,
-        TermPos,
+        PosIdx,
     ),
     /// Attempted to merge incompatible values: for example, tried to merge two distinct default
     /// values into one record field.
     MergeIncompatibleArgs {
         /// The left operand of the merge.
-        left_arg: RichTerm,
+        left_arg: NickelValue,
         /// The right operand of the merge.
-        right_arg: RichTerm,
+        right_arg: NickelValue,
         /// Additional error-reporting data.
         merge_label: MergeLabel,
     },
     /// An unbound identifier was referenced.
     UnboundIdentifier(LocIdent, TermPos),
     /// An element in the evaluation Cache was entered during its own update.
-    InfiniteRecursion(CallStack, TermPos),
+    InfiniteRecursion(CallStack, PosIdx),
     /// A serialization error occurred during a call to the builtin `serialize`.
     SerializationError(ExportError),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
-        String,  /* format */
-        String,  /* error message */
-        TermPos, /* position of the call to deserialize */
+        String, /* format */
+        String, /* error message */
+        PosIdx, /* position of the call to deserialize */
     ),
     /// A parse error occurred during a call to the builtin `deserialize`.
     ///
@@ -217,20 +232,19 @@ pub enum EvalError {
         format: InputFormat,
         inner: ParseError,
         /// Position of the call to deserialize.
-        pos: TermPos,
+        pos: PosIdx,
     },
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
-        evaluated_arg: Option<RichTerm>,
+        evaluated_arg: Option<NickelValue>,
         label: label::Label,
-        call_stack: CallStack,
     },
     /// Two non-equatable terms of the same type (e.g. functions) were compared for equality.
     IncomparableValues {
-        eq_pos: TermPos,
-        left: RichTerm,
-        right: RichTerm,
+        eq_pos: PosIdx,
+        left: NickelValue,
+        right: NickelValue,
     },
     /// A value didn't match any branch of a `match` expression at runtime. This is a specialized
     /// version of [Self::NonExhaustiveMatch] when all branches are enum patterns. In this case,
@@ -239,35 +253,35 @@ pub enum EvalError {
         /// The list of expected patterns. Currently, those are just enum tags.
         expected: Vec<LocIdent>,
         /// The original term matched
-        found: RichTerm,
+        found: NickelValue,
         /// The position of the `match` expression
-        pos: TermPos,
+        pos: PosIdx,
     },
     NonExhaustiveMatch {
         /// The original term matched.
-        value: RichTerm,
+        value: NickelValue,
         /// The position of the `match` expression
-        pos: TermPos,
+        pos: PosIdx,
     },
     FailedDestructuring {
         /// The original term matched.
-        value: RichTerm,
+        value: NickelValue,
         /// The pattern that failed to match.
         pattern: Pattern,
     },
     /// Tried to query a field of something that wasn't a record.
     QueryNonRecord {
         /// Position of the original unevaluated expression.
-        pos: TermPos,
+        pos: PosIdx,
         /// The identifier that we tried to query.
         id: LocIdent,
         /// Evaluated expression
-        value: RichTerm,
+        value: NickelValue,
     },
     /// An unexpected internal error.
-    InternalError(String, TermPos),
+    InternalError(String, PosIdx),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
-    Other(String, TermPos),
+    Other(String, PosIdx),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -469,7 +483,7 @@ pub enum TypecheckErrorData<'ast> {
         /// The term that was in a flat type (the `(4 + 1)` in the example above).
         contract: Ast<'ast>,
         /// The position of the entire type (the `{foo : 5}` in the example above).
-        pos: TermPos,
+        pos_type: TermPos,
     },
     /// Unsound generalization.
     ///
@@ -750,8 +764,10 @@ pub enum ImportError {
     NoPackageMap { pos: TermPos },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExportError {
+    /// The position table, mapping position indices to spans.
+    pub pos_table: PosTable,
     /// The path to the field that contains a non-serializable value. This might be empty if the
     /// error occurred before entering any record.
     pub path: NickelPointer,
@@ -763,16 +779,16 @@ pub struct ExportError {
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExportErrorData {
     /// Encountered a null value for a format that doesn't support them.
-    UnsupportedNull(ExportFormat, RichTerm),
+    UnsupportedNull(ExportFormat, NickelValue),
     /// Tried exporting something else than a `String` to raw format.
-    NotAString(RichTerm),
+    NotAString(NickelValue),
     /// A term contains constructs that cannot be serialized.
-    NonSerializable(RichTerm),
+    NonSerializable(NickelValue),
     /// No exportable documentation was found when requested.
-    NoDocumentation(RichTerm),
+    NoDocumentation(NickelValue),
     /// A number was too large (in absolute value) to be serialized as `f64`
     NumberOutOfRange {
-        term: RichTerm,
+        term: NickelValue,
         value: Number,
     },
     Other(String),
@@ -781,6 +797,7 @@ pub enum ExportErrorData {
 impl From<ExportErrorData> for ExportError {
     fn from(data: ExportErrorData) -> ExportError {
         ExportError {
+            pos_table: todo!(),
             path: NickelPointer::new(),
             data,
         }
@@ -852,9 +869,9 @@ impl From<std::io::Error> for IOError {
     }
 }
 
-impl From<ExportError> for EvalError {
-    fn from(error: ExportError) -> EvalError {
-        EvalError::SerializationError(error)
+impl From<ExportError> for EvalErrorData {
+    fn from(error: ExportError) -> EvalErrorData {
+        EvalErrorData::SerializationError(error)
     }
 }
 
@@ -1051,8 +1068,7 @@ impl ParseError {
     }
 }
 
-pub const INTERNAL_ERROR_MSG: &str =
-    "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider \
+pub const INTERNAL_ERROR_MSG: &str = "This error should not happen. This is likely a bug in the Nickel interpreter. Please consider \
  reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
@@ -1061,6 +1077,7 @@ pub trait IntoDiagnostics {
     ///
     /// # Arguments
     ///
+    /// - `pos_table`: the position table, mapping position indices stored in Nickel values to
     /// - `files`: this is a mutable reference to allow insertion of temporary snippets. Note that
     ///   `Files` is cheaply clonable and copy-on-write, so you can easily get a mutable `Files` from
     ///   a non-mutable one, but bear in mind that the returned diagnostics may contains file ids that
@@ -1077,7 +1094,7 @@ pub trait IntoDiagnostics {
 
 // Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
 impl IntoDiagnostics for Diagnostic<FileId> {
-    fn into_diagnostics(self, _files: &mut Files) -> Vec<Diagnostic<FileId>> {
+    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         vec![self]
     }
 }
@@ -1171,8 +1188,12 @@ fn primary_alt(span_opt: Option<RawSpan>, alt_term: String, files: &mut Files) -
 /// term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn primary_term(term: &RichTerm, files: &mut Files) -> Label<FileId> {
-    primary_alt(term.pos.into_opt(), term.to_string(), files)
+fn primary_term(pos_table: &PosTable, term: &NickelValue, files: &mut Files) -> Label<FileId> {
+    primary_alt(
+        pos_table.get(term.pos_idx()).into_opt(),
+        term.to_string(),
+        files,
+    )
 }
 
 /// Create a secondary label from an optional span, or fallback to annotating the alternative
@@ -1187,8 +1208,8 @@ fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files) -> Labe
 /// this term if its span is `None`.
 ///
 /// See [`label_alt`].
-fn secondary_term(term: &RichTerm, files: &mut Files) -> Label<FileId> {
-    secondary_alt(term.pos, term.to_string(), files)
+fn secondary_term(pos_table: &PosTable, term: &NickelValue, files: &mut Files) -> Label<FileId> {
+    secondary_alt(pos_table.get(term.pos_idx()), term.to_string(), files)
 }
 
 fn cardinal(number: usize) -> String {
@@ -1224,13 +1245,21 @@ impl IntoDiagnostics for Error {
 
 impl IntoDiagnostics for EvalError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
-        match self {
-            EvalError::BlameError {
+        let mut pos_table = self.ctxt.pos_table;
+
+        match self.error {
+            EvalErrorData::BlameError {
                 evaluated_arg,
                 label,
-                call_stack,
-            } => blame_error::blame_diagnostics(files, label, evaluated_arg, &call_stack, ""),
-            EvalError::MissingFieldDef {
+            } => blame_error::blame_diagnostics(
+                &mut pos_table,
+                files,
+                label,
+                evaluated_arg,
+                &self.ctxt.call_stack,
+                "",
+            ),
+            EvalErrorData::MissingFieldDef {
                 id,
                 metadata,
                 pos_record,
@@ -1252,7 +1281,7 @@ impl IntoDiagnostics for EvalError {
                         labels.push(primary(&span).with_message("required here"));
                     }
 
-                    if let Some(span) = pos_record.into_opt() {
+                    if let Some(span) = pos_table.get(pos_record).into_opt() {
                         labels.push(secondary(&span).with_message("in this record"));
                     }
 
@@ -1263,22 +1292,24 @@ impl IntoDiagnostics for EvalError {
                         labels.push(primary(&span).with_message("required here"));
                     }
 
-                    if let Some(span) = pos_record.into_opt() {
+                    if let Some(span) = pos_table.get(pos_record).into_opt() {
                         labels.push(secondary(&span).with_message("in this record"));
                     }
 
-                    if let Some(span) = pos_access.into_opt() {
+                    if let Some(span) = pos_table.get(pos_access).into_opt() {
                         labels.push(secondary(&span).with_message("accessed here"));
                     }
                 }
 
-                let diags = vec![Diagnostic::error()
-                    .with_message(format!("missing definition for `{id}`",))
-                    .with_labels(labels)];
+                let diags = vec![
+                    Diagnostic::error()
+                        .with_message(format!("missing definition for `{id}`",))
+                        .with_labels(labels),
+                ];
 
                 diags
             }
-            EvalError::TypeError {
+            EvalErrorData::TypeError {
                 expected,
                 message,
                 orig_pos,
@@ -1286,20 +1317,21 @@ impl IntoDiagnostics for EvalError {
             } => {
                 let label = format!(
                     "this expression has type {}, but {} was expected",
-                    t.term
-                        .type_of()
-                        .unwrap_or_else(|| String::from("<unevaluated>")),
+                    t.type_of().unwrap_or("<unevaluated>").to_owned(),
                     expected,
                 );
 
-                let labels = match (orig_pos.into_opt(), t.pos.into_opt()) {
+                let labels = match (
+                    pos_table.get(orig_pos).into_opt(),
+                    pos_table.get(t.pos_idx()).into_opt(),
+                ) {
                     (Some(span_orig), Some(span_t)) if span_orig == span_t => {
                         vec![primary(&span_orig).with_message(label)]
                     }
                     (Some(span_orig), Some(t_pos)) if !files.is_stdlib(t_pos.src_id) => {
                         vec![
                             primary(&span_orig).with_message(label),
-                            secondary_term(&t, files).with_message("evaluated to this"),
+                            secondary_term(&pos_table, &t, files).with_message("evaluated to this"),
                         ]
                     }
                     (Some(span), _) => {
@@ -1309,25 +1341,29 @@ impl IntoDiagnostics for EvalError {
                         vec![primary(&span).with_message(label)]
                     }
                     (None, None) => {
-                        vec![primary_term(&t, files).with_message(label)]
+                        vec![primary_term(&pos_table, &t, files).with_message(label)]
                     }
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("dynamic type error")
-                    .with_labels(labels)
-                    .with_notes(vec![message])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("dynamic type error")
+                        .with_labels(labels)
+                        .with_notes(vec![message]),
+                ]
             }
-            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files),
-            EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
-                .with_message("not a function")
-                .with_labels(vec![
-                    primary_term(&t, files)
-                        .with_message("this term is applied, but it is not a function"),
-                    secondary_alt(pos_opt, format!("({t}) ({arg})"), files)
-                        .with_message("applied here"),
-                ])],
-            EvalError::FieldMissing {
+            EvalErrorData::ParseError(parse_error) => parse_error.into_diagnostics(files),
+            EvalErrorData::NotAFunc(t, arg, pos_opt) => vec![
+                Diagnostic::error()
+                    .with_message("not a function")
+                    .with_labels(vec![
+                        primary_term(&pos_table, &t, files)
+                            .with_message("this term is applied, but it is not a function"),
+                        secondary_alt(pos_table.get(pos_opt), format!("({t}) ({arg})"), files)
+                            .with_message("applied here"),
+                    ]),
+            ],
+            EvalErrorData::FieldMissing {
                 id: name,
                 field_names,
                 operator,
@@ -1338,7 +1374,7 @@ impl IntoDiagnostics for EvalError {
                 let mut notes = Vec::new();
                 let field = escape(name.as_ref());
 
-                if let Some(span) = pos_op.into_opt() {
+                if let Some(span) = pos_table.get(pos_op).into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(format!("this requires the field `{field}` to exist")),
@@ -1349,7 +1385,7 @@ impl IntoDiagnostics for EvalError {
                     ));
                 }
 
-                if let Some(span) = pos_record.as_opt_ref() {
+                if let Some(span) = pos_table.get(pos_record).as_opt_ref() {
                     labels.push(
                         secondary(span)
                             .with_message(format!("this record lacks the field `{field}`")),
@@ -1358,17 +1394,19 @@ impl IntoDiagnostics for EvalError {
 
                 suggest::add_suggestion(&mut notes, &field_names, &name);
 
-                vec![Diagnostic::error()
-                    .with_message(format!("missing field `{field}`"))
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("missing field `{field}`"))
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
-            EvalError::NotEnoughArgs(count, op, span_opt) => {
+            EvalErrorData::NotEnoughArgs(count, op, span_opt) => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
                 let msg = format!("{op} expects {count} arguments, but not enough were provided");
 
-                if let Some(span) = span_opt.into_opt() {
+                if let Some(span) = pos_table.get(span_opt).into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(msg),
@@ -1377,19 +1415,23 @@ impl IntoDiagnostics for EvalError {
                     notes.push(msg);
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("not enough arguments")
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("not enough arguments")
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
-            EvalError::MergeIncompatibleArgs {
+            EvalErrorData::MergeIncompatibleArgs {
                 left_arg,
                 right_arg,
                 merge_label,
             } => {
                 let mut labels = vec![
-                    primary_term(&left_arg, files).with_message("cannot merge this expression"),
-                    primary_term(&right_arg, files).with_message("with this expression"),
+                    primary_term(&pos_table, &left_arg, files)
+                        .with_message("cannot merge this expression"),
+                    primary_term(&pos_table, &right_arg, files)
+                        .with_message("with this expression"),
                 ];
 
                 let span_label = match merge_label.kind {
@@ -1419,10 +1461,8 @@ impl IntoDiagnostics for EvalError {
                         .to_owned(),
                 ];
 
-                if let (Some(left_ty), Some(right_ty)) =
-                    (right_arg.as_ref().type_of(), left_arg.as_ref().type_of())
-                {
-                    match left_ty.as_str() {
+                if let (Some(left_ty), Some(right_ty)) = (right_arg.type_of(), left_arg.type_of()) {
+                    match left_ty {
                         _ if left_ty != right_ty => {
                             notes.push(format!(
                                 "One value is of type {left_ty} \
@@ -1445,9 +1485,9 @@ impl IntoDiagnostics for EvalError {
                         }
                         "EnumVariant" => {
                             if let (
-                                Term::EnumVariant { tag: tag1, .. },
-                                Term::EnumVariant { tag: tag2, .. },
-                            ) = (right_arg.as_ref(), left_arg.as_ref())
+                                Some(EnumVariantBody { tag: tag1, .. }),
+                                Some(EnumVariantBody { tag: tag2, .. }),
+                            ) = (right_arg.as_enum_variant(), left_arg.as_enum_variant())
                             {
                                 // The only possible cause of failure of merging two enum variants is a
                                 // different tag (the arguments could fail to merge as well, but then
@@ -1488,63 +1528,77 @@ impl IntoDiagnostics for EvalError {
                     }
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("non mergeable terms")
-                    .with_labels(labels)
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("non mergeable terms")
+                        .with_labels(labels)
+                        .with_notes(notes),
+                ]
             }
-            EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
-                .with_message(format!("unbound identifier `{ident}`"))
-                .with_labels(vec![primary_alt(
-                    span_opt.into_opt(),
-                    ident.to_string(),
-                    files,
-                )
-                .with_message("this identifier is unbound")])],
-            EvalError::InfiniteRecursion(_call_stack, span_opt) => {
-                let labels = span_opt
+            EvalErrorData::UnboundIdentifier(ident, span_opt) => vec![
+                Diagnostic::error()
+                    .with_message(format!("unbound identifier `{ident}`"))
+                    .with_labels(vec![
+                        primary_alt(span_opt.into_opt(), ident.to_string(), files)
+                            .with_message("this identifier is unbound"),
+                    ]),
+            ],
+            EvalErrorData::InfiniteRecursion(_call_stack, pos_idx) => {
+                let labels = pos_table
+                    .get(pos_idx)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("recursive reference")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message("infinite recursion")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("infinite recursion")
+                        .with_labels(labels),
+                ]
             }
-            EvalError::Other(msg, span_opt) => {
-                let labels = span_opt
+            EvalErrorData::Other(msg, span_opt) => {
+                let labels = pos_table
+                    .get(span_opt)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
                 vec![Diagnostic::error().with_message(msg).with_labels(labels)]
             }
-            EvalError::InternalError(msg, span_opt) => {
-                let labels = span_opt
+            EvalErrorData::InternalError(msg, span_opt) => {
+                let labels = pos_table
+                    .get(span_opt)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("internal error: {msg}"))
-                    .with_labels(labels)
-                    .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("internal error: {msg}"))
+                        .with_labels(labels)
+                        .with_notes(vec![String::from(INTERNAL_ERROR_MSG)]),
+                ]
             }
-            EvalError::SerializationError(err) => err.into_diagnostics(files),
-            EvalError::DeserializationError(format, msg, span_opt) => {
-                let labels = span_opt
+            EvalErrorData::SerializationError(err) => err.into_diagnostics(files),
+            EvalErrorData::DeserializationError(format, msg, span_opt) => {
+                let labels = pos_table
+                    .get(span_opt)
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("{format} parse error: {msg}"))
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("{format} parse error: {msg}"))
+                        .with_labels(labels),
+                ]
             }
-            EvalError::DeserializationErrorWithInner { format, inner, pos } => {
+            EvalErrorData::DeserializationErrorWithInner { format, inner, pos } => {
                 let mut diags = inner.into_diagnostics(files);
                 if let Some(diag) = diags.first_mut() {
-                    if let Some(span) = pos.as_opt_ref() {
+                    // TODO: should we really use a pos_idx here, or are those fresh TermPos coming
+                    // out from the YAML parser?
+                    if let Some(span) = pos_table.get(pos).as_opt_ref() {
                         diag.labels
                             .push(secondary(span).with_message("deserialized here"));
                     }
@@ -1553,27 +1607,24 @@ impl IntoDiagnostics for EvalError {
                 }
                 diags
             }
-            EvalError::IncomparableValues {
+            EvalErrorData::IncomparableValues {
                 eq_pos,
                 left,
                 right,
             } => {
                 let mut labels = Vec::new();
 
-                if let Some(span) = eq_pos.as_opt_ref() {
+                if let Some(span) = pos_table.get(eq_pos).as_opt_ref() {
                     labels.push(primary(span).with_message("in this equality comparison"));
                 }
 
                 // Push the label for the right or left argument and return the type of said
                 // argument.
-                let mut push_label = |prefix: &str, term: &RichTerm| -> String {
-                    let type_of = term
-                        .term
-                        .type_of()
-                        .unwrap_or_else(|| String::from("<unevaluated>"));
+                let mut push_label = |prefix: &str, term: &NickelValue| -> &'static str {
+                    let type_of = term.type_of().unwrap_or("<unevaluated>");
 
                     labels.push(
-                        secondary_term(term, files)
+                        secondary_term(&pos_table, term, files)
                             .with_message(format!("{prefix} argument has type {type_of}")),
                     );
 
@@ -1583,14 +1634,16 @@ impl IntoDiagnostics for EvalError {
                 let left_type = push_label("left", &left);
                 let right_type = push_label("right", &right);
 
-                vec![Diagnostic::error()
-                    .with_message("cannot compare values for equality")
-                    .with_labels(labels)
-                    .with_notes(vec![format!(
-                        "A {left_type} can't be meaningfully compared with a {right_type}"
-                    )])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("cannot compare values for equality")
+                        .with_labels(labels)
+                        .with_notes(vec![format!(
+                            "A {left_type} can't be meaningfully compared with a {right_type}"
+                        )]),
+                ]
             }
-            EvalError::NonExhaustiveEnumMatch {
+            EvalErrorData::NonExhaustiveEnumMatch {
                 expected,
                 found,
                 pos,
@@ -1599,19 +1652,19 @@ impl IntoDiagnostics for EvalError {
                     .into_iter()
                     .map(|tag| {
                         // We let the pretty printer handle proper formatting
-                        RichTerm::from(Term::Enum(tag)).to_string()
+                        NickelValue::enum_variant_posless(tag, None).to_string()
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
 
                 let mut labels = Vec::new();
 
-                if let Some(span) = pos.into_opt() {
+                if let Some(span) = pos_table.get(pos).into_opt() {
                     labels.push(primary(&span).with_message("in this match expression"));
                 }
 
                 labels.push(
-                    secondary_term(&found, files)
+                    secondary_term(&pos_table, &found, files)
                         .with_message("this value doesn't match any branch"),
                 );
 
@@ -1623,67 +1676,79 @@ impl IntoDiagnostics for EvalError {
                         "But it has been applied to an argument which doesn't match any of those patterns".to_owned(),
                     ])]
             }
-            EvalError::NonExhaustiveMatch { value, pos } => {
+            EvalErrorData::NonExhaustiveMatch { value, pos } => {
                 let mut labels = Vec::new();
 
-                if let Some(span) = pos.into_opt() {
+                if let Some(span) = pos_table.get(pos).into_opt() {
                     labels.push(primary(&span).with_message("in this match expression"));
                 }
 
                 labels.push(
-                    secondary_term(&value, files)
+                    secondary_term(&pos_table, &value, files)
                         .with_message("this value doesn't match any branch"),
                 );
 
-                vec![Diagnostic::error()
-                    .with_message("unmatched pattern")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("unmatched pattern")
+                        .with_labels(labels),
+                ]
             }
-            EvalError::FailedDestructuring { value, pattern } => {
+            EvalErrorData::FailedDestructuring { value, pattern } => {
                 let mut labels = Vec::new();
 
-                if let Some(span) = pattern.pos.into_opt() {
+                if let Some(span) = pos_table.get(pattern.pos).into_opt() {
                     labels.push(primary(&span).with_message("this pattern"));
                 }
 
-                labels
-                    .push(secondary_term(&value, files).with_message("this value failed to match"));
+                labels.push(
+                    secondary_term(&pos_table, &value, files)
+                        .with_message("this value failed to match"),
+                );
 
-                vec![Diagnostic::error()
-                    .with_message("destructuring failed")
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("destructuring failed")
+                        .with_labels(labels),
+                ]
             }
-            EvalError::IllegalPolymorphicTailAccess {
+            EvalErrorData::IllegalPolymorphicTailAccess {
                 action,
                 label: contract_label,
                 evaluated_arg,
-                call_stack,
             } => blame_error::blame_diagnostics(
+                &mut pos_table,
                 files,
                 contract_label,
                 evaluated_arg,
-                &call_stack,
+                &self.ctxt.call_stack,
                 &format!(": {}", &action.message()),
             ),
-            EvalError::UnaryPrimopTypeError {
+            EvalErrorData::UnaryPrimopTypeError {
                 primop,
                 expected,
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated,
-            } => EvalError::TypeError {
-                message: format!("{primop} expects its argument to be a {expected}"),
-                expected,
-                orig_pos: arg_pos,
-                term: arg_evaluated,
+            } => EvalError {
+                error: EvalErrorData::TypeError {
+                    message: format!("{primop} expects its argument to be a {expected}"),
+                    expected,
+                    orig_pos: arg_pos,
+                    term: arg_evaluated,
+                },
+                ctxt: EvalCtxt {
+                    pos_table,
+                    call_stack: self.ctxt.call_stack,
+                },
             }
             .into_diagnostics(files),
-            EvalError::NAryPrimopTypeError {
+            EvalErrorData::NAryPrimopTypeError {
                 primop,
                 expected,
                 arg_number,
-                arg_pos,
+                pos_arg: arg_pos,
                 arg_evaluated,
-                op_pos,
+                pos_op: op_pos,
             } => {
                 // The parsing of binary subtraction vs unary negation has
                 // proven confusing in practice; for example, `add 1 -1` is
@@ -1698,21 +1763,27 @@ impl IntoDiagnostics for EvalError {
                 // the `-`.
                 let minus_pos = if primop == "(-)"
                     && arg_number == 1
-                    && arg_evaluated.term.type_of().as_deref() == Some("Function")
+                    && matches!(arg_evaluated.type_of(), Some("Function"))
                 {
-                    op_pos.into_opt()
+                    pos_table.get(op_pos).into_opt()
                 } else {
                     None
                 };
 
-                let diags = EvalError::TypeError {
-                    message: format!(
-                        "{primop} expects its {} argument to be a {expected}",
-                        cardinal(arg_number)
-                    ),
-                    expected,
-                    orig_pos: arg_pos,
-                    term: arg_evaluated,
+                let diags = EvalError {
+                    ctxt: EvalCtxt {
+                        pos_table,
+                        call_stack: self.ctxt.call_stack,
+                    },
+                    error: EvalErrorData::TypeError {
+                        message: format!(
+                            "{primop} expects its {} argument to be a {expected}",
+                            cardinal(arg_number)
+                        ),
+                        expected,
+                        orig_pos: arg_pos,
+                        term: arg_evaluated,
+                    },
                 }
                 .into_diagnostics(files);
 
@@ -1732,25 +1803,24 @@ impl IntoDiagnostics for EvalError {
                     diags
                 }
             }
-            EvalError::QueryNonRecord { pos, id, value } => {
+            EvalErrorData::QueryNonRecord { pos, id, value } => {
                 let label = format!(
                     "tried to query field `{}`, but the expression has type {}",
                     id,
-                    value
-                        .term
-                        .type_of()
-                        .unwrap_or_else(|| String::from("<unevaluated>")),
+                    value.type_of().unwrap_or("<unevaluated>"),
                 );
 
-                let label = if let Some(span) = pos.into_opt() {
+                let label = if let Some(span) = pos_table.get(pos).into_opt() {
                     primary(&span).with_message(label)
                 } else {
-                    primary_term(&value, files).with_message(label)
+                    primary_term(&pos_table, &value, files).with_message(label)
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("tried to query field of a non-record")
-                    .with_labels(vec![label])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("tried to query field of a non-record")
+                        .with_labels(vec![label]),
+                ]
             }
         }
     }
@@ -1761,15 +1831,14 @@ mod blame_error {
     use codespan_reporting::diagnostic::{Diagnostic, Label};
 
     use crate::{
+        bytecode::value::NickelValue,
         eval::callstack::CallStack,
         files::{FileId, Files},
         label::{
-            self,
+            self, Polarity,
             ty_path::{self, PathSpan},
-            Polarity,
         },
-        position::TermPos,
-        term::RichTerm,
+        position::{PosIdx, PosTable, TermPos},
         typ::Type,
     };
 
@@ -1801,7 +1870,8 @@ mod blame_error {
 
     /// Constructs the diagnostic labels used when raising a blame error.
     pub fn build_diagnostic_labels(
-        evaluated_arg: Option<RichTerm>,
+        pos_table: &PosTable,
+        evaluated_arg: Option<NickelValue>,
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files,
@@ -1823,13 +1893,17 @@ mod blame_error {
         // we can try to show more information about the final, evaluated value that is
         // responsible for the blame.
         if let Some(mut evaluated_arg) = evaluated_arg {
-            match (evaluated_arg.pos, blame_label.arg_pos.as_opt_ref()) {
+            match (
+                pos_table.get(evaluated_arg.pos_idx()),
+                blame_label.arg_pos.as_opt_ref(),
+            ) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
                 (TermPos::Original(val_pos), _) if files.is_stdlib(val_pos.src_id) => {
-                    evaluated_arg.pos = TermPos::None;
+                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
+                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
                     labels.push(
-                        secondary_term(&evaluated_arg, files)
+                        secondary_term(pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
                     );
                 }
@@ -1843,9 +1917,10 @@ mod blame_error {
                 // print the actual value than referring to the same position as
                 // before.
                 (TermPos::Inherited(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {
-                    evaluated_arg.pos = TermPos::None;
+                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
+                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
                     labels.push(
-                        secondary_term(&evaluated_arg, files)
+                        secondary_term(&pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
                     );
                 }
@@ -1857,14 +1932,16 @@ mod blame_error {
                             .push(secondary(val_pos).with_message("evaluated to this expression"));
                     }
 
-                    evaluated_arg.pos = TermPos::None;
+                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
+                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
                     labels.push(
-                        secondary_term(&evaluated_arg, files)
+                        secondary_term(&pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
                     );
                 }
                 (TermPos::None, _) => labels.push(
-                    secondary_term(&evaluated_arg, files).with_message("evaluated to this value"),
+                    secondary_term(&pos_table, &evaluated_arg, files)
+                        .with_message("evaluated to this value"),
                 ),
             }
         }
@@ -1873,30 +1950,42 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack);
+        fn extend_with_call_stack(
+            &mut self,
+            pos_table: &PosTable,
+            files: &Files,
+            call_stack: &CallStack,
+        );
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, files: &Files, call_stack: &CallStack) {
-            let (calls, curr_call) = call_stack.group_by_calls(files);
+        fn extend_with_call_stack(
+            &mut self,
+            pos_table: &PosTable,
+            files: &Files,
+            call_stack: &CallStack,
+        ) {
+            let (calls, curr_call) = call_stack.group_by_calls(pos_table, files);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
                     .head
                     .map(|ident| ident.to_string())
                     .unwrap_or_else(|| String::from("<func>"));
                 Diagnostic::note().with_labels(vec![
-                    primary(&cdescr.span).with_message(format!("While calling to {name}"))
+                    primary(&cdescr.span).with_message(format!("While calling to {name}")),
                 ])
             });
-            let diags =
-                calls.into_iter().enumerate().map(|(i, cdescr)| {
-                    let name = cdescr
-                        .head
-                        .map(|ident| ident.to_string())
-                        .unwrap_or_else(|| String::from("<func>"));
-                    Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
-                        .with_message(format!("({}) calling {}", i + 1, name))])
-                });
+            let diags = calls.into_iter().enumerate().map(|(i, cdescr)| {
+                let name = cdescr
+                    .head
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| String::from("<func>"));
+                Diagnostic::note().with_labels(vec![secondary(&cdescr.span).with_message(format!(
+                    "({}) calling {}",
+                    i + 1,
+                    name
+                ))])
+            });
 
             self.extend(diag_curr_call);
             self.extend(diags);
@@ -1907,8 +1996,13 @@ mod blame_error {
     /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
-    pub fn path_span(files: &mut Files, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
-        use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParserCompat};
+    pub fn path_span(
+        pos_table: &mut PosTable,
+        files: &mut Files,
+        path: &[ty_path::Elem],
+        ty: &Type,
+    ) -> PathSpan {
+        use crate::parser::{ErrorTolerantParserCompat, grammar::FixedTypeParser, lexer::Lexer};
 
         ty_path::span(path.iter().peekable(), ty)
             .or_else(|| {
@@ -1916,7 +2010,7 @@ mod blame_error {
                 let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
 
                 let (ty_with_pos, _) = FixedTypeParser::new()
-                    .parse_tolerant_compat(file_id, Lexer::new(&type_pprinted))
+                    .parse_tolerant_compat(pos_table, file_id, Lexer::new(&type_pprinted))
                     .unwrap();
 
                 ty_path::span(path.iter().peekable(), &ty_with_pos)
@@ -1929,12 +2023,16 @@ mod blame_error {
 
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
     /// (Nickel) label.
-    pub fn report_ty_path(files: &mut Files, l: &label::Label) -> Label<FileId> {
+    pub fn report_ty_path(
+        pos_table: &mut PosTable,
+        files: &mut Files,
+        l: &label::Label,
+    ) -> Label<FileId> {
         let PathSpan {
             span,
             last,
             last_arrow_elem,
-        } = path_span(files, &l.path, &l.typ);
+        } = path_span(pos_table, files, &l.path, &l.typ);
 
         let msg = match (last, last_arrow_elem) {
             // The type path doesn't contain any arrow, and the failing subcontract is the
@@ -1997,9 +2095,10 @@ is None but last_arrow_elem is Some"
     /// leading "contract broken by .." and the custom contract diagnostic message in tail
     /// position.
     pub fn blame_diagnostics(
+        pos_table: &mut PosTable,
         files: &mut Files,
         mut label: label::Label,
-        evaluated_arg: Option<RichTerm>,
+        evaluated_arg: Option<NickelValue>,
         call_stack: &CallStack,
         msg_addendum: &str,
     ) -> Vec<Diagnostic<FileId>> {
@@ -2039,9 +2138,9 @@ is None but last_arrow_elem is Some"
         let contract_notes = head_contract_diagnostic
             .map(|diag| diag.notes)
             .unwrap_or_default();
-        let path_label = report_ty_path(files, &label);
+        let path_label = report_ty_path(pos_table,files,  &label);
 
-        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files);
+        let labels = build_diagnostic_labels(pos_table, evaluated_arg, &label, path_label, files);
 
         // If there are notes in the head contract diagnostic, we build the first
         // diagnostic using them and will put potential generated notes on higher-order
@@ -2073,7 +2172,7 @@ is None but last_arrow_elem is Some"
         }
 
         if !ty_path::has_no_dom(&label.path) {
-            diagnostics.extend_with_call_stack(files, call_stack);
+            diagnostics.extend_with_call_stack(pos_table, files, call_stack);
         }
 
         diagnostics
@@ -2333,7 +2432,9 @@ impl IntoDiagnostics for ParseError {
 /// Returns the available attributes for each supported sigil
 // It's currently trivial, but might be expanded in the future
 fn available_sigil_attrs_note(selector: &str) -> String {
-    format!("No attributes are available for sigil selector `{selector}`. Use the selector directly as in `@{selector}:<argument>`")
+    format!(
+        "No attributes are available for sigil selector `{selector}`. Use the selector directly as in `@{selector}:<argument>`"
+    )
 }
 
 impl IntoDiagnostics for TypecheckError {
@@ -2363,89 +2464,103 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
             TypecheckErrorData::UnboundIdentifier(id) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
             {
-                EvalError::UnboundIdentifier(*id, id.pos).into_diagnostics(files)
+                EvalError {
+                    ctxt: Default::default(),
+                    error: EvalErrorData::UnboundIdentifier(*id, id.pos),
+                }
+                .into_diagnostics(files)
             }
             TypecheckErrorData::MissingRow {
                 id,
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(format!("type error: missing row `{id}`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which contains the field `{id}`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which does not contain the field `{id}`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(format!("type error: missing row `{id}`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which contains the field `{id}`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which does not contain the field `{id}`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::MissingDynTail {
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(String::from("type error: missing dynamic tail `; Dyn`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which contains the tail `; Dyn`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which does not contain the tail `; Dyn`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(String::from("type error: missing dynamic tail `; Dyn`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which contains the tail `; Dyn`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which does not contain the tail `; Dyn`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::ExtraRow {
                 id,
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(format!("type error: extra row `{id}`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which does not contain the field `{id}`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which contains the extra field `{id}`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
+            } => vec![
+                Diagnostic::error()
+                    .with_message(format!("type error: extra row `{id}`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which does not contain the field `{id}`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which contains the extra field `{id}`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
             TypecheckErrorData::ExtraDynTail {
                 expected,
                 inferred,
                 pos,
-            } => vec![Diagnostic::error()
-                .with_message(String::from("type error: extra dynamic tail `; Dyn`"))
-                .with_labels(mk_expr_label(pos))
-                .with_notes(vec![
-                    format!(
-                        "{}, which does not contain the tail `; Dyn`",
-                        mk_expected_msg(expected)
-                    ),
-                    format!(
-                        "{}, which contains the extra tail `; Dyn`",
-                        mk_inferred_msg(inferred)
-                    ),
-                ])],
-            TypecheckErrorData::UnboundTypeVariable(ident) => vec![Diagnostic::error()
-                .with_message(format!("unbound type variable `{ident}`"))
-                .with_labels(vec![primary_alt(
-                    ident.pos.into_opt(),
-                    ident.to_string(),
-                    files,
-                )
-                .with_message("this type variable is unbound")])
-                .with_notes(vec![format!(
+            } => vec![
+                Diagnostic::error()
+                    .with_message(String::from("type error: extra dynamic tail `; Dyn`"))
+                    .with_labels(mk_expr_label(pos))
+                    .with_notes(vec![
+                        format!(
+                            "{}, which does not contain the tail `; Dyn`",
+                            mk_expected_msg(expected)
+                        ),
+                        format!(
+                            "{}, which contains the extra tail `; Dyn`",
+                            mk_inferred_msg(inferred)
+                        ),
+                    ]),
+            ],
+            TypecheckErrorData::UnboundTypeVariable(ident) => {
+                vec![Diagnostic::error()
+                    .with_message(format!("unbound type variable `{ident}`"))
+                    .with_labels(vec![primary_alt(
+                        ident.pos.into_opt(),
+                        ident.to_string(),
+                        files,
+                    )
+                    .with_message("this type variable is unbound")])
+                    .with_notes(vec![format!(
                     "Did you forget to put a `forall {ident}.` somewhere in the enclosing type?"
-                )])],
+                )])]
+            }
             TypecheckErrorData::TypeMismatch {
                 expected,
                 inferred,
@@ -2464,20 +2579,22 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     "These types are not compatible"
                 };
 
-                vec![Diagnostic::error()
-                    .with_message("incompatible types")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        format!("{}{}", mk_expected_msg(expected), addendum(expected),),
-                        format!("{}{}", mk_inferred_msg(inferred), addendum(inferred),),
-                        String::from(last_note),
-                    ])]
+                vec![
+                    Diagnostic::error()
+                        .with_message("incompatible types")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            format!("{}{}", mk_expected_msg(expected), addendum(expected),),
+                            format!("{}{}", mk_inferred_msg(inferred), addendum(inferred),),
+                            String::from(last_note),
+                        ]),
+                ]
             }
             TypecheckErrorData::RecordRowMismatch {
                 id,
                 expected,
                 inferred,
-                cause: ref err,
+                cause: err,
                 pos,
             } => {
                 let mut err = err;
@@ -2532,14 +2649,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     mk_inferred_msg(inferred)
                 };
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("incompatible record rows declaration")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        note1,
-                        note2,
-                        format!("Could not match the two declarations of `{field}`"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("incompatible record rows declaration")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            note1,
+                            note2,
+                            format!("Could not match the two declarations of `{field}`"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separate error but a more
@@ -2585,14 +2704,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     mk_inferred_msg(inferred)
                 };
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("incompatible enum rows declaration")
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
-                        note1,
-                        note2,
-                        format!("Could not match the two declarations of `{id}`"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("incompatible enum rows declaration")
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
+                            note1,
+                            note2,
+                            format!("Could not match the two declarations of `{id}`"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error if any, but append a prefix to
                 // the error message to make it clear that this is not a separate error but a more
@@ -2685,12 +2806,18 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 cause,
                 pos,
             } => {
+                // We locally convert the type to their runtime representation as a way to reuse
+                // the code of `blame_error::path_span`, which works on the latter.
+                let mut pos_table = PosTable::new();
+                let expected_mline = expected.to_mainline(&mut pos_table);
+                let inferred_mline = inferred.to_mainline(&mut pos_table);
+
                 let PathSpan {
                     span: expd_span, ..
-                } = blame_error::path_span(files, type_path, &expected.to_mainline());
+                } = blame_error::path_span(&mut pos_table, files, type_path, &expected_mline);
                 let PathSpan {
                     span: actual_span, ..
-                } = blame_error::path_span(files, type_path, &inferred.to_mainline());
+                } = blame_error::path_span(&mut pos_table, files, type_path, &inferred_mline);
 
                 let mut labels = vec![
                     secondary(&expd_span).with_message("this part of the expected type"),
@@ -2699,14 +2826,16 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                 ];
                 labels.extend(mk_expr_label(pos));
 
-                let mut diags = vec![Diagnostic::error()
-                    .with_message("function types mismatch")
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        mk_expected_msg(expected),
-                        mk_inferred_msg(inferred),
-                        String::from("Could not match the two function types"),
-                    ])];
+                let mut diags = vec![
+                    Diagnostic::error()
+                        .with_message("function types mismatch")
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            mk_expected_msg(expected),
+                            mk_inferred_msg(inferred),
+                            String::from("Could not match the two function types"),
+                        ]),
+                ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
@@ -2737,24 +2866,26 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     VarKindDiscriminant::EnumRows => "enum tail",
                     VarKindDiscriminant::RecordRows => "record tail",
                 };
-                vec![Diagnostic::error()
-                    .with_message(format!(
-                        "values of type `{violating_type}` are not guaranteed to be compatible \
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "values of type `{violating_type}` are not guaranteed to be compatible \
                         with polymorphic {tail_kind} `{tail}`"
-                    ))
-                    .with_labels(mk_expr_label(pos))
-                    .with_notes(vec![
+                        ))
+                        .with_labels(mk_expr_label(pos))
+                        .with_notes(vec![
                         "Type variables introduced in a `forall` range over all possible types."
                             .to_owned(),
-                    ])]
+                    ]),
+                ]
             }
-            TypecheckErrorData::CtrTypeInTermPos { contract, pos } => {
+            TypecheckErrorData::CtrTypeInTermPos { contract, pos_type } => {
                 vec![Diagnostic::error()
                     .with_message(
                         "types containing user-defined contracts cannot be converted into contracts"
                     )
                     .with_labels(
-                        pos.as_opt_ref()
+                        pos_type.as_opt_ref()
                             .map(|span| {
                                 primary(span).with_message("This type (in contract position)")
                             })
@@ -2775,20 +2906,22 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     labels.push(secondary(span).with_message("this polymorphic type variable"));
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("invalid polymorphic generalization".to_string())
-                    .with_labels(labels)
-                    .with_notes(vec![
-                        "While the type of this expression is still undetermined, it appears \
+                vec![
+                    Diagnostic::error()
+                        .with_message("invalid polymorphic generalization".to_string())
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "While the type of this expression is still undetermined, it appears \
                             indirectly in the type of another expression introduced before \
                             the `forall` block."
-                            .into(),
-                        format!(
-                            "The type of this expression escapes the scope of the \
+                                .into(),
+                            format!(
+                                "The type of this expression escapes the scope of the \
                                 corresponding `forall` and can't be generalized to the \
                                 polymorphic type variable `{constant}`"
-                        ),
-                    ])]
+                            ),
+                        ]),
+                ]
             }
             TypecheckErrorData::InhomogeneousRecord {
                 pos,
@@ -2805,20 +2938,24 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorData<'ast> {
                     ])]
             }
             TypecheckErrorData::OrPatternVarsMismatch { var, pos } => {
-                let mut labels = vec![primary_alt(var.pos.into_opt(), var.into_label(), files)
-                    .with_message("this variable must occur in all branches")];
+                let mut labels = vec![
+                    primary_alt(var.pos.into_opt(), var.into_label(), files)
+                        .with_message("this variable must occur in all branches"),
+                ];
 
                 if let Some(span) = pos.as_opt_ref() {
                     labels.push(secondary(span).with_message("in this or-pattern"));
                 }
 
-                vec![Diagnostic::error()
-                    .with_message("or-pattern variable mismatch".to_string())
-                    .with_labels(labels)
-                    .with_notes(vec![
+                vec![
+                    Diagnostic::error()
+                        .with_message("or-pattern variable mismatch".to_string())
+                        .with_labels(labels)
+                        .with_notes(vec![
                         "All branches of an or-pattern must bind exactly the same set of variables"
                             .into(),
-                    ])]
+                    ]),
+                ]
             }
             // clone() here is unfortunate, but I haven't found a better way to interface typecheck
             // errors - which can generate a diagnostic by reference - from other errors (import
@@ -2839,9 +2976,11 @@ impl IntoDiagnostics for ImportError {
                     .map(|span| vec![secondary(span).with_message("imported here")])
                     .unwrap_or_default();
 
-                vec![Diagnostic::error()
-                    .with_message(format!("import of {path} failed: {error}"))
-                    .with_labels(labels)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("import of {path} failed: {error}"))
+                        .with_labels(labels),
+                ]
             }
             ImportError::ParseErrors(error, span_opt) => {
                 let mut diagnostic: Vec<Diagnostic<FileId>> = error
@@ -2883,10 +3022,16 @@ impl IntoDiagnostics for ImportError {
                     .as_opt_ref()
                     .map(|span| vec![primary(span).with_message("imported here")])
                     .unwrap_or_default();
-                vec![Diagnostic::error()
-                    .with_message("tried to import from a package, but no package manifest found")
-                    .with_labels(labels)
-                    .with_notes(vec!["did you forget a --manifest-path argument?".to_owned()])]
+                vec![
+                    Diagnostic::error()
+                        .with_message(
+                            "tried to import from a package, but no package manifest found",
+                        )
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "did you forget a --manifest-path argument?".to_owned(),
+                        ]),
+                ]
             }
         }
     }
@@ -2900,20 +3045,24 @@ impl IntoDiagnostics for ExportError {
             vec![]
         };
 
+        let pos_table = self.pos_table;
+
         match self.data {
-            ExportErrorData::NotAString(rt) => vec![Diagnostic::error()
-                .with_message(format!(
-                    "raw export expects a String value, but got {}",
-                    rt.as_ref()
-                        .type_of()
-                        .unwrap_or_else(|| String::from("<unevaluated>"))
-                ))
-                .with_labels(vec![primary_term(&rt, files)])
-                .with_notes(notes)],
-            ExportErrorData::UnsupportedNull(format, rt) => vec![Diagnostic::error()
-                .with_message(format!("{format} format doesn't support null values"))
-                .with_labels(vec![primary_term(&rt, files)])
-                .with_notes(notes)],
+            ExportErrorData::NotAString(rt) => vec![
+                Diagnostic::error()
+                    .with_message(format!(
+                        "raw export expects a String value, but got {}",
+                        rt.type_of().unwrap_or("<unevaluated>")
+                    ))
+                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                    .with_notes(notes),
+            ],
+            ExportErrorData::UnsupportedNull(format, rt) => vec![
+                Diagnostic::error()
+                    .with_message(format!("{format} format doesn't support null values"))
+                    .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                    .with_notes(notes),
+            ],
             ExportErrorData::NonSerializable(rt) => {
                 notes.extend([
                     "Nickel only supports serializing to and from strings, booleans, numbers, \
@@ -2928,18 +3077,22 @@ impl IntoDiagnostics for ExportError {
                         .into(),
                 ]);
 
-                vec![Diagnostic::error()
-                    .with_message("non serializable term")
-                    .with_labels(vec![primary_term(&rt, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("non serializable term")
+                        .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::NoDocumentation(rt) => {
                 notes.push("documentation can only be collected from a record.".to_owned());
 
-                vec![Diagnostic::error()
-                    .with_message("no documentation found")
-                    .with_labels(vec![primary_term(&rt, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("no documentation found")
+                        .with_labels(vec![primary_term(&pos_table, &rt, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::NumberOutOfRange { term, value } => {
                 notes.push(format!(
@@ -2948,20 +3101,24 @@ impl IntoDiagnostics for ExportError {
                     f64::MAX
                 ));
 
-                vec![Diagnostic::error()
-                    .with_message(format!(
-                        "The number {} is too large (in absolute value) to be serialized.",
-                        value.to_sci()
-                    ))
-                    .with_labels(vec![primary_term(&term, files)])
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "The number {} is too large (in absolute value) to be serialized.",
+                            value.to_sci()
+                        ))
+                        .with_labels(vec![primary_term(&pos_table, &term, files)])
+                        .with_notes(notes),
+                ]
             }
             ExportErrorData::Other(msg) => {
                 notes.push(msg);
 
-                vec![Diagnostic::error()
-                    .with_message("serialization failed")
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message("serialization failed")
+                        .with_notes(notes),
+                ]
             }
         }
     }
@@ -2978,11 +3135,13 @@ impl IntoDiagnostics for IOError {
 impl IntoDiagnostics for ReplError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         match self {
-            ReplError::UnknownCommand(s) => vec![Diagnostic::error()
-                .with_message(format!("unknown command `{s}`"))
-                .with_notes(vec![String::from(
-                    "type `:?` or `:help` for a list of available commands.",
-                )])],
+            ReplError::UnknownCommand(s) => vec![
+                Diagnostic::error()
+                    .with_message(format!("unknown command `{s}`"))
+                    .with_notes(vec![String::from(
+                        "type `:?` or `:help` for a list of available commands.",
+                    )]),
+            ],
             ReplError::InvalidQueryPath(err) => err.into_diagnostics(files),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
@@ -2993,9 +3152,11 @@ impl IntoDiagnostics for ReplError {
                     "type `:? {cmd}` or `:help {cmd}` for more information."
                 ));
 
-                vec![Diagnostic::error()
-                    .with_message(format!("{cmd}: missing argument"))
-                    .with_notes(notes)]
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("{cmd}: missing argument"))
+                        .with_notes(notes),
+                ]
             }
         }
     }
@@ -3133,10 +3294,10 @@ impl CloneTo for TypecheckErrorData<'_> {
                 cause: Box::new(TypecheckErrorData::clone_to(*cause, dest)),
                 pos,
             },
-            TypecheckErrorData::CtrTypeInTermPos { contract, pos } => {
+            TypecheckErrorData::CtrTypeInTermPos { contract, pos_type } => {
                 TypecheckErrorData::CtrTypeInTermPos {
                     contract: Ast::clone_to(contract, dest),
-                    pos,
+                    pos_type,
                 }
             }
             TypecheckErrorData::VarLevelMismatch { type_var, pos } => {

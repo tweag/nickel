@@ -35,7 +35,7 @@
 //!   Consecutive indices are popped from the stack and are updated to point to the current evaluated
 //!   term.
 //! - **Import**: import must have been resolved before the evaluation starts. An unresolved import
-//!   causes an [`crate::error::EvalError::InternalError`]. A resolved import, identified by a
+//!   causes an [`crate::error::EvalErrorData::InternalError`]. A resolved import, identified by a
 //!   `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
 //! ## Operators
@@ -74,24 +74,25 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 use crate::{
+    bytecode::value::{
+        EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContent, ValueContentRef,
+        ValueContentRefMut, lens::TermContent,
+    },
     cache::{CacheHub as ImportCaches, ImportResolver},
-    closurize::{closurize_rec_record, Closurize},
+    closurize::{Closurize, closurize_rec_record},
     environment::Environment as GenericEnvironment,
-    error::{warning::Warning, Error, EvalError, Reporter},
+    error::{Error, EvalCtxt, EvalError, EvalErrorData, Reporter, warning::Warning},
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
-    match_sharedterm,
     metrics::{increment, measure_runtime},
-    position::TermPos,
+    position::{PosIdx, PosTable, TermPos},
     program::FieldPath,
     term::{
-        array::ArrayAttrs,
-        make as mk_term,
+        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
+        RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
         pattern::compile::Compile,
         record::{Field, RecordData},
         string::NickelString,
-        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind, RichTerm,
-        RuntimeContract, StrChunk, Term, UnaryOp,
     },
     transform::gen_pending_contracts,
 };
@@ -118,19 +119,21 @@ impl AsRef<Vec<StackElem>> for CallStack {
     }
 }
 
-// The current state of the Nickel virtual machine.
+/// The current state of the Nickel virtual machine.
 pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // The main stack, storing arguments, cache indices and pending computations.
+    /// The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
-    // The call stack, for error reporting.
+    /// The call stack, for error reporting.
     call_stack: CallStack,
-    // The interface used to fetch imports.
+    /// The interface used to fetch imports.
     import_resolver: R,
-    // The evaluation cache.
+    /// The evaluation cache.
     pub cache: C,
-    // The initial environment containing stdlib and builtin functions accessible from anywhere
+    /// The initial environment containing stdlib and builtin functions accessible from anywhere
     initial_env: Environment,
-    // The stream for writing trace output.
+    /// The position table, mapping position indices embedded into values to full fledged positions.
+    pos_table: PosTable,
+    /// The stream for writing trace output.
     trace: Box<dyn Write>,
     /// A collector for warnings. Currently we only collect warnings and not errors; errors
     /// terminate evaluation (or typechecking, or whatever) immediately, and so they just
@@ -140,6 +143,7 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
 
 impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new(
+        pos_table: PosTable,
         import_resolver: R,
         trace: impl Write + 'static,
         reporter: impl Reporter<(Warning, Files)> + 'static,
@@ -150,12 +154,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             stack: Stack::new(),
             cache: Cache::new(),
             initial_env: Environment::new(),
+            pos_table,
             trace: Box::new(trace),
             reporter: Box::new(reporter),
         }
     }
 
     pub fn new_with_cache(
+        pos_table: PosTable,
         import_resolver: R,
         cache: C,
         trace: impl Write + 'static,
@@ -166,6 +172,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             cache,
+            pos_table,
             trace: Box::new(trace),
             initial_env: Environment::new(),
             reporter: Box::new(reporter),
@@ -202,54 +209,74 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self.import_resolver
     }
 
-    /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
-    /// empty local environment and drops the final environment.
-    pub fn eval(&mut self, t: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_closure(Closure::atomic_closure(t))
-            .map(|closure| closure.body)
+    /// Evaluate a Nickel expression. Wrapper around [VirtualMachine::eval_closure] that starts
+    /// from an empty local environment and drops the final environment.
+    pub fn eval(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_closure(value.into()).map(|closure| closure.value)
     }
 
     /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables
     /// substituted.
-    pub fn eval_full(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_full_closure(Closure::atomic_closure(t0))
-            .map(|result| result.body)
+    pub fn eval_full(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_full_closure(value.into())
+            .map(|result| result.value)
     }
 
     /// Same as [Self::eval_full], but takes a closure as an argument instead of a term.
-    pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
-        self.eval_deep_closure_impl(t0, false)
+    pub fn eval_full_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
+        self.eval_deep_closure_impl(closure, false)
             .map(|result| Closure {
-                body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+                value: subst(
+                    &self.pos_table,
+                    &self.cache,
+                    result.value,
+                    &self.initial_env,
+                    &result.env,
+                ),
                 env: result.env,
             })
     }
 
     /// Like [Self::eval_full], but skips evaluating record fields marked `not_exported`.
-    pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+    pub fn eval_full_for_export(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_deep_closure_impl(value.into(), true)
+            .map(|result| {
+                subst(
+                    &self.pos_table,
+                    &self.cache,
+                    result.value,
+                    &self.initial_env,
+                    &result.env,
+                )
+            })
     }
 
     /// Same as [Self::eval_full_for_export], but takes a closure as an argument instead of a term.
     pub fn eval_full_for_export_closure(
         &mut self,
         closure: Closure,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(closure, true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+    ) -> Result<NickelValue, EvalError> {
+        self.eval_deep_closure_impl(closure, true).map(|result| {
+            subst(
+                &self.pos_table,
+                &self.cache,
+                result.value,
+                &self.initial_env,
+                &result.env,
+            )
+        })
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
-    pub fn eval_deep(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(Closure::atomic_closure(t0), false)
-            .map(|result| result.body)
+    pub fn eval_deep(&mut self, value: NickelValue) -> Result<NickelValue, EvalError> {
+        self.eval_deep_closure_impl(value.into(), false)
+            .map(|result| result.value)
     }
 
     /// Same as [Self::eval_deep], but take a closure as an argument instead of a term.
-    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
         self.eval_deep_closure_impl(closure, false)
-            .map(|result| result.body)
+            .map(|result| result.value)
     }
 
     /// Use a specific initial environment for evaluation. Usually, [VirtualMachine::prepare_eval]
@@ -267,11 +294,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         mut closure: Closure,
         for_export: bool,
     ) -> Result<Closure, EvalError> {
-        closure.body = mk_term::op1(
+        closure.value = mk_term::op1(
             UnaryOp::Force {
                 ignore_not_exported: for_export,
             },
-            closure.body,
+            closure.value,
         );
 
         self.eval_closure(closure)
@@ -321,17 +348,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // unwrap(): by definition, extract_field_impl(_, _, true) ensure that
         // `field.value.is_some()`
         let value = field.value.unwrap();
-        let pos = value.pos;
+        let pos_idx = value.pos_idx();
 
         let value_with_ctr =
-            RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos);
+            RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos_idx);
 
-        let Closure { body, env } = self.eval_closure(Closure {
-            body: value_with_ctr,
+        let Closure { value: body, env } = self.eval_closure(Closure {
+            value: value_with_ctr,
             env,
         })?;
 
-        Ok(Closure { body, env })
+        Ok(Closure { value: body, env })
     }
 
     fn extract_field_impl(
@@ -340,9 +367,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         path: &FieldPath,
         require_defined: bool,
     ) -> Result<(Field, Environment), EvalError> {
-        let mut prev_pos = closure.body.pos;
+        let mut prev_pos_idx = closure.value.pos_idx();
 
-        let mut field: Field = closure.body.into();
+        let mut field: Field = closure.value.into();
         let mut path = path.0.iter().peekable();
         let mut env = closure.env;
 
@@ -352,38 +379,43 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
         for id in path {
             let Some(current_value) = field.value else {
-                return Err(EvalError::MissingFieldDef {
+                return self.throw_with_ctxt(EvalErrorData::MissingFieldDef {
                     id: *prev_id,
                     metadata: field.metadata,
-                    pos_record: prev_pos,
-                    pos_access: TermPos::None,
+                    pos_record: prev_pos_idx,
+                    pos_access: PosIdx::NONE,
                 });
             };
 
             // We evaluate the fields' value, either to handle the next ident of the
             // path, or to show the value if we are treating the last ident of the path
 
-            prev_pos = current_value.pos;
+            prev_pos_idx = current_value.pos_idx();
 
             let curr_value_with_ctr =
-                RuntimeContract::apply_all(current_value, field.pending_contracts, prev_pos);
+                RuntimeContract::apply_all(current_value, field.pending_contracts, prev_pos_idx);
 
             let current_evaled = self.eval_closure(Closure {
-                body: curr_value_with_ctr,
+                value: curr_value_with_ctr,
                 env,
             })?;
 
             env = current_evaled.env;
 
-            match current_evaled.body.term.into_owned() {
-                Term::Record(mut record_data) => {
-                    let Some(next_field) = record_data.fields.swap_remove(id) else {
-                        return Err(EvalError::FieldMissing {
+            match current_evaled.value.content_ref() {
+                ValueContentRef::Record(RecordBody(record_data)) => {
+                    let Some(next_field) = record_data.fields.get(id).cloned() else {
+                        let pos_op = self.pos_table.push_block(id.pos);
+
+                        return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
                             field_names: record_data.field_names(RecordOpKind::IgnoreEmptyOpt),
-                            operator: String::from("extract_field"),
-                            pos_record: prev_pos,
-                            pos_op: id.pos,
+                            operator: "extract_field".to_owned(),
+                            pos_record: prev_pos_idx,
+                            // TODO: we need to push back the position in the table, which isn't
+                            // too bad, but is a bit useless. Maybe we should have a runtime
+                            // version of identifiers with `PosIdx` instead of `TermPos`?
+                            pos_op,
                         });
                     };
 
@@ -391,10 +423,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 other => {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
-                    return Err(EvalError::QueryNonRecord {
-                        pos: prev_pos,
+                    return self.throw_with_ctxt(EvalErrorData::QueryNonRecord {
+                        pos: prev_pos_idx,
                         id: *id,
-                        value: RichTerm::new(other, prev_pos),
+                        value: current_evaled.value,
                     });
                 }
             }
@@ -403,19 +435,44 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         }
 
         if field.value.is_none() && require_defined {
-            return Err(EvalError::MissingFieldDef {
+            return self.throw_with_ctxt(EvalErrorData::MissingFieldDef {
                 id: *prev_id,
                 metadata: field.metadata,
-                pos_record: prev_pos,
-                pos_access: TermPos::None,
+                pos_record: prev_pos_idx,
+                pos_access: PosIdx::NONE,
             });
         }
 
         Ok((field, env))
     }
 
-    pub fn query(&mut self, t: RichTerm, path: &FieldPath) -> Result<Field, EvalError> {
-        self.query_closure(Closure::atomic_closure(t), path)
+    pub fn query(&mut self, v: NickelValue, path: &FieldPath) -> Result<Field, EvalError> {
+        self.query_closure(v.into(), path)
+    }
+
+    /// Generates an error context from this virtual machine. This consumes the callstack, which
+    /// doesn't have to be preserved after an error. However, we have to preserve the position
+    /// table, since the VM could be reset and used for another evaluation round. The latter is
+    /// copied.
+    fn eval_ctxt(&mut self) -> EvalCtxt {
+        EvalCtxt {
+            call_stack: std::mem::take(&mut self.call_stack),
+            pos_table: self.pos_table.clone(),
+        }
+    }
+
+    /// Wraps [Self::err_with_ctxt] in the `Err` variant.
+    fn throw_with_ctxt<T>(&mut self, error: EvalErrorData) -> Result<T, EvalError> {
+        Err(self.err_with_ctxt(error))
+    }
+
+    /// Wraps an evaluation error [crate::error::EvalErrorData] with the current evaluation context
+    /// ([Self::eval_ctxt]) to make a [crate::error::EvalError].
+    fn err_with_ctxt(&mut self, error: EvalErrorData) -> EvalError {
+        EvalError {
+            error,
+            ctxt: self.eval_ctxt(),
+        }
     }
 
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
@@ -430,17 +487,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let (mut field, env) = self.extract_field_closure(closure, path)?;
 
         if let Some(value) = field.value.take() {
-            let pos = value.pos;
+            let pos_idx = value.pos_idx();
 
             let value_with_ctr =
-                RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos);
+                RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos_idx);
 
             field.value = Some(
                 self.eval_closure(Closure {
-                    body: value_with_ctr,
+                    value: value_with_ctr,
                     env,
                 })?
-                .body,
+                .value,
             );
         }
 
@@ -451,9 +508,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self,
         var: Option<LocIdent>,
         mut idx: CacheIndex,
-        pos: TermPos,
+        pos_idx: PosIdx,
         env: Environment,
-    ) -> Result<Closure, EvalError> {
+    ) -> Result<Closure, EvalErrorData> {
         // idx may be a 1-counted RC, so we make sure we drop any reference to it from `env`, which
         // is going to be discarded anyway
         std::mem::drop(env);
@@ -462,39 +519,65 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
             Ok(None) => {}
             Err(_blackholed_error) => {
-                return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
+                return Err(EvalErrorData::InfiniteRecursion(
+                    self.call_stack.clone(),
+                    pos_idx,
+                ));
             }
         }
 
         if let Some(var) = var {
-            self.call_stack.enter_var(var, pos);
+            self.call_stack.enter_var(var, pos_idx);
         }
 
         // If we are fetching a recursive field from the environment that doesn't have
         // a definition, we complete the error with the additional information of where
         // it was accessed:
-        let Closure { body, env } = self.cache.get(idx);
-        let body = match_sharedterm!(match (body.term) {
-            Term::RuntimeError(EvalError::MissingFieldDef {
-                id,
-                metadata,
-                pos_record,
-                pos_access: TermPos::None,
-            }) => RichTerm::new(
-                Term::RuntimeError(EvalError::MissingFieldDef {
+        let closure = self.cache.get(idx);
+
+        let value = match closure.value.content() {
+            ValueContent::Term(lens)
+                if matches!(
+                    lens.term(),
+                    Term::RuntimeError(EvalErrorData::MissingFieldDef { .. })
+                ) =>
+            {
+                let Term::RuntimeError(EvalErrorData::MissingFieldDef {
                     id,
                     metadata,
                     pos_record,
-                    pos_access: pos,
-                }),
-                pos,
-            ),
-            _ => {
-                body
-            }
-        });
+                    pos_access: PosIdx::NONE,
+                }) = lens.take()
+                else {
+                    unreachable!();
+                };
 
-        Ok(Closure { body, env })
+                NickelValue::term(
+                    Term::RuntimeError(EvalErrorData::MissingFieldDef {
+                        id,
+                        metadata,
+                        pos_record,
+                        pos_access: pos_idx,
+                    }),
+                    pos_idx,
+                )
+            }
+            lens => lens.restore(),
+        };
+
+        Ok(Closure { value, ..closure })
+    }
+
+    /// Fetches a closure from the local or the initial environment, or fails with
+    /// [crate::error::EvalErrorData::UnboundIdentifier] with either the variable position, or the
+    /// provided fallback position if the former isn't defined.
+    fn get_var(
+        &self,
+        id: LocIdent,
+        env: &Environment,
+        pos_idx: PosIdx,
+    ) -> Result<CacheIndex, EvalErrorData> {
+        get_var(&self.pos_table, id, &self.initial_env, env, pos_idx)
     }
 
     /// The main loop of evaluation.
@@ -513,27 +596,38 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Either:
     ///  - an evaluation error
     ///  - the evaluated term with its final environment
-    pub fn eval_closure(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
+        self.eval_closure_impl(closure)
+            .map_err(|err| self.err_with_ctxt(err))
+    }
+
+    /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
+    /// `?` operator on [crate::error::EvalErrorData], and only at the missing context to make it
+    /// an [crate:error::EvalError] once at the end.
+    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, EvalErrorData> {
         #[cfg(feature = "metrics")]
         let start_time = std::time::Instant::now();
 
         let result = loop {
-            let Closure {
-                body:
-                    RichTerm {
-                        term: shared_term,
-                        pos,
-                    },
-                mut env,
-            } = clos;
-
+            let Closure { value, mut env } = closure;
+            let pos_idx = value.pos_idx();
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
-            clos = match_sharedterm!(match (shared_term) {
-                Term::Sealed(key, inner, label) => {
+            closure = match value.content_ref() {
+                ValueContentRef::Thunk(thunk_body) => {
+                    self.enter_cache_index(None, thunk_body.0.clone(), pos_idx, env)?
+                }
+                ValueContentRef::Term(TermBody(Term::Value(value))) => Closure {
+                    value: value.clone(),
+                    env,
+                },
+                ValueContentRef::Term(TermBody(Term::Sealed(key, inner, label))) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        body: RichTerm::new(Term::Sealed(key, inner.clone(), label.clone()), pos),
+                        value: NickelValue::term(
+                            Term::Sealed(*key, inner.clone(), label.clone()),
+                            pos_idx,
+                        ),
                         env: env.clone(),
                     };
 
@@ -566,49 +660,57 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                         Some(OperationCont::Op1(UnaryOp::Seq, _)) => {
                             // Then, evaluate / `Seq` the inner value.
-                            Closure { body: inner, env }
+                            Closure {
+                                value: inner.clone(),
+                                env,
+                            }
                         }
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
-                            break Err(EvalError::BlameError {
+                            break Err(EvalErrorData::BlameError {
                                 evaluated_arg: label.get_evaluated_arg(&self.cache),
-                                label,
-                                call_stack: self.call_stack.clone(),
+                                label: label.clone(),
                             });
                         }
                     }
                 }
-                Term::Var(x) => {
-                    let idx = get_var(x, &env, &self.initial_env, pos)?;
-                    self.enter_cache_index(Some(x), idx, pos, env)?
+                ValueContentRef::Term(TermBody(Term::Var(id))) => {
+                    let idx = self.get_var(*id, &env, pos_idx)?;
+                    self.enter_cache_index(Some(*id), idx, pos_idx, env)?
                 }
-                Term::Closure(idx) => self.enter_cache_index(None, idx, pos, env)?,
-                Term::App(t1, t2) => {
-                    self.call_stack.enter_app(pos);
+                ValueContentRef::Term(TermBody(Term::App(head, arg))) => {
+                    self.call_stack.enter_app(&self.pos_table, pos_idx);
 
                     self.stack.push_arg(
                         Closure {
-                            body: t2,
+                            value: arg.clone(),
                             env: env.clone(),
                         },
-                        pos,
+                        pos_idx,
                     );
-                    Closure { body: t1, env }
+                    Closure {
+                        value: head.clone(),
+                        env,
+                    }
                 }
-                Term::Let(bindings, body, LetAttrs { binding_type, rec }) => {
+                ValueContentRef::Term(TermBody(Term::Let(
+                    bindings,
+                    body,
+                    LetAttrs { binding_type, rec },
+                ))) => {
                     let mut indices = Vec::new();
                     let init_env = env.clone();
 
                     for (x, bound) in bindings {
-                        let bound_closure: Closure = Closure {
-                            body: bound,
+                        let bound_closure = Closure {
+                            value: bound.clone(),
                             env: init_env.clone(),
                         };
 
                         let idx = self.cache.add(bound_closure, binding_type.clone());
 
                         // Patch the environment with the (x <- closure) binding
-                        if rec {
+                        if *rec {
                             indices.push(idx.clone());
                         }
 
@@ -619,71 +721,84 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.cache.patch(idx, |cl| cl.env = env.clone());
                     }
 
-                    Closure { body, env }
+                    Closure {
+                        value: body.clone(),
+                        env,
+                    }
                 }
-                Term::Op1(op, arg) => {
+                ValueContentRef::Term(TermBody(Term::Op1(op, arg))) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op, arg.pos),
+                        OperationCont::Op1(op.clone(), pos_idx),
                         self.call_stack.len(),
-                        pos,
+                        pos_idx,
                     );
 
-                    Closure { body: arg, env }
+                    Closure {
+                        value: arg.clone(),
+                        env,
+                    }
                 }
-                Term::Op2(op, fst, snd) => {
+                ValueContentRef::Term(TermBody(Term::Op2(op, fst_arg, snd_arg))) => {
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            op,
+                            op.clone(),
                             Closure {
-                                body: snd,
+                                value: snd_arg.clone(),
                                 env: env.clone(),
                             },
-                            fst.pos,
+                            pos_idx,
                         ),
                         self.call_stack.len(),
-                        pos,
+                        pos_idx,
                     );
-                    Closure { body: fst, env }
+
+                    Closure {
+                        value: fst_arg.clone(),
+                        env,
+                    }
                 }
-                Term::OpN(op, args) => {
+                ValueContentRef::Term(TermBody(Term::OpN(op, args))) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
                     let mut args_iter = args.into_iter();
-                    let fst = args_iter
-                        .next()
-                        .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
+                    let fst_arg = args_iter.next().ok_or_else(|| {
+                        EvalErrorData::NotEnoughArgs(op.arity(), op.to_string(), pos_idx)
+                    })?;
 
                     let pending: Vec<Closure> = args_iter
                         .rev()
-                        .map(|t| Closure {
-                            body: t,
+                        .map(|value| Closure {
+                            value: value.clone(),
                             env: env.clone(),
                         })
                         .collect();
 
                     self.stack.push_op_cont(
                         OperationCont::OpN {
-                            op,
+                            op: op.clone(),
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
-                            current_pos: fst.pos,
+                            current_pos_idx: pos_idx,
                         },
                         self.call_stack.len(),
-                        pos,
+                        pos_idx,
                     );
 
-                    Closure { body: fst, env }
+                    Closure {
+                        value: fst_arg.clone(),
+                        env,
+                    }
                 }
-                Term::StrChunks(chunks) => {
-                    let mut chunks_iter = chunks.into_iter();
+                ValueContentRef::Term(TermBody(Term::StrChunks(chunks))) => {
+                    let mut chunks_iter = chunks.iter().cloned();
                     match chunks_iter.next_back() {
                         None => Closure {
-                            body: Term::Str(NickelString::new()).into(),
+                            value: NickelValue::string(NickelString::new(), pos_idx),
                             env: Environment::new(),
                         },
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
-                                StrChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
+                                StrChunk::Literal(s) => (NickelValue::string_posless(s), 0),
                                 StrChunk::Expr(e, indent) => (e, indent),
                             };
 
@@ -692,43 +807,83 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 acc: String::new(),
                                 env: env.clone(),
                                 curr_indent: indent,
-                                curr_pos: arg.pos,
+                                curr_pos: pos_idx,
                             });
 
                             Closure {
-                                body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat, arg), pos),
+                                value: NickelValue::term(
+                                    Term::Op1(UnaryOp::ChunksConcat, arg),
+                                    pos_idx,
+                                ),
                                 env,
                             }
                         }
                     }
                 }
-                // Closurize the argument of an enum variant if it's not already done. Usually this is done at the first
-                // time the variant is evaluated.
-                Term::EnumVariant { tag, arg, attrs } if !attrs.closurized => {
-                    Closure {
-                        body: RichTerm::new(
-                            Term::EnumVariant {
-                                tag,
-                                arg: arg.closurize(&mut self.cache, env),
-                                attrs: attrs.closurized(),
-                            },
-                            pos,
+                ValueContentRef::Term(TermBody(Term::Closurize(value))) => {
+                    // Closurization is done the first time we see a value, so under normal
+                    // conditions, this value should not be shared and we should be able to
+                    // mutate it directly.
+                    // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
+                    // should probably do a `content()` call at the top of the eval function.
+                    let result = match value.clone().content() {
+                        lens @ ValueContent::Inline(_) => lens.restore(),
+                        ValueContent::Array(lens) => {
+                            let array_body = lens.take();
+
+                            // This *should* make it unnecessary to call closurize in [operation].
+                            // See the comment on the `BinaryOp::ArrayConcat` match arm.
+                            let array = array_body
+                                .array
+                                .into_iter()
+                                .map(|t| t.closurize(&mut self.cache, env.clone()))
+                                .collect();
+
+                            let pending_contracts = array_body
+                                .pending_contracts
+                                .into_iter()
+                                .map(|ctr| {
+                                    RuntimeContract::new(
+                                        ctr.contract.closurize(&mut self.cache, env.clone()),
+                                        ctr.label,
+                                    )
+                                })
+                                .collect();
+
+                            NickelValue::array_force_pos(
+                                &mut self.pos_table,
+                                array,
+                                pending_contracts,
+                                pos_idx,
+                            )
+                        }
+                        ValueContent::Record(lens) => NickelValue::record_force_pos(
+                            &mut self.pos_table,
+                            lens.take().0.closurize(&mut self.cache, env),
+                            pos_idx,
                         ),
-                        env: Environment::new(),
-                    }
+                        ValueContent::EnumVariant(lens) => {
+                            let EnumVariantBody { tag, arg } = lens.take();
+                            let arg = arg.map(|arg| arg.closurize(&mut self.cache, env));
+                            NickelValue::enum_variant(tag, arg, pos_idx)
+                        }
+                        lens => {
+                            // This case is a red flag (it should be unreachable), but
+                            // isn't a blocker per se, so we only fail in debug mode.
+                            debug_assert!(false, "trying to closurize a non-container value");
+                            lens.restore()
+                        }
+                    };
+
+                    // We can use an empty environment for a freshly closurized value
+                    result.into()
                 }
-                // Closurize the record if it's not already done. Usually this is done at the first
-                // time this record is evaluated.
-                Term::Record(data) if !data.attrs.closurized => {
-                    Closure {
-                        body: RichTerm::new(
-                            Term::Record(data.closurize(&mut self.cache, env)),
-                            pos,
-                        ),
-                        env: Environment::new(),
-                    }
-                }
-                Term::RecRecord(data, includes, dyn_fields, deps) => {
+                ValueContentRef::Term(TermBody(Term::RecRecord(
+                    data,
+                    includes,
+                    dyn_fields,
+                    deps,
+                ))) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
 
@@ -737,27 +892,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // if we add a new indirection. This should ideally be encoded in the Rust
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
-                    let (mut static_part, dyn_fields) = if !data.attrs.closurized {
+                    let (mut static_part, dyn_fields) = if false {
                         let includes_as_terms: Result<Vec<_>, _> = includes
-                            .into_iter()
-                            .map(|incl| -> Result<_, EvalError> {
+                            .iter()
+                            .map(|incl| -> Result<_, EvalErrorData> {
                                 let field = Field {
-                                    value: Some(RichTerm::new(
-                                        Term::Closure(get_var(
-                                            incl.ident,
-                                            &env,
-                                            &self.initial_env,
-                                            TermPos::None,
-                                        )?),
-                                        incl.ident.pos,
+                                    value: Some(NickelValue::thunk(
+                                        self.get_var(incl.ident, &env, PosIdx::NONE)?,
+                                        self.pos_table.push_block(incl.ident.pos),
                                     )),
-                                    metadata: incl.metadata,
+                                    metadata: incl.metadata.clone(),
                                     pending_contracts: Vec::new(),
                                 };
 
                                 Ok((
                                     incl.ident,
-                                    gen_pending_contracts::with_pending_contracts(field)?,
+                                    gen_pending_contracts::with_pending_contracts(&mut self.pos_table, field)?,
                                 ))
                             })
                             .collect();
@@ -767,18 +917,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // restriction might be lifted in the future (we would probably merge the
                         // included field and the other definition pieces), but for now it's
                         // simpler this way.
-                        let mut data = data;
+                        let mut data = data.clone();
                         data.fields.extend(includes_as_terms?);
-                        closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
+                        closurize_rec_record(
+                            &mut self.cache,
+                            data.clone(),
+                            dyn_fields.clone(),
+                            deps.clone(),
+                            env,
+                        )
                     } else {
                         // In a record that has been already closurized, we expect include
                         // expressions to be evaluated away.
                         debug_assert!(includes.is_empty());
-                        (data, dyn_fields)
+                        (data.clone(), dyn_fields.clone())
                     };
 
                     let rec_env =
-                        fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
+                        fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos_idx);
 
                     for rt in static_part.fields.values_mut() {
                         fixpoint::patch_field(&mut self.cache, rt, &rec_env);
@@ -801,13 +957,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        RichTerm::new(Term::Record(static_part), pos),
+                        NickelValue::record_force_pos(&mut self.pos_table, static_part, pos_idx),
                         |acc, (name_as_term, mut field)| {
-                            let pos = field
+                            let pos_idx = field
                                 .value
                                 .as_ref()
-                                .map(|v| v.pos)
-                                .unwrap_or(name_as_term.pos);
+                                .map(NickelValue::pos_idx)
+                                .unwrap_or_else(|| name_as_term.pos_idx());
 
                             fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
 
@@ -830,82 +986,46 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             );
 
                             match value {
-                                Some(value) => {
-                                    RichTerm::new(Term::App(extend, value), pos.into_inherited())
-                                }
+                                Some(value) => NickelValue::term(
+                                    Term::App(extend, value),
+                                    pos_idx.to_inherited_block(&mut self.pos_table),
+                                ),
                                 None => extend,
                             }
                         },
                     );
 
-                    Closure {
-                        body: extended.with_pos(pos),
-                        env: Environment::new(),
-                    }
+                    extended.with_pos_idx(&mut self.pos_table, pos_idx).into()
                 }
-                Term::ResolvedImport(id) => {
+                ValueContentRef::Term(TermBody(Term::ResolvedImport(id))) => {
                     increment!(format!("import:{id:?}"));
 
-                    if let Some(t) = self.import_resolver.get(id) {
-                        Closure::atomic_closure(t)
+                    if let Some(val) = self.import_resolver.get(*id) {
+                        val.into()
                     } else {
-                        break Err(EvalError::InternalError(
+                        break Err(EvalErrorData::InternalError(
                             format!("Resolved import not found ({id:?})"),
-                            pos,
+                            pos_idx,
                         ));
                     }
                 }
-                Term::Import(Import::Path { path, .. }) => {
-                    break Err(EvalError::InternalError(
+                ValueContentRef::Term(TermBody(Term::Import(Import::Path { path, .. }))) => {
+                    break Err(EvalErrorData::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
-                        pos,
+                        pos_idx,
                     ));
                 }
-                Term::Import(Import::Package { id }) => {
-                    return Err(EvalError::InternalError(
+                ValueContentRef::Term(TermBody(Term::Import(Import::Package { id }))) => {
+                    return Err(EvalErrorData::InternalError(
                         format!("Unresolved package import ({id})"),
-                        pos,
+                        pos_idx,
                     ));
                 }
-                // Closurize the array if it's not already done.
-                // This *should* make it unnecessary to call closurize in [operation].
-                // See the comment on the `BinaryOp::ArrayConcat` match arm.
-                Term::Array(terms, attrs) if !attrs.closurized => {
-                    let closurized_array = terms
-                        .into_iter()
-                        .map(|t| t.closurize(&mut self.cache, env.clone()))
-                        .collect();
-
-                    let closurized_ctrs = attrs
-                        .pending_contracts
-                        .into_iter()
-                        .map(|ctr| {
-                            RuntimeContract::new(
-                                ctr.contract.closurize(&mut self.cache, env.clone()),
-                                ctr.label,
-                            )
-                        })
-                        .collect();
-
-                    Closure {
-                        body: RichTerm::new(
-                            Term::Array(
-                                closurized_array,
-                                ArrayAttrs {
-                                    closurized: true,
-                                    pending_contracts: closurized_ctrs,
-                                },
-                            ),
-                            pos,
-                        ),
-                        env: Environment::new(),
-                    }
+                ValueContentRef::Term(TermBody(Term::ParseError(parse_error))) => {
+                    break Err(EvalErrorData::ParseError(parse_error.clone()));
                 }
-                Term::ParseError(parse_error) => {
-                    break Err(EvalError::ParseError(parse_error));
-                }
-                Term::RuntimeError(error) => {
-                    break Err(error);
+                ValueContentRef::Term(TermBody(Term::RuntimeError(error))) => {
+                    break Err(error.clone());
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -914,39 +1034,43 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
-                Term::Annotated(annot, inner) => {
+                ValueContentRef::Term(TermBody(Term::Annotated(annot, inner))) => {
                     increment!("contract:free-standing(annotated)");
 
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
-                    let static_contract = annot.static_contract();
-                    let contracts = annot.pending_contracts()?;
-                    let pos = inner.pos;
+                    let static_contract = annot.static_contract(&mut self.pos_table);
+                    let contracts = annot.pending_contracts(&mut self.pos_table)?;
+                    let pos_idx = inner.pos_idx();
+                    let inner = inner.clone();
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
-                        static_ctr?.apply(inner, pos)
+                        static_ctr?.apply(inner, pos_idx)
                     } else {
                         inner
                     };
 
                     let inner_with_ctr =
-                        RuntimeContract::apply_all(inner_with_static, contracts, pos);
+                        RuntimeContract::apply_all(inner_with_static, contracts, pos_idx);
 
                     Closure {
-                        body: inner_with_ctr,
+                        value: inner_with_ctr,
                         env,
                     }
                 }
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
-                Term::Fun(x, t) if !has_cont_on_stack => {
+                ValueContentRef::Term(TermBody(Term::Fun(arg, body))) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
-                        self.call_stack.enter_fun(pos_app);
-                        env.insert(x.ident(), idx);
-                        Closure { body: t, env }
+                        self.call_stack.enter_fun(&self.pos_table, pos_app);
+                        env.insert(arg.ident(), idx);
+                        Closure {
+                            value: body.clone(),
+                            env,
+                        }
                     } else {
                         break Ok(Closure {
-                            body: RichTerm::new(Term::Fun(x, t), pos),
+                            value: NickelValue::term(Term::Fun(*arg, body.clone()), pos_idx),
                             env,
                         });
                     }
@@ -959,28 +1083,32 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
-                Term::Match(data) if !has_cont_on_stack => {
-                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                ValueContentRef::Term(TermBody(Term::Match(data))) if !has_cont_on_stack => {
+                    if let Some((arg, _)) = self.stack.pop_arg(&self.cache) {
                         Closure {
-                            body: data.compile(arg.body.closurize(&mut self.cache, arg.env), pos),
+                            value: data.clone().compile(
+                                &mut self.pos_table,
+                                arg.value.closurize(&mut self.cache, arg.env),
+                                pos_idx,
+                            ),
                             env,
                         }
                     } else {
                         break Ok(Closure {
-                            body: RichTerm::new(Term::Match(data), pos),
+                            value: NickelValue::term(Term::Match(data.clone()), pos_idx),
                             env,
                         });
                     }
                 }
+                ValueContentRef::Term(TermBody(Term::FunPattern(..) | Term::LetPattern(..))) => {
+                    break Err(EvalErrorData::InternalError(
+                        "unexpected let-pattern or fun-pattern during evaluation".to_owned(),
+                        pos_idx,
+                    ));
+                }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
-                    let evaluated = Closure {
-                        body: RichTerm {
-                            term: shared_term,
-                            pos,
-                        },
-                        env,
-                    };
+                    let evaluated = Closure { value, env };
 
                     // If there is a cache index update frame on the stack, we proceed with the
                     // update of the corresponding cached value.
@@ -997,7 +1125,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // are supposed to evaluate an application, but the left hand side isn't a
                     // function)
                     else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        break Err(EvalError::NotAFunc(evaluated.body, arg.body, pos_app));
+                        break Err(EvalErrorData::NotAFunc(evaluated.value, arg.value, pos_app));
                     }
                     // Finally, if the stack is empty, it's all good: it just means we are done
                     // evaluating.
@@ -1005,10 +1133,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         break Ok(evaluated);
                     }
                 }
-            })
+            };
         };
 
-        #[cfg(feature = "metrics")]
         increment!("runtime:eval", start_time.elapsed().as_millis() as u64);
 
         result
@@ -1023,93 +1150,117 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// - We only return the accumulated errors; we don't return the eval'ed term.
     /// - We support a recursion limit, to limit the number of times we recurse into
     ///   arrays or records.
-    pub fn eval_permissive(&mut self, rt: RichTerm, recursion_limit: usize) -> Vec<EvalError> {
+    pub fn eval_permissive(
+        &mut self,
+        value: NickelValue,
+        recursion_limit: usize,
+    ) -> Vec<EvalError> {
         fn inner<R: ImportResolver, C: Cache>(
-            slf: &mut VirtualMachine<R, C>,
+            this: &mut VirtualMachine<R, C>,
             acc: &mut Vec<EvalError>,
-            rt: RichTerm,
+            value: NickelValue,
             recursion_limit: usize,
         ) {
             if recursion_limit == 0 {
                 return;
             }
 
-            let pos = rt.pos;
-            match slf.eval(rt) {
+            let pos_idx = value.pos_idx();
+            match this.eval(value) {
                 Err(e) => {
                     acc.push(e);
-                    slf.reset();
+                    this.reset();
                 }
-                Ok(t) => match t.as_ref() {
-                    Term::Array(ts, attrs) => {
-                        for t in ts.iter() {
+                Ok(val) => match val.content_ref() {
+                    ValueContentRef::Array(data) => {
+                        for elt in data.array.iter() {
                             // After eval_closure, all the array elements  are
                             // closurized already, so we don't need to do any tracking
                             // of the env.
                             let value_with_ctr = RuntimeContract::apply_all(
-                                t.clone(),
-                                attrs.pending_contracts.iter().cloned(),
-                                t.pos,
+                                elt.clone(),
+                                data.pending_contracts.iter().cloned(),
+                                elt.pos_idx(),
                             );
-                            inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
+                            inner(this, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                         }
                     }
-                    Term::Record(data) => {
+                    ValueContentRef::Record(RecordBody(data)) => {
                         for (id, field) in &data.fields {
                             if let Some(v) = &field.value {
                                 let value_with_ctr = RuntimeContract::apply_all(
                                     v.clone(),
                                     field.pending_contracts.iter().cloned(),
-                                    v.pos,
+                                    v.pos_idx(),
                                 );
-                                inner(slf, acc, value_with_ctr, recursion_limit.saturating_sub(1));
+                                inner(this, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                             } else {
-                                acc.push(EvalError::MissingFieldDef {
+                                acc.push(this.err_with_ctxt(EvalErrorData::MissingFieldDef {
                                     id: *id,
                                     metadata: field.metadata.clone(),
-                                    pos_record: pos,
-                                    pos_access: TermPos::None,
-                                });
+                                    pos_record: pos_idx,
+                                    pos_access: PosIdx::NONE,
+                                }));
                             }
                         }
                     }
-                    Term::EnumVariant { arg, .. } => {
-                        inner(slf, acc, arg.clone(), recursion_limit.saturating_sub(1));
+                    ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(arg), .. }) => {
+                        inner(this, acc, arg.clone(), recursion_limit.saturating_sub(1));
                     }
                     _ => {}
                 },
             }
         }
+
         let mut ret = Vec::new();
-        inner(self, &mut ret, rt, recursion_limit);
+        inner(self, &mut ret, value, recursion_limit);
         ret
+    }
+
+    /// This is a temporary, ugly work-around for the fact that the VM owns both the position table
+    /// and the cache, but [crate::program::Program] sometimes need to access both at the same
+    /// time, mutably. Ideally, either the VM would borrow them, or the position table would be
+    /// owned by something else and just passed for evaluation, or any other design - but it sounds
+    /// abusive that the VM owns the two, which should be able to survive it or be initialized
+    /// before it.
+    pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T where F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T {
+        f(&mut self.pos_table, &mut self.import_resolver)
+    }
+
+    pub(crate) fn pos_table_mut(&mut self) -> &mut PosTable {
+        &mut self.pos_table
     }
 }
 
 impl<C: Cache> VirtualMachine<ImportCaches, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
-    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<NickelValue, Error> {
         self.prepare_eval_impl(main_id, true)
     }
 
     /// Same as [Self::prepare_eval], but skip typechecking.
-    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<NickelValue, Error> {
         self.prepare_eval_impl(main_id, false)
     }
 
-    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<RichTerm, Error> {
+    fn prepare_eval_impl(
+        &mut self,
+        main_id: FileId,
+        typecheck: bool,
+    ) -> Result<NickelValue, Error> {
         measure_runtime!(
             "runtime:prepare_stdlib",
-            self.import_resolver.prepare_stdlib()?
+            self.import_resolver.prepare_stdlib(&mut self.pos_table)?
         );
 
         measure_runtime!(
             "runtime:prepare_main",
             if typecheck {
-                self.import_resolver.prepare(main_id)
+                self.import_resolver.prepare(&mut self.pos_table, main_id)
             } else {
-                self.import_resolver.prepare_eval_only(main_id)
+                self.import_resolver
+                    .prepare_eval_only(&mut self.pos_table, main_id)
             }
         )?;
 
@@ -1130,7 +1281,7 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
     ///
     /// The initial evaluation and typing environments, containing the stdlib items.
     pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
-        self.import_resolver.prepare_stdlib()?;
+        self.import_resolver.prepare_stdlib(&mut self.pos_table)?;
         self.initial_env = self.import_resolver.mk_eval_env(&mut self.cache);
         Ok(())
     }
@@ -1142,34 +1293,27 @@ impl<C: Cache> VirtualMachine<ImportCaches, C> {
     }
 }
 
-/// A closure, a term together with an environment.
-#[derive(PartialEq)]
+/// A closure, which is a value packed with its environment.
+#[derive(PartialEq, Clone)]
 pub struct Closure {
-    pub body: RichTerm,
+    pub value: NickelValue,
     pub env: Environment,
 }
 
 impl std::fmt::Debug for Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Closure")
-            .field("body", &self.body)
+            .field("body", &self.value)
             .finish_non_exhaustive()
     }
 }
 
-impl Clone for Closure {
-    fn clone(&self) -> Self {
+impl From<NickelValue> for Closure {
+    fn from(value: NickelValue) -> Self {
         Closure {
-            body: self.body.clone(),
-            env: self.env.clone(),
+            value,
+            env: Environment::new(),
         }
-    }
-}
-
-impl Closure {
-    pub fn atomic_closure(body: RichTerm) -> Closure {
-        let env: Environment = Environment::new();
-        Closure { body, env }
     }
 }
 
@@ -1179,7 +1323,7 @@ pub type Environment = GenericEnvironment<Ident, CacheIndex>;
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
-    NotARecord(RichTerm),
+    NotARecord(NickelValue),
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
@@ -1189,28 +1333,46 @@ pub fn env_add_record<C: Cache>(
     env: &mut Environment,
     closure: Closure,
 ) -> Result<(), EnvBuildError> {
-    match_sharedterm!(match (closure.body.term) {
-        Term::Record(record) | Term::RecRecord(record, ..) => {
-            let ext = record.fields.into_iter().filter_map(|(id, field)| {
-                field.value.map(|value| {
-                    (
-                        id.ident(),
-                        cache.add(
-                            Closure {
-                                body: value,
-                                env: closure.env.clone(),
-                            },
-                            BindingType::Normal,
-                        ),
-                    )
-                })
-            });
+    if closure.value.is_empty_record() {
+        return Ok(());
+    }
 
-            env.extend(ext);
-            Ok(())
-        }
-        _ => Err(EnvBuildError::NotARecord(closure.body)),
-    })
+    //TODO[RFC007]: empty records?
+    let record = closure
+        .value
+        .as_record()
+        .map(|record| &record.0)
+        .or_else(|| {
+            closure.value.as_term().and_then(|term| {
+                if let Term::RecRecord(record, ..) = &term.0 {
+                    Some(record)
+                } else {
+                    None
+                }
+            })
+        });
+
+    if let Some(record) = record {
+        let ext = record.fields.iter().filter_map(|(id, field)| {
+            field.value.as_ref().map(|value| {
+                (
+                    id.ident(),
+                    cache.add(
+                        Closure {
+                            value: value.clone(),
+                            env: closure.env.clone(),
+                        },
+                        BindingType::Normal,
+                    ),
+                )
+            })
+        });
+
+        env.extend(ext);
+        Ok(())
+    } else {
+        Err(EnvBuildError::NotARecord(closure.value))
+    }
 }
 
 /// Bind a closure in an environment.
@@ -1218,11 +1380,11 @@ pub fn env_add<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
     id: LocIdent,
-    rt: RichTerm,
+    value: NickelValue,
     local_env: Environment,
 ) {
     let closure = Closure {
-        body: rt,
+        value,
         env: local_env,
     };
     env.insert(id.ident(), cache.add(closure, BindingType::Normal));
@@ -1235,183 +1397,205 @@ fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Cl
     }
 }
 
-/// Fetches a closure from the local or the initial environment, or fails with
-/// [crate::error::EvalError::UnboundIdentifier] with either the variable position, or the
-/// provided fallback position if the former isn't defined.
+/// Free-standing implementation of [VirtualMachine::get_var].
 fn get_var(
+    pos_table: &PosTable,
     id: LocIdent,
-    env: &Environment,
     initial_env: &Environment,
-    pos: TermPos,
-) -> Result<CacheIndex, EvalError> {
+    env: &Environment,
+    pos_idx: PosIdx,
+) -> Result<CacheIndex, EvalErrorData> {
     env.get(&id.ident())
         .or_else(|| initial_env.get(&id.ident()))
         .cloned()
-        .ok_or(EvalError::UnboundIdentifier(id, id.pos.or(pos)))
+        .ok_or(EvalErrorData::UnboundIdentifier(
+            id,
+            id.pos.or(pos_table.get(pos_idx)),
+        ))
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
 pub fn subst<C: Cache>(
+    pos_table: &PosTable,
     cache: &C,
-    rt: RichTerm,
+    value: NickelValue,
     initial_env: &Environment,
     env: &Environment,
-) -> RichTerm {
-    let RichTerm { term, pos } = rt;
+) -> NickelValue {
+    use crate::bytecode::value::lens::TermContent;
 
-    match term.into_owned() {
-        Term::Var(id) => get_var(id, env, initial_env, TermPos::None)
-            .map(|idx| {
-                let closure = cache.get(idx);
-                subst(cache, closure.body, initial_env, &closure.env)
-            })
-            .unwrap_or_else(|_| RichTerm::new(Term::Var(id), pos)),
-        Term::Closure(idx) => {
-                let closure = cache.get(idx.clone());
-                subst(cache, closure.body, initial_env, &closure.env)
-        },
-        v @ Term::Null
-        | v @ Term::ParseError(_)
-        | v @ Term::RuntimeError(_)
-        | v @ Term::Bool(_)
-        | v @ Term::Num(_)
-        | v @ Term::Str(_)
-        // Do not substitute under lambdas: mutually recursive function could cause an infinite
-        // loop. Although avoidable, this requires some care and is not currently needed.
-        | v @ Term::Fun(..)
-        | v @ Term::CustomContract(_)
-        | v @ Term::Lbl(_)
-        | v @ Term::ForeignId(_)
-        | v @ Term::SealingKey(_)
-        | v @ Term::Enum(_)
-        | v @ Term::Import(_)
-        | v @ Term::ResolvedImport(_)
-        // We could recurse here, because types can contain terms which would then be subject to
-        // substitution. Not recursing should be fine, though, because a type in term position
+    let pos_idx = value.pos_idx();
+
+    match value.content() {
+        lens @ (ValueContent::Inline(_)
+        | ValueContent::Number(_)
+        | ValueContent::String(_)
+        | ValueContent::CustomContract(_)
+        | ValueContent::Label(_)
+        // We could recurse in types, because types can contain terms which would then be subject
+        // to substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
-        | v @ Term::Type {..} => RichTerm::new(v, pos),
-        Term::EnumVariant { tag, arg, attrs } => {
-            let arg = subst(cache, arg, initial_env, env);
-
-            RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
+        | ValueContent::Type(_)
+        | ValueContent::ForeignId(_)
+        | ValueContent::SealingKey(_)) => lens.restore(),
+        ValueContent::Thunk(lens) => {
+            let closure = cache.get(lens.take().0);
+            subst(pos_table, cache, closure.value, initial_env, &closure.env)
         }
-        Term::Let(bindings, body, attrs) => {
-            let bindings = bindings.into_iter().map(|(key, val)| (key, subst(cache, val, initial_env, env))).collect();
-            let body = subst(cache, body, initial_env, env);
+        ValueContent::Record(lens) => {
+            let record = lens
+                .take()
+                .0
+                .map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
-            RichTerm::new(Term::Let(bindings, body, attrs), pos)
+            //unwrap(): we didn't change the size of the record, so whether it was inline or not,
+            //its position index should be of the according type
+            NickelValue::record(record, pos_idx).unwrap()
         }
-        p @ Term::LetPattern(..) => panic!(
-            "Pattern {p:?} has not been transformed before evaluation"
-        ),
-        p @ Term::FunPattern(..) => panic!(
-            "Pattern {p:?} has not been transformed before evaluation"
-        ),
-        Term::App(t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        ValueContent::Array(lens) => {
+            let array_data = lens.take();
 
-            RichTerm::new(Term::App(t1, t2), pos)
-        }
-        Term::Match(data) => {
-            let branches = data.branches
+            let array = array_data.array.into_iter()
                 .into_iter()
-                .map(|MatchBranch { pattern, guard, body} | {
-                    MatchBranch {
-                        pattern,
-                        guard: guard.map(|cond| subst(cache, cond, initial_env, env)),
-                        body: subst(cache, body, initial_env, env),
-                    }
-                })
+                .map(|t| subst(pos_table, cache, t, initial_env, env))
                 .collect();
 
-            RichTerm::new(Term::Match(MatchData { branches }), pos)
+            // unwrap(): we neither changed the emptyness or the position index of the array, so
+            // they should match. Also, this whole pos_idx juggling will be removed soon, together
+            // with this comment, anyway.
+            NickelValue::array(array, array_data.pending_contracts, pos_idx).unwrap()
         }
-        Term::Op1(op, t) => {
-            let t = subst(cache, t, initial_env, env);
+        ValueContent::EnumVariant(lens) => {
+            let EnumVariantBody { tag, arg } = lens.take();
+            let arg = arg.map(|arg| subst(pos_table, cache, arg, initial_env, env));
 
-            RichTerm::new(Term::Op1(op, t), pos)
+            NickelValue::enum_variant(tag, arg, pos_idx)
         }
-        Term::Op2(op, t1, t2) => {
-            let t1 = subst(cache, t1, initial_env, env);
-            let t2 = subst(cache, t2, initial_env, env);
+        ValueContent::Term(content) => {
+            match content {
+                TermContent::Var(lens) => {
+                    let id = lens.take();
 
-            RichTerm::new(Term::Op2(op, t1, t2), pos)
-        }
-        Term::OpN(op, ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| subst(cache, t, initial_env, env))
-                .collect();
+                    get_var(pos_table, id, env, initial_env, PosIdx::NONE)
+                    .map(|idx| {
+                        let closure = cache.get(idx);
+                        subst(pos_table, cache, closure.value, initial_env, &closure.env)
+                    })
+                    .unwrap_or_else(|_| NickelValue::term(Term::Var(id), pos_idx))
+                }
+                lens @ (TermContent::ParseError(_) | TermContent::RuntimeError(_)
+                // Do not substitute under lambdas: mutually recursive function could cause an infinite
+                // loop. Although avoidable, this requires some care and is not currently needed.
+                | TermContent::Fun(..)
+                | TermContent::Import(_)
+                | TermContent::ResolvedImport(_)) => lens.restore(),
+                                TermContent::Let(lens) => {
+                    let (bindings, body, attrs) = lens.take();
+                    let bindings = bindings.into_iter().map(|(key, val)| (key, subst(pos_table, cache, val, initial_env, env))).collect();
+                    let body = subst(pos_table, cache, body, initial_env, env);
 
-            RichTerm::new(Term::OpN(op, ts), pos)
-        }
-        Term::Sealed(i, t, lbl) => {
-            let t = subst(cache, t, initial_env, env);
-            RichTerm::new(Term::Sealed(i, t, lbl), pos)
-        }
-        Term::Record(record) => {
-            let mut record = record
-                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+                    NickelValue::term(Term::Let(bindings, body, attrs), pos_idx)
+                }
+                lens @ (TermContent::LetPattern(..) | TermContent::FunPattern(..)) => panic!(
+                    "Pattern {:?} has not been transformed before evaluation", lens.restore()
+                ),
+                TermContent::App(lens) => {
+                    let (head, arg) = lens.take();
+                    let head = subst(pos_table, cache, head, initial_env, env);
+                    let arg = subst(pos_table, cache, arg, initial_env, env);
 
-            // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
-            // It's a detail but it comes handy in tests, where we abuse partial equality over
-            // terms - keeping closurized to `true` would require to do the same when building the
-            // expected result, which is annoying, as closurized is initialized to false by default
-            // by term builders.
-            record.attrs.closurized = false;
+                    NickelValue::term(Term::App(head, arg), pos_idx)
+                }
+                TermContent::Match(lens) => {
+                    let data = lens.take();
+                    let branches = data.branches
+                        .into_iter()
+                        .map(|MatchBranch { pattern, guard, body} | {
+                            MatchBranch {
+                                pattern,
+                                guard: guard.map(|cond| subst(pos_table, cache, cond, initial_env, env)),
+                                body: subst(pos_table, cache, body, initial_env, env),
+                            }
+                        })
+                        .collect();
 
-            RichTerm::new(Term::Record(record), pos)
-        }
-        // Currently, we downright ignore `include` expressions. However, one could argue that
-        // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
-        Term::RecRecord(record, includes, dyn_fields, deps) => {
-            let mut record = record
-                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+                    NickelValue::term(Term::Match(MatchData { branches }), pos_idx)
+                }
+                TermContent::Op1(lens) => {
+                    let (op, t) = lens.take();
+                    let t = subst(pos_table, cache, t, initial_env, env);
 
-            // see [^subst-closurized-false]
-            record.attrs.closurized = false;
+                    NickelValue::term(Term::Op1(op, t), pos_idx)
+                }
+                TermContent::Op2(lens) => {
+                    let (op, t1, t2) = lens.take();
+                    let t1 = subst(pos_table, cache, t1, initial_env, env);
+                    let t2 = subst(pos_table, cache, t2, initial_env, env);
 
-            let dyn_fields = dyn_fields
-                .into_iter()
-                .map(|(id_t, field)| {
-                    (
-                        subst(cache, id_t, initial_env, env),
-                        field.map_value(|v| subst(cache, v, initial_env, env)),
-                    )
-                })
-                .collect();
+                    NickelValue::term(Term::Op2(op, t1, t2), pos_idx)
+                }
+                TermContent::OpN(lens) => {
+                    let (op, ts) = lens.take();
+                    let ts = ts
+                        .into_iter()
+                        .map(|t| subst(pos_table, cache, t, initial_env, env))
+                        .collect();
 
-            RichTerm::new(Term::RecRecord(record, includes, dyn_fields, deps), pos)
-        }
-        Term::Array(ts, mut attrs) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| subst(cache, t, initial_env, env))
-                .collect();
+                    NickelValue::term(Term::OpN(op, ts), pos_idx)
+                }
+                TermContent::Sealed(lens) => {
+                    let (i, t, lbl) = lens.take();
+                    let t = subst(pos_table, cache, t, initial_env, env);
+                    NickelValue::term(Term::Sealed(i, t, lbl), pos_idx)
+                }
+                // Currently, we downright ignore `include` expressions. However, one could argue that
+                // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
+                TermContent::RecRecord(lens) => {
+                    let (record, includes, dyn_fields, deps) = lens.take();
+                    let record = record
+                        .map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
-            // cd [^subst-closurized-false]
-            attrs.closurized = false;
-            RichTerm::new(Term::Array(ts, attrs), pos)
-        }
-        Term::StrChunks(chunks) => {
-            let chunks = chunks
-                .into_iter()
-                .map(|chunk| match chunk {
-                    chunk @ StrChunk::Literal(_) => chunk,
-                    StrChunk::Expr(t, indent) => StrChunk::Expr(
-                        subst(cache, t, initial_env, env),
-                        indent,
-                    ),
-                })
-                .collect();
+                    let dyn_fields = dyn_fields
+                        .into_iter()
+                        .map(|(id_t, field)| {
+                            (
+                                subst(pos_table, cache, id_t, initial_env, env),
+                                field.map_value(|v| subst(pos_table, cache, v, initial_env, env)),
+                            )
+                        })
+                        .collect();
 
-            RichTerm::new(Term::StrChunks(chunks), pos)
-        }
-        Term::Annotated(annot, t) => {
-            // Currently, there is no interest in replacing variables inside contracts, thus we
-            // limit the work of `subst`.
-            RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_env, env)), pos)
+                    NickelValue::term(Term::RecRecord(record, includes, dyn_fields, deps), pos_idx)
+                }
+                TermContent::StrChunks(lens) => {
+                    let chunks = lens.take()
+                        .into_iter()
+                        .map(|chunk| match chunk {
+                            chunk @ StrChunk::Literal(_) => chunk,
+                            StrChunk::Expr(t, indent) => StrChunk::Expr(
+                                subst(pos_table, cache, t, initial_env, env),
+                                indent,
+                            ),
+                        })
+                        .collect();
+
+                    NickelValue::term(Term::StrChunks(chunks), pos_idx)
+                }
+                TermContent::Annotated(lens) => {
+                    let (annot, t) = lens.take();
+                    // Currently, there is no interest in replacing variables inside contracts, thus we
+                    // limit the work of `subst`.
+                    NickelValue::term(Term::Annotated(annot, subst(pos_table, cache, t, initial_env, env)), pos_idx)
+                }
+                // We erase `Value` nodes during substitution. When performing substitution, the
+                // goal is to remove indirections.
+                TermContent::Value(lens) => {
+                    subst(pos_table, cache, lens.take(), initial_env, env)
+                }
+                TermContent::Closurize(lens) => {
+                    NickelValue::term(Term::Closurize(subst(pos_table, cache, lens.take(), initial_env, env)), pos_idx)
+                }
+            }
         }
     }
 }
