@@ -289,9 +289,11 @@ impl TermCache {
     }
 }
 
-/// This is a temporary fix for https://github.com/tweag/nickel/issues/2362. File paths prefixed
-/// with this are treated specially: they can refer to in-memory source.
-pub(crate) const IN_MEMORY_SOURCE_PATH_PREFIX: &str = "%inmem_src%:";
+/// This is a temporary fix for [#2362](https://github.com/tweag/nickel/issues/2362). File paths
+/// prefixed with this are treated specially: they can refer to in-memory source. To build an
+/// import expression that refers to an in-memory source, append the source name to this prefix and
+/// use it as the path: `format!({IN_MEMORY_SOURCE_PATH_PREFIX}{src_name})`.
+pub const IN_MEMORY_SOURCE_PATH_PREFIX: &str = "%inmem_src%:";
 
 /// The source cache handles reading textual data from the file system or other souces and storing
 /// it in a [Files] instance.
@@ -391,19 +393,19 @@ impl SourceCache {
     ///
     /// # In memory sources
     ///
-    /// As a temporary fix for https://github.com/tweag/nickel/issues/2362, if a file path starts
-    /// with [IN_MEMORY_SOURCE_PATH_PREFIX], the suffix is looked up as a [SourcePath::Generated] value
+    /// As a temporary fix for [#2362](https://github.com/tweag/nickel/issues/2362), if a file path
+    /// starts with [IN_MEMORY_SOURCE_PATH_PREFIX], the suffix is looked up un-normalized value
     /// first, which makes it possible to hit in-memory only sources by importing a path
-    /// `"{SOURCE_PATH_PREFX}<source name>"`. If it can't be found, it is looked up normally, so
-    /// that it doesn't break strange file names that happen to contain the source path prefix.
+    /// `"{SOURCE_PATH_PREFX}{src_name}"`. If it can't be found, it is looked up normally, so that
+    /// it doesn't break strange file names that happen to contain the source path prefix.
     ///
     /// It is theoretically possible that if both the source "abc" and the file
-    /// "{IN_MEMORY_SOURCE_PATH_PREFIX}abc" exist, the source is imported instead of the intended file.
-    /// However, given the prefix, it just can't be accidental. As we want to give access to
+    /// "{IN_MEMORY_SOURCE_PATH_PREFIX}abc" exist, the source is imported instead of the intended
+    /// file. However, given the prefix, it just can't be accidental. As we want to give access to
     /// in-memory sources in any case, although this can be surprising, I don't see any obvious
-    /// meaningful exploitation. If you still need to make sure this doesn't happen, one way is to
-    /// add some randomness to the name of the sources, so that they can't be predicted from Nickel
-    /// code.
+    /// attack scenario here. This fix is also intended to be temporary. If you still need to make
+    /// sure this doesn't happen, one way would be to add some randomness to the name of the
+    /// sources, so that they can't be predicted beforehand.
     pub fn get_or_add_file(
         &mut self,
         path: impl Into<OsString>,
