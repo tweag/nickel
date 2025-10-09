@@ -588,9 +588,9 @@ impl SourceCache {
                 // implemented. And this case is an internal bug.
                 panic!("error: trying to parse a Nickel source with parse_other_nocache")
             }
-            InputFormat::Json => serde_json::from_str(source)
-                .map(attach_pos)
-                .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
+            InputFormat::Json => {
+                crate::serialize::yaml::load_json_term(source, Some((file_id, &self.files)))
+            }
             InputFormat::Yaml => crate::serialize::yaml::load_yaml_term(source, Some(file_id)),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(source, file_id)
                 .map(attach_pos)
@@ -601,7 +601,7 @@ impl SourceCache {
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
                     .map(attach_pos)
-                    .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
+                    .map_err(|err| ParseError::from_serde_json(err, Some((file_id, &self.files))))
             }
             InputFormat::Text => Ok(attach_pos(Term::Str(source.into()).into())),
         }

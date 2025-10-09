@@ -988,7 +988,7 @@ impl ParseError {
         }
     }
 
-    pub fn from_serde_json(error: serde_json::Error, file_id: FileId, files: &Files) -> Self {
+    pub fn from_serde_json(error: serde_json::Error, location: Option<(FileId, &Files)>) -> Self {
         use codespan::ByteOffset;
 
         // error.line() should start at `1` according to the documentation, but in practice, it may
@@ -998,7 +998,7 @@ impl ParseError {
         let line_span = if error.line() == 0 {
             None
         } else {
-            files.line_index(file_id, error.line() - 1).ok()
+            location.and_then(|(file_id, files)| files.line_index(file_id, error.line() - 1).ok())
         };
 
         let start =
@@ -1007,7 +1007,8 @@ impl ParseError {
             String::from("json"),
             error.to_string(),
             start.map(|start| RawSpan {
-                src_id: file_id,
+                // unwrap: if start is Some, location was Some.
+                src_id: location.unwrap().0,
                 start,
                 end: start + ByteOffset::from(1),
             }),
