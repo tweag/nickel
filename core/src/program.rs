@@ -337,13 +337,19 @@ impl<EC: EvalCache> Program<EC> {
                     RichTerm::from(Term::Import(Import::Path { path, format }))
                 }
                 Input::Source(source, name) => {
-                    let path = PathBuf::from(name.into());
+                    let name = name.into();
+                    let mut import_path = OsString::new();
+                    // See https://github.com/tweag/nickel/issues/2362 and the documentation of
+                    // IN_MEMORY_SOURCE_PATH_PREFIX
+                    import_path.push(IN_MEMORY_SOURCE_PATH_PREFIX);
+                    import_path.push(name.clone());
+
                     cache
                         .sources
-                        .add_source(SourcePath::Path(path.clone(), InputFormat::Nickel), source)
+                        .add_source(SourcePath::Path(name.into(), InputFormat::Nickel), source)
                         .unwrap();
                     RichTerm::from(Term::Import(Import::Path {
-                        path: path.into(),
+                        path: import_path,
                         format: InputFormat::Nickel,
                     }))
                 }

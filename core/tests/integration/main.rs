@@ -19,9 +19,9 @@ use test_generator::test_resources;
 mod contract_label_path;
 mod free_vars;
 mod pretty;
+mod program_api;
 mod query;
 mod stdlib_typecheck;
-mod program_api;
 
 #[test_resources("core/tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
