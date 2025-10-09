@@ -148,7 +148,7 @@ jobs:
   publish-to-pypi:
     name: Publish distribution to PyPI
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.dry_run == 'false' }}
+    if: ${{ github.event_name == 'release' || github.event.inputs.dry_run == 'false' }}
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
       name: pypi
