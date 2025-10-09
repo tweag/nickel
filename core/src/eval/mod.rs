@@ -118,88 +118,100 @@ impl AsRef<Vec<StackElem>> for CallStack {
     }
 }
 
-// The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // The main stack, storing arguments, cache indices and pending computations.
-    stack: Stack<C>,
-    // The call stack, for error reporting.
-    call_stack: CallStack,
-    // The interface used to fetch imports.
-    import_resolver: R,
-    // The evaluation cache.
-    pub cache: C,
-    // The initial environment containing stdlib and builtin functions accessible from anywhere
-    initial_env: Environment,
-    // The stream for writing trace output.
-    trace: Box<dyn Write>,
+/// The context of the Nickel virtual machine. The context stores external state might need to
+/// outlive one VM instance. The virtual machine typically borrows the context mutably.
+pub struct VmContext<R: ImportResolver, C: Cache> {
+    /// The interface used to resolve and fetch imports.
+    pub import_resolver: R,
+    /// The stream for writing trace output.
+    pub trace: Box<dyn Write>,
     /// A collector for warnings. Currently we only collect warnings and not errors; errors
     /// terminate evaluation (or typechecking, or whatever) immediately, and so they just
     /// get early-returned in a `Result`.
     pub reporter: Box<dyn Reporter<(Warning, Files)>>,
+    /// The evaluation cache.
+    pub cache: C,
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
-    pub fn new(
-        import_resolver: R,
-        trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'static,
-    ) -> Self {
-        VirtualMachine {
-            import_resolver,
-            call_stack: Default::default(),
-            stack: Stack::new(),
-            cache: Cache::new(),
-            initial_env: Environment::new(),
-            trace: Box::new(trace),
-            reporter: Box::new(reporter),
-        }
+impl<C: Cache> VmContext<ImportCaches, C> {
+    /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
+    /// etc.). Sets the initial environment of the virtual machine.
+    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+        self.prepare_eval_impl(main_id, true)
     }
 
-    pub fn new_with_cache(
-        import_resolver: R,
-        cache: C,
-        trace: impl Write + 'static,
-        reporter: impl Reporter<(Warning, Files)> + 'static,
-    ) -> Self {
-        VirtualMachine {
-            import_resolver,
-            call_stack: Default::default(),
-            stack: Stack::new(),
-            cache,
-            trace: Box::new(trace),
-            initial_env: Environment::new(),
-            reporter: Box::new(reporter),
-        }
+    /// Same as [Self::prepare_eval], but skip typechecking.
+    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
+        self.prepare_eval_impl(main_id, false)
     }
 
-    pub fn with_reporter(
-        self,
-        reporter: impl Reporter<(Warning, Files)> + 'static,
-    ) -> VirtualMachine<R, C> {
+    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<RichTerm, Error> {
+        measure_runtime!(
+            "runtime:prepare_stdlib",
+            self.import_resolver.prepare_stdlib()?
+        );
+
+        measure_runtime!(
+            "runtime:prepare_main",
+            if typecheck {
+                self.import_resolver.prepare(main_id)
+            } else {
+                self.import_resolver.prepare_eval_only(main_id)
+            }
+        )?;
+
+        // Unwrap: closurization only fails if the input wasn't parsed, and we just
+        // parsed it.
+        self.import_resolver
+            .closurize(&mut self.cache, main_id)
+            .unwrap();
+
+        Ok(self.import_resolver.get(main_id).unwrap())
+    }
+}
+
+/// The Nickel virtual machine.
+pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
+    context: &'ctxt mut VmContext<R, C>,
+    /// The main stack, storing arguments, cache indices and pending computations.
+    stack: Stack<C>,
+    /// The call stack, for error reporting.
+    call_stack: CallStack,
+    /// The initial environment containing stdlib and builtin functions accessible from anywhere
+    initial_env: Environment,
+}
+
+impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
+    /// Creates a new VM with an empty initial environment. See [Self::new] for initialization of
+    /// the initial environment when `R` is instantiated to [crate::cache::CacheHub].
+    pub fn new_empty_env(context: &'ctxt mut VmContext<R, C>) -> Self {
         VirtualMachine {
-            reporter: Box::new(reporter),
-            ..self
+            context,
+            call_stack: Default::default(),
+            stack: Stack::new(),
+            initial_env: Environment::new(),
         }
     }
 
     pub fn warn(&mut self, warning: Warning) {
-        self.reporter
-            .report((warning, self.import_resolver.files().clone()));
+        self.context
+            .reporter
+            .report((warning, self.context.import_resolver.files().clone()));
     }
 
     /// Reset the state of the machine (stacks, eval mode and state of cached elements) to prepare
     /// for another evaluation round.
     pub fn reset(&mut self) {
         self.call_stack.0.clear();
-        self.stack.reset(&mut self.cache);
+        self.stack.reset(&mut self.context.cache);
     }
 
     pub fn import_resolver(&self) -> &R {
-        &self.import_resolver
+        &self.context.import_resolver
     }
 
     pub fn import_resolver_mut(&mut self) -> &mut R {
-        &mut self.import_resolver
+        &mut self.context.import_resolver
     }
 
     /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
@@ -220,7 +232,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
         self.eval_deep_closure_impl(t0, false)
             .map(|result| Closure {
-                body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+                body: subst(
+                    &mut self.context.cache,
+                    result.body,
+                    &self.initial_env,
+                    &result.env,
+                ),
                 env: result.env,
             })
     }
@@ -228,7 +245,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Like [Self::eval_full], but skips evaluating record fields marked `not_exported`.
     pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+            .map(|result| {
+                subst(
+                    &mut self.context.cache,
+                    result.body,
+                    &self.initial_env,
+                    &result.env,
+                )
+            })
     }
 
     /// Same as [Self::eval_full_for_export], but takes a closure as an argument instead of a term.
@@ -236,8 +260,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self,
         closure: Closure,
     ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure_impl(closure, true)
-            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+        self.eval_deep_closure_impl(closure, true).map(|result| {
+            subst(
+                &mut self.context.cache,
+                result.body,
+                &self.initial_env,
+                &result.env,
+            )
+        })
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
@@ -458,7 +488,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // is going to be discarded anyway
         std::mem::drop(env);
 
-        match self.cache.get_update_index(&mut idx) {
+        match self.context.cache.get_update_index(&mut idx) {
             Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
             Ok(None) => {}
             Err(_blackholed_error) => {
@@ -473,7 +503,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // If we are fetching a recursive field from the environment that doesn't have
         // a definition, we complete the error with the additional information of where
         // it was accessed:
-        let Closure { body, env } = self.cache.get(idx);
+        let Closure { body, env } = self.context.cache.get(idx);
         let body = match_sharedterm!(match (body.term) {
             Term::RuntimeError(EvalError::MissingFieldDef {
                 id,
@@ -544,7 +574,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // form, and if we don't, we will be unwrapping a `Sealed` term and assigning
                     // the "unsealed" value to the result of the `Seq` operation. See also:
                     // https://github.com/tweag/nickel/issues/123
-                    update_at_indices(&mut self.cache, &mut self.stack, &closure);
+                    update_at_indices(&mut self.context.cache, &mut self.stack, &closure);
 
                     // We have to peek the stack to see what operation is coming next and decide
                     // what to do.
@@ -571,7 +601,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(EvalError::BlameError {
-                                evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                evaluated_arg: label.get_evaluated_arg(&mut self.context.cache),
                                 label,
                                 call_stack: self.call_stack.clone(),
                             });
@@ -605,7 +635,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: init_env.clone(),
                         };
 
-                        let idx = self.cache.add(bound_closure, binding_type.clone());
+                        let idx = self.context.cache.add(bound_closure, binding_type.clone());
 
                         // Patch the environment with the (x <- closure) binding
                         if rec {
@@ -616,7 +646,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
 
                     for idx in indices {
-                        self.cache.patch(idx, |cl| cl.env = env.clone());
+                        self.context.cache.patch(idx, |cl| cl.env = env.clone());
                     }
 
                     Closure { body, env }
@@ -709,7 +739,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         body: RichTerm::new(
                             Term::EnumVariant {
                                 tag,
-                                arg: arg.closurize(&mut self.cache, env),
+                                arg: arg.closurize(&mut self.context.cache, env),
                                 attrs: attrs.closurized(),
                             },
                             pos,
@@ -722,7 +752,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Record(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::Record(data.closurize(&mut self.cache, env)),
+                            Term::Record(data.closurize(&mut self.context.cache, env)),
                             pos,
                         ),
                         env: Environment::new(),
@@ -769,7 +799,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // simpler this way.
                         let mut data = data;
                         data.fields.extend(includes_as_terms?);
-                        closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
+                        closurize_rec_record(&mut self.context.cache, data, dyn_fields, deps, env)
                     } else {
                         // In a record that has been already closurized, we expect include
                         // expressions to be evaluated away.
@@ -778,10 +808,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     };
 
                     let rec_env =
-                        fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
+                        fixpoint::rec_env(&mut self.context.cache, static_part.fields.iter(), pos);
 
                     for rt in static_part.fields.values_mut() {
-                        fixpoint::patch_field(&mut self.cache, rt, &rec_env);
+                        fixpoint::patch_field(&mut self.context.cache, rt, &rec_env);
                     }
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
@@ -809,7 +839,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map(|v| v.pos)
                                 .unwrap_or(name_as_term.pos);
 
-                            fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
+                            fixpoint::patch_field(&mut self.context.cache, &mut field, &rec_env);
 
                             let ext_kind = field.extension_kind();
                             let Field {
@@ -846,7 +876,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::ResolvedImport(id) => {
                     increment!(format!("import:{id:?}"));
 
-                    if let Some(t) = self.import_resolver.get(id) {
+                    if let Some(t) = self.context.import_resolver.get(id) {
                         Closure::atomic_closure(t)
                     } else {
                         break Err(EvalError::InternalError(
@@ -873,7 +903,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Array(terms, attrs) if !attrs.closurized => {
                     let closurized_array = terms
                         .into_iter()
-                        .map(|t| t.closurize(&mut self.cache, env.clone()))
+                        .map(|t| t.closurize(&mut self.context.cache, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
@@ -881,7 +911,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .into_iter()
                         .map(|ctr| {
                             RuntimeContract::new(
-                                ctr.contract.closurize(&mut self.cache, env.clone()),
+                                ctr.contract.closurize(&mut self.context.cache, env.clone()),
                                 ctr.label,
                             )
                         })
@@ -940,7 +970,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
                 Term::Fun(x, t) if !has_cont_on_stack => {
-                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
+                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
+                    {
                         self.call_stack.enter_fun(pos_app);
                         env.insert(x.ident(), idx);
                         Closure { body: t, env }
@@ -960,9 +991,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
                 Term::Match(data) if !has_cont_on_stack => {
-                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.context.cache) {
                         Closure {
-                            body: data.compile(arg.body.closurize(&mut self.cache, arg.env), pos),
+                            body: data
+                                .compile(arg.body.closurize(&mut self.context.cache, arg.env), pos),
                             env,
                         }
                     } else {
@@ -985,7 +1017,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // If there is a cache index update frame on the stack, we proceed with the
                     // update of the corresponding cached value.
                     if self.stack.is_top_idx() {
-                        update_at_indices(&mut self.cache, &mut self.stack, &evaluated);
+                        update_at_indices(&mut self.context.cache, &mut self.stack, &evaluated);
                         evaluated
                     }
                     // If there is a primitive operator continuation on the stack, we proceed with
@@ -996,7 +1028,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // Otherwise, if the stack is non-empty, this is an ill-formed application (we
                     // are supposed to evaluate an application, but the left hand side isn't a
                     // function)
-                    else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                    else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.context.cache) {
                         break Err(EvalError::NotAFunc(evaluated.body, arg.body, pos_app));
                     }
                     // Finally, if the stack is empty, it's all good: it just means we are done
@@ -1086,59 +1118,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     }
 }
 
-impl<C: Cache> VirtualMachine<ImportCaches, C> {
-    /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
-    /// etc.). Sets the initial environment of the virtual machine.
-    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
-        self.prepare_eval_impl(main_id, true)
+impl<'ctxt, C: Cache> VirtualMachine<'ctxt, ImportCaches, C> {
+    /// Creates a new VM, and automatically fills the initial environment with
+    /// `context.import_resolver.mk_initial_env()`.
+    pub fn new(context: &'ctxt mut VmContext<ImportCaches, C>) -> Self {
+        let initial_env = context.import_resolver.mk_eval_env(&mut context.cache);
+
+        VirtualMachine {
+            context,
+            call_stack: Default::default(),
+            stack: Stack::new(),
+            initial_env,
+        }
     }
+}
 
-    /// Same as [Self::prepare_eval], but skip typechecking.
-    pub fn prepare_eval_only(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
-        self.prepare_eval_impl(main_id, false)
-    }
+/// An RAII wrapper around [VirtualMachine] which ensures that the VM stack is unwinded, and all
+/// thunks are properly cleaned from their previous state when the wrapper is dropped.
+///
+/// [VirtualMachine] doesn't unwind the VM stack by default, because it's not required for one-shot
+/// evaluation, so we don't want to pay for it. However, for repeated evaluation like in the REPL,
+/// unwinding is required to avoid leaving thunks in a blackholed state if the VM aborted on an
+/// error. For those use-cases, either use one [UnwindingVirtualMachine] per individual evaluation,
+/// or use one persistent virtual machine while calling to [VirtualMachine::reset] after (or
+/// before) each evaluation.
+pub struct UnwindingVirtualMachine<'ctxt, R: ImportResolver, C: Cache>(
+    pub VirtualMachine<'ctxt, R, C>,
+);
 
-    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<RichTerm, Error> {
-        measure_runtime!(
-            "runtime:prepare_stdlib",
-            self.import_resolver.prepare_stdlib()?
-        );
-
-        measure_runtime!(
-            "runtime:prepare_main",
-            if typecheck {
-                self.import_resolver.prepare(main_id)
-            } else {
-                self.import_resolver.prepare_eval_only(main_id)
-            }
-        )?;
-
-        // Unwrap: closurization only fails if the input wasn't parsed, and we just
-        // parsed it.
-        self.import_resolver
-            .closurize(&mut self.cache, main_id)
-            .unwrap();
-        self.initial_env = self.import_resolver.mk_eval_env(&mut self.cache);
-        Ok(self.import_resolver().get(main_id).unwrap())
-    }
-
-    /// Prepare the stdlib for evaluation. Sets the initial environment of the virtual machine. As
-    /// opposed to [VirtualMachine::prepare_eval], [VirtualMachine::prepare_stdlib] doesn't prepare
-    /// the main program yet (typechecking, transformations, etc.).
-    ///
-    /// # Returns
-    ///
-    /// The initial evaluation and typing environments, containing the stdlib items.
-    pub fn prepare_stdlib(&mut self) -> Result<(), Error> {
-        self.import_resolver.prepare_stdlib()?;
-        self.initial_env = self.import_resolver.mk_eval_env(&mut self.cache);
-        Ok(())
-    }
-
-    /// Generate an initial evaluation environment from the stdlib from the underlying import
-    /// cache and eval cache.
-    pub fn mk_eval_env(&mut self) -> Environment {
-        self.import_resolver.mk_eval_env(&mut self.cache)
+impl<R: ImportResolver, C: Cache> Drop for UnwindingVirtualMachine<'_, R, C> {
+    fn drop(&mut self) {
+        self.0.reset();
     }
 }
 

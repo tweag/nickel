@@ -10,7 +10,10 @@ use crate::{
     bytecode::ast::AstAlloc,
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
-    eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine},
+    eval::{
+        self, cache::Cache as EvalCache, Closure, UnwindingVirtualMachine, VirtualMachine,
+        VmContext,
+    },
     files::FileId,
     identifier::LocIdent,
     parser::{grammar, lexer, ErrorTolerantParser},
@@ -25,6 +28,7 @@ use simple_counter::*;
 use std::{
     ffi::{OsStr, OsString},
     io::Write,
+    marker::PhantomData,
     result::Result,
     str::FromStr,
 };
@@ -86,10 +90,11 @@ pub trait Repl {
 
 /// Standard implementation of the REPL backend.
 pub struct ReplImpl<EC: EvalCache> {
+    /// The virtual machine context.
+    vm_ctxt: VmContext<CacheHub, EC>,
     /// The current eval environment, including the stdlib and top-level lets.
     eval_env: eval::Environment,
-    /// The state of the Nickel virtual machine, holding a cache of loaded files and parsed terms.
-    vm: VirtualMachine<CacheHub, EC>,
+    phantom: PhantomData<EC>,
 }
 
 impl<EC: EvalCache> ReplImpl<EC> {
@@ -97,62 +102,73 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             eval_env: eval::Environment::new(),
-            vm: VirtualMachine::new(CacheHub::new(), trace, NullReporter {}),
+            vm_ctxt: VmContext {
+                import_resolver: CacheHub::new(),
+                cache: EC::new(),
+                trace: Box::new(trace),
+                reporter: Box::new(NullReporter {}),
+            },
+            phantom: PhantomData,
         }
     }
 
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.vm.prepare_stdlib()?;
-        self.eval_env = self.vm.mk_eval_env();
+        self.vm_ctxt.import_resolver.prepare_stdlib()?;
+        self.eval_env = self
+            .vm_ctxt
+            .import_resolver
+            .mk_eval_env(&mut self.vm_ctxt.cache);
         Ok(())
     }
 
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
-        self.vm.reset();
-
-        let eval_function = if eval_full {
-            eval::VirtualMachine::eval_full_closure
-        } else {
-            eval::VirtualMachine::eval_closure
-        };
-
-        let file_id = self.vm.import_resolver_mut().sources.add_string(
+        let file_id = self.vm_ctxt.import_resolver.sources.add_string(
             SourcePath::ReplInput(InputNameCounter::next()),
             String::from(exp),
         );
 
-        let id = self.vm.import_resolver_mut().prepare_repl(file_id)?.inner();
+        let id = self.vm_ctxt.import_resolver.prepare_repl(file_id)?.inner();
         // unwrap(): we've just prepared the term successfully, so it must be in cache
-        let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
+        let term = self
+            .vm_ctxt
+            .import_resolver
+            .terms
+            .get_owned(file_id)
+            .unwrap();
 
         if let Some(id) = id {
             let current_env = self.eval_env.clone();
             eval::env_add(
-                &mut self.vm.cache,
+                &mut self.vm_ctxt.cache,
                 &mut self.eval_env,
                 id,
                 term,
                 current_env,
             );
+
             Ok(EvalResult::Bound(id))
         } else {
-            Ok(eval_function(
-                &mut self.vm,
-                Closure {
-                    body: term,
-                    env: self.eval_env.clone(),
-                },
-            )?
-            .body
-            .into())
+            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
+            let closure = Closure {
+                body: term,
+                env: self.eval_env.clone(),
+            };
+
+            let result = if eval_full {
+                vm.0.eval_full_closure(closure)
+            } else {
+                vm.0.eval_closure(closure)
+            };
+
+            Ok(result?.body.into())
         }
     }
 
     #[cfg(feature = "repl")]
     fn report(&mut self, err: impl IntoDiagnostics, color_opt: ColorOpt) {
-        let mut files = self.cache_mut().sources.files().clone();
+        let mut files = self.vm_ctxt.import_resolver.sources.files().clone();
         report::report(&mut files, err, ErrorFormat::Text, color_opt);
     }
 }
@@ -168,26 +184,34 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error> {
         let file_id = self
-            .vm
-            .import_resolver_mut()
+            .vm_ctxt
+            .import_resolver
             .sources
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
 
-        self.vm.import_resolver_mut().prepare_repl(file_id)?;
-        let term = self.vm.import_resolver().terms.get_owned(file_id).unwrap();
+        self.vm_ctxt.import_resolver.prepare_repl(file_id)?;
+        let term = self
+            .vm_ctxt
+            .import_resolver
+            .terms
+            .get_owned(file_id)
+            .unwrap();
         let pos = term.pos;
 
         let Closure {
             body: term,
             env: new_env,
-        } = self.vm.eval_closure(Closure {
-            body: term,
-            env: self.eval_env.clone(),
-        })?;
+        } = {
+            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
+            vm.0.eval_closure(Closure {
+                body: term,
+                env: self.eval_env.clone(),
+            })?
+        };
 
-        self.vm
-            .import_resolver_mut()
+        self.vm_ctxt
+            .import_resolver
             .add_repl_bindings(&term)
             .map_err(|NotARecord| {
                 Error::EvalError(EvalError::Other(
@@ -197,7 +221,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             })?;
 
         eval::env_add_record(
-            &mut self.vm.cache,
+            &mut self.vm_ctxt.cache,
             &mut self.eval_env,
             Closure {
                 body: term.clone(),
@@ -211,7 +235,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     }
 
     fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
-        let cache = self.vm.import_resolver_mut();
+        let cache = &mut self.vm_ctxt.import_resolver;
 
         let file_id = cache.replace_string(SourcePath::ReplTypecheck, String::from(exp));
         let _ = cache.parse_to_ast(file_id)?;
@@ -235,9 +259,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     }
 
     fn query(&mut self, path: String) -> Result<Field, Error> {
-        self.vm.reset();
-
-        let mut query_path = FieldPath::parse(self.vm.import_resolver_mut(), path)?;
+        let mut query_path = FieldPath::parse(&mut self.vm_ctxt.import_resolver, path)?;
 
         // remove(): this is safe because there is no such thing as an empty field path, at least
         // when it comes out of the parser. If `path` is empty, the parser will error out. Hence,
@@ -245,23 +267,34 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let target = query_path.0.remove(0);
 
         let file_id = self
-            .vm
-            .import_resolver_mut()
+            .vm_ctxt
+            .import_resolver
             .replace_string(SourcePath::ReplQuery, target.label().into());
+        self.vm_ctxt.import_resolver.prepare_repl(file_id)?;
 
-        self.vm.import_resolver_mut().prepare_repl(file_id)?;
+        let result = {
+            let body = self
+                .vm_ctxt
+                .import_resolver
+                .terms
+                .get_owned(file_id)
+                .unwrap();
+            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
 
-        Ok(self.vm.query_closure(
-            Closure {
-                body: self.vm.import_resolver().terms.get_owned(file_id).unwrap(),
-                env: self.eval_env.clone(),
-            },
-            &query_path,
-        )?)
+            vm.0.query_closure(
+                Closure {
+                    body,
+                    env: self.eval_env.clone(),
+                },
+                &query_path,
+            )?
+        };
+
+        Ok(result)
     }
 
     fn cache_mut(&mut self) -> &mut CacheHub {
-        self.vm.import_resolver_mut()
+        &mut self.vm_ctxt.import_resolver
     }
 }
 
