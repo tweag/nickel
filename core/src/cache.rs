@@ -983,7 +983,7 @@ impl CacheHub {
     }
 
     /// Common implementation for [Self::prepare] and [Self::prepare_eval_only], which optionally
-    /// skips typechecking.
+    /// skips typechecking. Note that this method doesn't load and prepare the stdlib.
     fn prepare_impl(&mut self, file_id: FileId, typecheck: bool) -> Result<CacheOp<()>, Error> {
         let mut result = CacheOp::Cached(());
 
