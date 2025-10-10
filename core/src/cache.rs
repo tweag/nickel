@@ -102,6 +102,12 @@ impl InputFormat {
     }
 }
 
+impl fmt::Display for InputFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
 impl std::str::FromStr for InputFormat {
     type Err = ();
 
@@ -283,6 +289,12 @@ impl TermCache {
     }
 }
 
+/// This is a temporary fix for [#2362](https://github.com/tweag/nickel/issues/2362). File paths
+/// prefixed with this are treated specially: they can refer to in-memory source. To build an
+/// import expression that refers to an in-memory source, append the source name to this prefix and
+/// use it as the path: `format!({IN_MEMORY_SOURCE_PATH_PREFIX}{src_name})`.
+pub const IN_MEMORY_SOURCE_PATH_PREFIX: &str = "%inmem_src%:";
+
 /// The source cache handles reading textual data from the file system or other souces and storing
 /// it in a [Files] instance.
 ///
@@ -378,6 +390,22 @@ impl SourceCache {
     /// Try to retrieve the id of a file from the cache.
     ///
     /// If it was not in cache, try to read it and add it as a new entry.
+    ///
+    /// # In memory sources
+    ///
+    /// As a temporary fix for [#2362](https://github.com/tweag/nickel/issues/2362), if a file path
+    /// starts with [IN_MEMORY_SOURCE_PATH_PREFIX], the suffix is looked up un-normalized value
+    /// first, which makes it possible to hit in-memory only sources by importing a path
+    /// `"{SOURCE_PATH_PREFX}{src_name}"`. If it can't be found, it is looked up normally, so that
+    /// it doesn't break strange file names that happen to contain the source path prefix.
+    ///
+    /// It is theoretically possible that if both the source "abc" and the file
+    /// "{IN_MEMORY_SOURCE_PATH_PREFIX}abc" exist, the source is imported instead of the intended
+    /// file. However, given the prefix, it just can't be accidental. As we want to give access to
+    /// in-memory sources in any case, although this can be surprising, I don't see any obvious
+    /// attack scenario here. This fix is also intended to be temporary. If you still need to make
+    /// sure this doesn't happen, one way would be to add some randomness to the name of the
+    /// sources, so that they can't be predicted beforehand.
     pub fn get_or_add_file(
         &mut self,
         path: impl Into<OsString>,
@@ -385,6 +413,20 @@ impl SourceCache {
     ) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(&path)?;
+
+        // Try to fetch a generated source if the path starts with a hardcoded prefix
+        let generated_entry = path
+            .to_str()
+            .and_then(|p| p.strip_prefix(IN_MEMORY_SOURCE_PATH_PREFIX))
+            .and_then(|src_name| {
+                self.file_ids
+                    .get(&SourcePath::Path(src_name.into(), format))
+            });
+
+        if let Some(entry) = generated_entry {
+            return Ok(CacheOp::Cached(entry.id));
+        }
+
         match self.id_or_new_timestamp_of(normalized.as_ref(), format)? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
             SourceState::Stale(timestamp) => self

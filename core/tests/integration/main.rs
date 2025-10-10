@@ -19,6 +19,7 @@ use test_generator::test_resources;
 mod contract_label_path;
 mod free_vars;
 mod pretty;
+mod program_api;
 mod query;
 mod stdlib_typecheck;
 
