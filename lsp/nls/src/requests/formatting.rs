@@ -13,11 +13,16 @@ pub fn handle_format_document(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let path = uri_to_path(&params.text_document.uri)?;
-    let file_id = server
+    let Some(file_id) = server
         .world
         .sources
         .id_of(&SourcePath::Path(path, InputFormat::Nickel))
-        .unwrap();
+    else {
+        // If we don't find the file, it's most likely because we were asked
+        // to format something that isn't InputFormat::Nickel. We politely decline.
+        server.reply(Response::new_ok(id, None::<Vec<TextEdit>>));
+        return Ok(());
+    };
     let text = server.world.sources.files().source(file_id);
     let document_length = text.lines().count() as u32;
 

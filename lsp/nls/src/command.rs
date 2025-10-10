@@ -3,8 +3,6 @@ use lsp_types::{ExecuteCommandParams, TextDocumentIdentifier, Url};
 
 use crate::{error::Error, server::Server};
 
-const RECURSION_LIMIT: usize = 128;
-
 pub fn handle_command(
     params: ExecuteCommandParams,
     req: RequestId,
@@ -24,7 +22,10 @@ pub fn handle_command(
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
     if let Some(file_id) = server.world.file_id(uri)? {
-        let diags = server.world.eval_diagnostics(file_id, RECURSION_LIMIT);
+        let diags = server.world.eval_diagnostics(
+            file_id,
+            server.world.config.eval_config.eval_limits.recursion_limit,
+        );
         server.issue_diagnostics(file_id, diags);
     }
     Ok(())

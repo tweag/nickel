@@ -367,14 +367,14 @@ pub(crate) struct AltFormatErrors {
     reason = "the large variant is the common case"
 )]
 pub(crate) enum AnalysisTarget<'std> {
-    Nickel(PackedAnalysis<'std>),
+    Analysis(PackedAnalysis<'std>),
     Other(AltFormatErrors),
 }
 
 impl AnalysisTarget<'_> {
     pub(crate) fn file_id(&self) -> FileId {
         match self {
-            AnalysisTarget::Nickel(it) => it.file_id(),
+            AnalysisTarget::Analysis(it) => it.file_id(),
             AnalysisTarget::Other(it) => it.file_id,
         }
     }
@@ -529,6 +529,41 @@ impl<'std> PackedAnalysis<'std> {
                 );
                 parse_errors = errors;
                 alloc.alloc(ast)
+            },
+            AnalysisState::Parsed,
+            ParseErrors::default(),
+            Vec::new(),
+            |_, _| None,
+            |_, _, _| Analysis::default(),
+        );
+        ret.with_parse_errors_mut(|errors| {
+            *errors = parse_errors;
+        });
+        ret
+    }
+
+    /// Creates a PackedAnalysis containing the parsed AST of a YAML file.
+    ///
+    /// The errors encountered during parsing can be accessed by
+    /// [`Self::parse_errors`], but the analysis will not yet be populated.
+    pub(crate) fn parsed_yaml(file_id: FileId, sources: &SourceCache) -> Self {
+        let alloc = AstAlloc::new();
+
+        let mut parse_errors = ParseErrors::default();
+        let mut ret = PackedAnalysis::new(
+            alloc,
+            Environment::new(),
+            TypeContext::new(),
+            file_id,
+            |alloc| {
+                let source = sources.source(file_id);
+                match nickel_lang_core::serialize::yaml::load_yaml(alloc, source, Some(file_id)) {
+                    Ok(ast) => alloc.alloc(ast),
+                    Err(e) => {
+                        parse_errors.errors.push(e);
+                        alloc.alloc(Node::Null.into())
+                    }
+                }
             },
             AnalysisState::Parsed,
             ParseErrors::default(),
@@ -894,7 +929,7 @@ impl AnalysisRegistry {
                     let (new_analyses, ret) = result?;
                     for it in new_analyses {
                         match it {
-                            AnalysisTarget::Nickel(a) => {
+                            AnalysisTarget::Analysis(a) => {
                                 slf.analyses.insert(a.file_id(), a);
                             }
                             AnalysisTarget::Other(a) => {
