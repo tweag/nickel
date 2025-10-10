@@ -1617,6 +1617,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             };
         }
 
+        // Interpret `t` as the id of a record field, either a string or an ident (wrapped in a Term::Enum).
+        let record_field_id = |op_name: &str,
+                               arg_num: usize,
+                               t: SharedTerm,
+                               pos: TermPos|
+         -> Result<LocIdent, EvalError> {
+            match t.as_ref() {
+                Term::Str(id) => Ok(LocIdent::from(id)),
+                Term::Enum(id) => Ok(*id),
+                _ => {
+                    mk_type_error!(op_name = op_name, "String or Enum", arg_num, t, pos)
+                }
+            }
+        };
+
         match b_op {
             BinaryOp::Seal => {
                 if let Term::SealingKey(s) = &*t1 {
@@ -2265,64 +2280,57 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 _ => mk_type_error!("String", 1, t1, pos1),
             }),
             BinaryOp::RecordGet => {
-                match_sharedterm!(match (t1) {
-                    Term::Str(id) => {
-                        if let Term::Record(record) = &*t2 {
-                            // We have to apply potential pending contracts. Right now, this
-                            // means that repeated field access will re-apply the contract again
-                            // and again, which is not optimal. The same thing happens with array
-                            // contracts. There are several way to improve this, but this is left
-                            // as future work.
-                            let ident = LocIdent::from(&id);
-                            match record.get_value_with_ctrs(&ident).map_err(
-                                |missing_field_err| missing_field_err.into_eval_err(pos2, pos_op),
-                            )? {
-                                Some(value) => {
-                                    self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
-                                    Ok(Closure {
-                                        body: value,
-                                        env: env2,
-                                    })
-                                }
-                                None => match record.sealed_tail.as_ref() {
-                                    Some(t) if t.has_dyn_field(&id) => {
-                                        Err(EvalError::IllegalPolymorphicTailAccess {
-                                            action: IllegalPolymorphicTailAction::FieldAccess {
-                                                field: id.to_string(),
-                                            },
-                                            evaluated_arg: t.label.get_evaluated_arg(&self.cache),
-                                            label: t.label.clone(),
-                                            call_stack: std::mem::take(&mut self.call_stack),
-                                        })
-                                    }
-                                    _ => Err(EvalError::FieldMissing {
-                                        id: ident,
-                                        field_names: record
-                                            .field_names(RecordOpKind::IgnoreEmptyOpt),
-                                        operator: String::from("(.$)"),
-                                        pos_record: pos2,
-                                        pos_op,
-                                    }),
-                                },
-                            }
-                        } else {
-                            // Not using mk_type_error! because of a non-uniform message
-                            Err(EvalError::TypeError {
-                                expected: String::from("Record"),
-                                message: String::from("field access only makes sense for records"),
-                                orig_pos: snd_pos,
-                                term: RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
+                let id = record_field_id("record/insert", 1, t1, pos1)?;
+                if let Term::Record(record) = &*t2 {
+                    // We have to apply potential pending contracts. Right now, this
+                    // means that repeated field access will re-apply the contract again
+                    // and again, which is not optimal. The same thing happens with array
+                    // contracts. There are several way to improve this, but this is left
+                    // as future work.
+                    match record
+                        .get_value_with_ctrs(&id)
+                        .map_err(|missing_field_err| {
+                            missing_field_err.into_eval_err(pos2, pos_op)
+                        })? {
+                        Some(value) => {
+                            self.call_stack.enter_field(id, pos2, value.pos, pos_op);
+                            Ok(Closure {
+                                body: value,
+                                env: env2,
                             })
                         }
+                        None => match record.sealed_tail.as_ref() {
+                            Some(t) if t.has_field(&id.ident()) => {
+                                Err(EvalError::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::FieldAccess {
+                                        field: id.to_string(),
+                                    },
+                                    evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                    label: t.label.clone(),
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                })
+                            }
+                            _ => Err(EvalError::FieldMissing {
+                                id,
+                                field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
+                                operator: String::from("(.$)"),
+                                pos_record: pos2,
+                                pos_op,
+                            }),
+                        },
                     }
-                    // This error should be impossible to trigger. The parser
-                    // prevents a dynamic field access where the field name is not syntactically
-                    // a string.
-                    _ => mk_type_error!("String", 1, t1, pos1),
-                })
+                } else {
+                    // Not using mk_type_error! because of a non-uniform message
+                    Err(EvalError::TypeError {
+                        expected: String::from("Record"),
+                        message: String::from("field access only makes sense for records"),
+                        orig_pos: snd_pos,
+                        term: RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    })
+                }
             }
             BinaryOp::RecordInsert {
                 metadata,
@@ -2330,66 +2338,64 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 ext_kind,
                 op_kind,
             } => {
-                if let Term::Str(id) = &*t1 {
-                    match_sharedterm!(match (t2) {
-                        Term::Record(record) => {
-                            let mut fields = record.fields;
-
-                            // If a defined value is expected for this field, it must be
-                            // provided as an additional argument, so we pop it from the stack
-                            let value = if let RecordExtKind::WithValue = ext_kind {
-                                let (value_closure, _) =
-                                    self.stack.pop_arg(&self.cache).ok_or_else(|| {
-                                        EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
-                                    })?;
-
-                                let closurized = value_closure
-                                    .body
-                                    .closurize(&mut self.cache, value_closure.env);
-                                Some(closurized)
-                            } else {
-                                None
-                            };
-
-                            match fields.insert(
-                                LocIdent::from(id),
-                                Field {
-                                    value,
-                                    metadata: *metadata,
-                                    pending_contracts,
-                                },
-                            ) {
-                                Some(t)
-                                    if matches!(op_kind, RecordOpKind::ConsiderAllFields)
-                                        || !t.is_empty_optional() =>
-                                {
-                                    Err(EvalError::Other(
-                                        format!(
-                                            "record/insert: \
-                                            tried to extend a record with the field {id}, \
-                                            but it already exists"
-                                        ),
-                                        pos_op,
-                                    ))
-                                }
-                                _ => Ok(Closure {
-                                    // Insertion preserves the frozenness
-                                    body: Term::Record(RecordData { fields, ..record }).into(),
-                                    env: env2,
-                                }),
-                            }
-                        }
-                        _ => mk_type_error!(op_name = "record/insert", "Record", 2, t2, pos2),
-                    })
-                } else {
-                    mk_type_error!(op_name = "record/insert", "String", 1, t1, pos1)
-                }
-            }
-            BinaryOp::RecordRemove(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => match_sharedterm!(match (t2) {
+                let id = record_field_id("record/insert", 1, t1, pos1)?;
+                match_sharedterm!(match (t2) {
                     Term::Record(record) => {
                         let mut fields = record.fields;
-                        let fetched = fields.swap_remove(&LocIdent::from(&id));
+
+                        // If a defined value is expected for this field, it must be
+                        // provided as an additional argument, so we pop it from the stack
+                        let value = if let RecordExtKind::WithValue = ext_kind {
+                            let (value_closure, _) =
+                                self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                                    EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
+                                })?;
+
+                            let closurized = value_closure
+                                .body
+                                .closurize(&mut self.cache, value_closure.env);
+                            Some(closurized)
+                        } else {
+                            None
+                        };
+
+                        match fields.insert(
+                            id,
+                            Field {
+                                value,
+                                metadata: *metadata,
+                                pending_contracts,
+                            },
+                        ) {
+                            Some(t)
+                                if matches!(op_kind, RecordOpKind::ConsiderAllFields)
+                                    || !t.is_empty_optional() =>
+                            {
+                                Err(EvalError::Other(
+                                    format!(
+                                        "record/insert: \
+                                            tried to extend a record with the field {id}, \
+                                            but it already exists"
+                                    ),
+                                    pos_op,
+                                ))
+                            }
+                            _ => Ok(Closure {
+                                // Insertion preserves the frozenness
+                                body: Term::Record(RecordData { fields, ..record }).into(),
+                                env: env2,
+                            }),
+                        }
+                    }
+                    _ => mk_type_error!(op_name = "record/insert", "Record", 2, t2, pos2),
+                })
+            }
+            BinaryOp::RecordRemove(op_kind) => {
+                let id = record_field_id("record/insert", 1, t1, pos1)?;
+                match_sharedterm!(match (t2) {
+                    Term::Record(record) => {
+                        let mut fields = record.fields;
+                        let fetched = fields.swap_remove(&id);
                         if fetched.is_none()
                             || matches!(
                                 (op_kind, fetched),
@@ -2404,7 +2410,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                         {
                             match record.sealed_tail.as_ref() {
-                                Some(t) if t.has_dyn_field(&id) => {
+                                Some(t) if t.has_field(&id.ident()) => {
                                     Err(EvalError::IllegalPolymorphicTailAccess {
                                         action: IllegalPolymorphicTailAction::FieldRemove {
                                             field: id.to_string(),
@@ -2420,7 +2426,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     let record = RecordData { fields, ..record };
 
                                     Err(EvalError::FieldMissing {
-                                        id: id.into(),
+                                        id,
                                         field_names: record.field_names(op_kind),
                                         operator: String::from("record/remove"),
                                         pos_record: pos2,
@@ -2440,41 +2446,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                     _ => mk_type_error!("Record", 2, t2, pos2),
-                }),
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
-            BinaryOp::RecordHasField(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => {
-                    if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Bool(matches!(
-                                record.fields.get(&LocIdent::from(id.into_inner())),
-                                Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
-                            )),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Record", 2, t2, pos2)
-                    }
+                })
+            }
+            BinaryOp::RecordHasField(op_kind) => {
+                let id = record_field_id("record/insert", 1, t1, pos1)?;
+                if let Term::Record(record) = &*t2 {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(matches!(
+                            record.fields.get(&id),
+                            Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                        )),
+                        pos_op_inh,
+                    )))
+                } else {
+                    mk_type_error!("Record", 2, t2, pos2)
                 }
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
-            BinaryOp::RecordFieldIsDefined(op_kind) => match_sharedterm!(match (t1) {
-                Term::Str(id) => {
-                    if let Term::Record(record) = &*t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Bool(matches!(
-                                record.fields.get(&LocIdent::from(id.into_inner())),
-                                Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
-                            )),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        mk_type_error!("Record", 2, t2, pos2)
-                    }
+            }
+            BinaryOp::RecordFieldIsDefined(op_kind) => {
+                let id = record_field_id("record/insert", 1, t1, pos1)?;
+                if let Term::Record(record) = &*t2 {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(matches!(
+                            record.fields.get(&id),
+                            Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                        )),
+                        pos_op_inh,
+                    )))
+                } else {
+                    mk_type_error!("Record", 2, t2, pos2)
                 }
-                _ => mk_type_error!("String", 1, t1, pos1),
-            }),
+            }
             BinaryOp::ArrayConcat => match_sharedterm!(match (t1) {
                 Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
                     Term::Array(ts2, attrs2) => {
