@@ -1,0 +1,14 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+  ┌─ [INPUTS_PATH]/errors/json_error_location.ncl:3:59
+  │
+3 │ (import "../../imports/map.json") | { foo : Number, bar : String }
+  │                                                           ------ expected field type
+  │
+  ┌─ [IMPORTS_PATH]/map.json:1:20
+  │
+1 │ { "foo": 1, "bar": 2 }
+  │                    - evaluated to this expression
