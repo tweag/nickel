@@ -27,6 +27,7 @@ use crate::{
         AltFormatErrors, AnalysisRegistry, AnalysisRegistryRef, AnalysisState, AnalysisTarget,
         PackedAnalysis,
     },
+    config::LspConfig,
     diagnostic::SerializableDiagnostic,
     error::WarningReporter,
     field_walker::FieldResolver,
@@ -67,10 +68,15 @@ pub struct World {
     /// avoiding work duplication as much as possible. In particular, the instances will use this
     /// parsed and converted representation of the stdlib and will share the same source cache.
     compiled_stdlib: nickel_lang_core::term::RichTerm,
+    pub local_configs: crate::config::LocalConfigsWatcher,
 }
 
 impl World {
     pub fn new() -> Self {
+        Self::with_config(Default::default())
+    }
+
+    pub fn with_config(config: LspConfig) -> Self {
         use nickel_lang_core::bytecode::ast::compat::ToMainline;
 
         let mut sources = SourceCache::new();
@@ -90,6 +96,7 @@ impl World {
             file_uris: HashMap::new(),
             failed_imports: HashMap::new(),
             compiled_stdlib,
+            local_configs: crate::config::LocalConfigsWatcher::new(config),
         }
     }
 
@@ -104,6 +111,7 @@ impl World {
         contents: String,
     ) -> anyhow::Result<(FileId, HashSet<FileId>)> {
         let path = uri_to_path(&uri)?;
+        self.local_configs.watch_configs_for(&uri);
 
         // Invalidate the cache of every file that tried, but failed, to import a file
         // with a name like this.
