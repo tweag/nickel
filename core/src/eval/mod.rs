@@ -137,9 +137,26 @@ pub struct VmContext<R: ImportResolver, C: Cache> {
     pub cache: C,
 }
 
+impl<R: ImportResolver, C: Cache> VmContext<R, C> {
+    /// Creates a new VM context from a resolver, a trace sink and a reporter. Creates a new empty
+    /// eval cache.
+    pub fn new(
+        import_resolver: R,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> Self {
+        VmContext {
+            import_resolver,
+            trace: Box::new(trace),
+            reporter: Box::new(reporter),
+            cache: C::new(),
+        }
+    }
+}
+
 impl<C: Cache> VmContext<ImportCaches, C> {
-    /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
-    /// etc.). Sets the initial environment of the virtual machine.
+    /// Prepares the underlying program for evaluation (load the stdlib, typecheck, transform,
+    /// etc.).
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
         self.prepare_eval_impl(main_id, true)
     }

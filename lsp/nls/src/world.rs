@@ -16,10 +16,7 @@ use nickel_lang_core::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
     error::{ImportError, IntoDiagnostics, ParseErrors},
-    eval::{
-        cache::{Cache as _, CacheImpl},
-        VirtualMachine, VmContext,
-    },
+    eval::{cache::CacheImpl, VirtualMachine, VmContext},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
     traverse::TraverseAlloc,
@@ -513,12 +510,11 @@ impl World {
 
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            let mut vm_ctxt = VmContext {
-                import_resolver: self.cache_hub_for_eval(file_id),
-                trace: Box::new(std::io::stderr()),
-                reporter: Box::new(reporter),
-                cache: CacheImpl::new(),
-            };
+            let mut vm_ctxt: VmContext<_, CacheImpl> = VmContext::new(
+                self.cache_hub_for_eval(file_id),
+                std::io::stderr(),
+                reporter,
+            );
 
             // unwrap: we don't expect an error here, since we already typechecked above.
             let rt = vm_ctxt.prepare_eval_only(file_id).unwrap();

@@ -18,12 +18,7 @@ use assert_matches::assert_matches;
 
 /// Generates a minimal VM context for test purpose.
 fn vm_ctxt() -> VmContext<DummyResolver, CacheImpl> {
-    VmContext {
-        import_resolver: DummyResolver {},
-        trace: Box::new(std::io::sink()),
-        reporter: Box::new(NullReporter {}),
-        cache: CacheImpl::new(),
-    }
+    VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {})
 }
 
 /// Creates an non-unwinding machine with an empty initial environment from a VM contex.
@@ -201,12 +196,8 @@ fn imports() {
     // let x = import "two" in x
     let mk_import_two = mk_import(&mut import_resolver, "x", "two", mk_term::var("x")).unwrap();
 
-    let mut vm_ctxt = VmContext {
-        import_resolver,
-        trace: Box::new(std::io::sink()),
-        reporter: Box::new(NullReporter {}),
-        cache: CacheImpl::new(),
-    };
+    let mut vm_ctxt: VmContext<_, CacheImpl> =
+        VmContext::new(import_resolver, std::io::sink(), NullReporter {});
 
     assert_eq!(
         new_no_unwind_vm(&mut vm_ctxt)
@@ -310,12 +301,8 @@ fn initial_env() {
 
     let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("x"));
 
-    let mut vm_ctxt = VmContext {
-        import_resolver: DummyResolver {},
-        trace: Box::new(std::io::sink()),
-        reporter: Box::new(NullReporter {}),
-        cache: eval_cache,
-    };
+    let mut vm_ctxt: VmContext<_, CacheImpl> =
+        VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {});
 
     let mut vm = NoUnwindVirtualMachine::new(
         VirtualMachine::new_empty_env(&mut vm_ctxt).with_initial_env(initial_env.clone()),

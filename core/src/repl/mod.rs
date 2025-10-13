@@ -99,12 +99,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             eval_env: eval::Environment::new(),
-            vm_ctxt: VmContext {
-                import_resolver: CacheHub::new(),
-                cache: EC::new(),
-                trace: Box::new(trace),
-                reporter: Box::new(NullReporter {}),
-            },
+            vm_ctxt: VmContext::new(CacheHub::new(), trace, NullReporter {}),
             phantom: PhantomData,
         }
     }

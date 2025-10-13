@@ -299,12 +299,7 @@ impl<EC: EvalCache> Program<EC> {
 
         Ok(Self {
             main_id,
-            vm_ctxt: VmContext {
-                import_resolver: CacheHub::new(),
-                trace: Box::new(trace),
-                reporter: Box::new(reporter),
-                cache: EC::new(),
-            },
+            vm_ctxt: VmContext::new(cache, trace, reporter),
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),
@@ -362,12 +357,7 @@ impl<EC: EvalCache> Program<EC> {
 
         Ok(Self {
             main_id,
-            vm_ctxt: VmContext {
-                import_resolver: cache,
-                cache: EC::new(),
-                trace: Box::new(trace),
-                reporter: Box::new(reporter),
-            },
+            vm_ctxt: VmContext::new(cache, trace, reporter),
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),

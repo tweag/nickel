@@ -4082,13 +4082,7 @@ mod tests {
 
     // Initialize a VM with a default context
     fn with_vm(test: impl FnOnce(VirtualMachine<'_, DummyResolver, CacheImpl>)) {
-        let mut vm_ctxt = VmContext {
-            import_resolver: DummyResolver {},
-            trace: Box::new(std::io::sink()),
-            reporter: Box::new(NullReporter {}),
-            cache: CacheImpl::new(),
-        };
-
+        let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {});
         let vm = VirtualMachine::new_empty_env(&mut vm_ctxt);
         test(vm);
     }
