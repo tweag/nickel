@@ -25,9 +25,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
-    eval::{
-        cache::Cache as EvalCache, Closure, UnwindingVirtualMachine, VirtualMachine, VmContext,
-    },
+    eval::{cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
@@ -730,22 +728,22 @@ impl<EC: EvalCache> Program<EC> {
         let result = if for_query {
             prepared
         } else {
-            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
-            vm.0.extract_field_value_closure(prepared, &self.field)?
+            VirtualMachine::new(&mut self.vm_ctxt)
+                .extract_field_value_closure(prepared, &self.field)?
         };
 
         Ok(result)
     }
 
-    /// Create an new unwinding VM instance from [Self::vm_ctxt].
-    fn unwinding_vm(&mut self) -> UnwindingVirtualMachine<'_, CacheHub, EC> {
-        UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt))
+    /// Creates an new VM instance borrowing from [Self::vm_ctxt].
+    fn new_vm(&mut self) -> VirtualMachine<'_, CacheHub, EC> {
+        VirtualMachine::new(&mut self.vm_ctxt)
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
-        Ok(self.unwinding_vm().0.eval_closure(prepared)?.body)
+        Ok(self.new_vm().eval_closure(prepared)?.body)
     }
 
     /// Evaluate a closure using the same virtual machine (and import resolver)
@@ -753,14 +751,14 @@ impl<EC: EvalCache> Program<EC> {
     /// evaluation, with imports resolved and any necessary transformations
     /// applied.
     pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
-        Ok(self.unwinding_vm().0.eval_closure(closure)?.body)
+        Ok(self.new_vm().eval_closure(closure)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        Ok(self.unwinding_vm().0.eval_full_closure(prepared)?.body)
+        Ok(self.new_vm().eval_full_closure(prepared)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -779,24 +777,21 @@ impl<EC: EvalCache> Program<EC> {
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        Ok(self
-            .unwinding_vm()
-            .0
-            .eval_full_for_export_closure(prepared)?)
+        Ok(self.new_vm().eval_full_for_export_closure(prepared)?)
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        Ok(self.unwinding_vm().0.eval_deep_closure(prepared)?)
+        Ok(self.new_vm().eval_deep_closure(prepared)?)
     }
 
     /// Same as `eval_closure`, but does a full evaluation and does not substitute all variables.
     ///
     /// (Or, same as `eval_deep` but takes a closure.)
     pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
-        self.unwinding_vm().0.eval_deep_closure(closure)
+        self.new_vm().eval_deep_closure(closure)
     }
 
     /// Prepare for evaluation, then fetch the metadata of `self.field`, or list the fields of the
@@ -804,10 +799,9 @@ impl<EC: EvalCache> Program<EC> {
     pub fn query(&mut self) -> Result<Field, Error> {
         let prepared = self.prepare_query()?;
 
-        // We have to inline `unwinding_vm` to get the borrow checker to understand that we can
-        // both borrow `vm_ctxt` mutably and `field` immutably at the same time
-        let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
-        Ok(vm.0.query_closure(prepared, &self.field)?)
+        // We have to inline `new_vm()` to get the borrow checker to understand that we can both
+        // borrow `vm_ctxt` mutably and `field` immutably at the same time.
+        Ok(VirtualMachine::new(&mut self.vm_ctxt).query_closure(prepared, &self.field)?)
     }
 
     /// Load, parse, and typecheck the program (together with additional contracts) and the
@@ -1049,9 +1043,7 @@ impl<EC: EvalCache> Program<EC> {
             env: Environment,
             closurize: bool,
         ) -> Result<RichTerm, Error> {
-            let evaled = UnwindingVirtualMachine(VirtualMachine::new(vm_ctxt))
-                .0
-                .eval_closure(Closure { body: term, env })?;
+            let evaled = VirtualMachine::new(vm_ctxt).eval_closure(Closure { body: term, env })?;
 
             match_sharedterm!(match (evaled.body.term) {
                 Term::Record(data) => {

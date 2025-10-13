@@ -96,7 +96,11 @@ use crate::{
     transform::gen_pending_contracts,
 };
 
-use std::io::Write;
+use std::{
+    io::Write,
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+};
 
 pub mod cache;
 pub mod callstack;
@@ -171,6 +175,13 @@ impl<C: Cache> VmContext<ImportCaches, C> {
 }
 
 /// The Nickel virtual machine.
+///
+/// # Drop
+///
+/// The virtual machine implements [Drop]. The stack is unwinded by default upon dropping, which
+/// amounts to calling [VirtualMachine::reset()], and avoids leaving thunks in the blackholed state
+/// on abort. If you don't need unwinding and don't want to pay for it (though it doesn't cost
+/// anything for successful executions), see  [NoUnwindVirtualMachine].
 pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     context: &'ctxt mut VmContext<R, C>,
     /// The main stack, storing arguments, cache indices and pending computations.
@@ -179,6 +190,12 @@ pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     call_stack: CallStack,
     /// The initial environment containing stdlib and builtin functions accessible from anywhere
     initial_env: Environment,
+}
+
+impl<'ctxt, R: ImportResolver, C: Cache> Drop for VirtualMachine<'ctxt, R, C> {
+    fn drop(&mut self) {
+        self.reset();
+    }
 }
 
 impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
@@ -1133,22 +1150,37 @@ impl<'ctxt, C: Cache> VirtualMachine<'ctxt, ImportCaches, C> {
     }
 }
 
-/// An RAII wrapper around [VirtualMachine] which ensures that the VM stack is unwinded, and all
-/// thunks are properly cleaned from their previous state when the wrapper is dropped.
+/// An wrapper around [VirtualMachine] which doesn't unwind the VM stack upon destruction.
 ///
-/// [VirtualMachine] doesn't unwind the VM stack by default, because it's not required for one-shot
-/// evaluation, so we don't want to pay for it. However, for repeated evaluation like in the REPL,
-/// unwinding is required to avoid leaving thunks in a blackholed state if the VM aborted on an
-/// error. For those use-cases, either use one [UnwindingVirtualMachine] per individual evaluation,
-/// or use one persistent virtual machine while calling to [VirtualMachine::reset] after (or
-/// before) each evaluation.
-pub struct UnwindingVirtualMachine<'ctxt, R: ImportResolver, C: Cache>(
-    pub VirtualMachine<'ctxt, R, C>,
+/// Unwinding ensures all thunks are properly cleaned from their previous state if the VM abort,
+/// which makes it possible to run subsequent evaluations (whether in the same or another VM
+/// instance). Since VM are light instances that are built on the spot, the default behavior is to
+/// unwind upon dropping, to avoid bad surprises (and unwinding is virtually free if the evaluation
+/// succeeds, since the stack is then empty).
+///
+/// However, it could happen that in some workflows, one wishes to avoid the cost of unwinding. In
+/// that case, use this wrapper instead of [VirtualMachine].
+pub struct NoUnwindVirtualMachine<'ctxt, R: ImportResolver, C: Cache>(
+    ManuallyDrop<VirtualMachine<'ctxt, R, C>>,
 );
 
-impl<R: ImportResolver, C: Cache> Drop for UnwindingVirtualMachine<'_, R, C> {
-    fn drop(&mut self) {
-        self.0.reset();
+impl<'ctxt, R: ImportResolver, C: Cache> NoUnwindVirtualMachine<'ctxt, R, C> {
+    pub fn new(vm: VirtualMachine<'ctxt, R, C>) -> Self {
+        Self(ManuallyDrop::new(vm))
+    }
+}
+
+impl<'ctxt, R: ImportResolver, C: Cache> Deref for NoUnwindVirtualMachine<'ctxt, R, C> {
+    type Target = VirtualMachine<'ctxt, R, C>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl<'ctxt, R: ImportResolver, C: Cache> DerefMut for NoUnwindVirtualMachine<'ctxt, R, C> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.deref_mut()
     }
 }
 

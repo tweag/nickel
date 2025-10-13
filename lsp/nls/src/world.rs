@@ -18,7 +18,7 @@ use nickel_lang_core::{
     error::{ImportError, IntoDiagnostics, ParseErrors},
     eval::{
         cache::{Cache as _, CacheImpl},
-        UnwindingVirtualMachine, VirtualMachine, VmContext,
+        VirtualMachine, VmContext,
     },
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
@@ -523,10 +523,7 @@ impl World {
             // unwrap: we don't expect an error here, since we already typechecked above.
             let rt = vm_ctxt.prepare_eval_only(file_id).unwrap();
 
-            let errors = {
-                let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut vm_ctxt));
-                vm.0.eval_permissive(rt, recursion_limit)
-            };
+            let errors = VirtualMachine::new(&mut vm_ctxt).eval_permissive(rt, recursion_limit);
             // Get a possibly-updated files from the vm instead of relying on the one
             // in `world`.
             let mut files = vm_ctxt.import_resolver.sources.files().clone();

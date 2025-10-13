@@ -10,10 +10,7 @@ use crate::{
     bytecode::ast::AstAlloc,
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
-    eval::{
-        self, cache::Cache as EvalCache, Closure, UnwindingVirtualMachine, VirtualMachine,
-        VmContext,
-    },
+    eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
     files::FileId,
     identifier::LocIdent,
     parser::{grammar, lexer, ErrorTolerantParser},
@@ -150,16 +147,17 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
             Ok(EvalResult::Bound(id))
         } else {
-            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
             let closure = Closure {
                 body: term,
                 env: self.eval_env.clone(),
             };
 
+            let mut vm = VirtualMachine::new(&mut self.vm_ctxt);
+
             let result = if eval_full {
-                vm.0.eval_full_closure(closure)
+                vm.eval_full_closure(closure)
             } else {
-                vm.0.eval_closure(closure)
+                vm.eval_closure(closure)
             };
 
             Ok(result?.body.into())
@@ -203,8 +201,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             body: term,
             env: new_env,
         } = {
-            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
-            vm.0.eval_closure(Closure {
+            VirtualMachine::new(&mut self.vm_ctxt).eval_closure(Closure {
                 body: term,
                 env: self.eval_env.clone(),
             })?
@@ -279,9 +276,8 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
                 .terms
                 .get_owned(file_id)
                 .unwrap();
-            let mut vm = UnwindingVirtualMachine(VirtualMachine::new(&mut self.vm_ctxt));
 
-            vm.0.query_closure(
+            VirtualMachine::new(&mut self.vm_ctxt).query_closure(
                 Closure {
                     body,
                     env: self.eval_env.clone(),
