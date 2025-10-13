@@ -267,7 +267,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.eval_deep_closure_impl(t0, false)
             .map(|result| Closure {
                 body: subst(
-                    &mut self.context.cache,
+                    &self.context.cache,
                     result.body,
                     &self.initial_env,
                     &result.env,
@@ -281,7 +281,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
             .map(|result| {
                 subst(
-                    &mut self.context.cache,
+                    &self.context.cache,
                     result.body,
                     &self.initial_env,
                     &result.env,
@@ -296,7 +296,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure_impl(closure, true).map(|result| {
             subst(
-                &mut self.context.cache,
+                &self.context.cache,
                 result.body,
                 &self.initial_env,
                 &result.env,
@@ -316,8 +316,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             .map(|result| result.body)
     }
 
-    /// Use a specific initial environment for evaluation. Usually, [VirtualMachine::prepare_eval]
-    /// is populating the initial environment. But in some cases, such as testing or benchmarks, we
+    /// Use a specific initial environment for evaluation. Usually, [VmContext::prepare_eval] is
+    /// populating the initial environment. But in some cases, such as testing or benchmarks, we
     /// might want to use a different one.
     ///
     /// Return the new virtual machine with the updated initial environment.
@@ -635,7 +635,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(EvalError::BlameError {
-                                evaluated_arg: label.get_evaluated_arg(&mut self.context.cache),
+                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                                 label,
                                 call_stack: self.call_stack.clone(),
                             });
