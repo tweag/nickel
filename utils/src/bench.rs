@@ -134,7 +134,7 @@ macro_rules! ncl_bench_group {
         pub fn $group_name() {
             use nickel_lang_core::{
                 cache::{CacheHub, ImportResolver, InputFormat},
-                eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
+                eval::{VirtualMachine, VmContext, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
                 typecheck::TypecheckMode,
                 error::report::{report, ColorOpt, ErrorFormat},
@@ -180,12 +180,14 @@ macro_rules! ncl_bench_group {
                             if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 c_local.typecheck(id, TypecheckMode::Walk).unwrap();
                             } else {
-                                let mut vm = VirtualMachine::new_with_cache(
-                                    c_local,
-                                    eval_cache.clone(),
-                                    std::io::sink(),
-                                    nickel_lang_core::error::NullReporter {},
-                                )
+                                let mut vm_ctxt = VmContext {
+                                    import_resolver: c_local,
+                                    trace: Box::new(std::io::sink()),
+                                    reporter: Box::new(nickel_lang_core::error::NullReporter {}),
+                                    cache: eval_cache.clone(),
+                                };
+
+                                let mut vm = VirtualMachine::new_empty_env(&mut vm_ctxt)
                                 .with_initial_env(eval_env.clone());
 
                                 if let Err(e) = vm.eval(runner) {
