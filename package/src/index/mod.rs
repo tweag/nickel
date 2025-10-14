@@ -251,11 +251,12 @@ impl<T: LockType> PackageIndex<T> {
     /// (if necessary) to the on-disk cache.
     pub fn ensure_downloaded(&self, id: &Id, v: SemVer) -> Result<(), Error> {
         let package = self.package(id, &v)?;
-        let precise = PrecisePkg::Index(PreciseIndexPkg {
+        let precise = PreciseIndexPkg {
             id: id.clone(),
             version: v,
-        });
-        let target_dir = precise.local_path(&self.cache.borrow().config);
+        };
+        let config = self.cache.borrow().config.clone();
+        let target_dir = precise.local_path_without_subdir(&config, self)?;
         self.ensure_downloaded_to(&package.id, &target_dir)
     }
 
@@ -356,7 +357,7 @@ impl Id {
             }
             // A package that lives in a subdirectory of a git repo gets its
             // name encoded to be unique. We can't put files for `github:nickel-lang/js2n/lib`
-            // in a subdirectory of the location for `github:nickel-lang/js2n` because their
+            // in a subdirectory of the location for `github:nickel-lang/js2n` because there
             // could be conflicts.
             //
             // Instead, we "encode" the name as `github/nickel-lang%@js2n%@lib` so
@@ -513,6 +514,11 @@ impl PreciseId {
                 }
             }
         }
+    }
+
+    pub fn object_id(&self) -> ObjectId {
+        let PreciseId::Github { commit, .. } = self;
+        *commit
     }
 }
 
