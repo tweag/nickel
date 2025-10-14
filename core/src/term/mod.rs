@@ -1026,16 +1026,6 @@ impl Term {
         }
     }
 
-    /// Extract the cache index (thunk) from a closure. If `self` isn't a closure, `None` is
-    /// returned.
-    pub fn try_as_closure(&self) -> Option<CacheIndex> {
-        if let Term::Value(value) = self {
-            value.as_thunk().map(|thunk| thunk.0.clone())
-        } else {
-            None
-        }
-    }
-
     /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
     /// or returns `None` if the term isn't a primitive value.
     pub fn to_nickel_string(&self) -> Option<NickelString> {
@@ -2349,7 +2339,7 @@ pub mod make {
                 let ts = $crate::bytecode::value::Array::new(
                     [$( $crate::bytecode::NickelValue::from($terms) ),*]
                 );
-                $crate::bytecode::value::NickelValue::array(ts)
+                $crate::bytecode::value::NickelValue::array_posless(ts, Vec::new())
             }
         };
     }
