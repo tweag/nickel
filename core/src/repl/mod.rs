@@ -9,8 +9,11 @@
 use crate::{
     bytecode::{ast::AstAlloc, value::NickelValue},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
-    error::{Error, EvalError, IOError, NullReporter, ParseError, ParseErrors, ReplError},
-    eval::{self, cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
+    error::{
+        Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors,
+        ReplError,
+    },
+    eval::{self, Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
     files::FileId,
     identifier::LocIdent,
     parser::{ErrorTolerantParser, grammar, lexer},
@@ -108,7 +111,9 @@ impl<EC: EvalCache> ReplImpl<EC> {
     /// Load and process the stdlib, and use it to populate the eval environment as well as the
     /// typing environment.
     pub fn load_stdlib(&mut self) -> Result<(), Error> {
-        self.vm_ctxt.import_resolver.prepare_stdlib()?;
+        self.vm_ctxt
+            .import_resolver
+            .prepare_stdlib(&mut self.vm_ctxt.pos_table)?;
         self.eval_env = self
             .vm_ctxt
             .import_resolver
@@ -122,7 +127,11 @@ impl<EC: EvalCache> ReplImpl<EC> {
             String::from(exp),
         );
 
-        let id = self.vm_ctxt.import_resolver.prepare_repl(file_id)?.inner();
+        let id = self
+            .vm_ctxt
+            .import_resolver
+            .prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?
+            .inner();
         // unwrap(): we've just prepared the term successfully, so it must be in cache
         let term = self
             .vm_ctxt
@@ -184,7 +193,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_file(OsString::from(path.as_ref()), InputFormat::Nickel)
             .map_err(IOError::from)?;
 
-        self.vm_ctxt.import_resolver.prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
+        self.vm_ctxt
+            .import_resolver
+            .prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
         let value = self
             .vm_ctxt
             .import_resolver
@@ -198,33 +209,33 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             env: new_env,
         } = {
             VirtualMachine::new(&mut self.vm_ctxt).eval_closure(Closure {
-                value: term,
+                value,
                 env: self.eval_env.clone(),
             })?
         };
 
         self.vm_ctxt
             .import_resolver
-            .add_repl_bindings(&value)
+            .add_repl_bindings(&mut self.vm_ctxt.pos_table, &value)
             .map_err(|NotARecord| {
-                Error::EvalError(EvalErrorData::Other(
-                    String::from("load: expected a record"),
-                    pos,
-                ))
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::Other(String::from("load: expected a record"), pos),
+                    ctxt: Default::default(),
+                })
             })?;
 
         eval::env_add_record(
             &mut self.vm_ctxt.cache,
             &mut self.eval_env,
             Closure {
-                value: term.clone(),
+                value: value.clone(),
                 env: new_env,
             },
         )
         // unwrap(): if the call above succeeded, the term must be a record
         .unwrap();
 
-        Ok(term)
+        Ok(value)
     }
 
     fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
@@ -263,7 +274,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .vm_ctxt
             .import_resolver
             .replace_string(SourcePath::ReplQuery, target.label().into());
-        self.vm_ctxt.import_resolver.prepare_repl(file_id)?;
+        self.vm_ctxt.import_resolver.prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
 
         let result = {
             let value = self

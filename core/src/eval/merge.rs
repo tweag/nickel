@@ -34,9 +34,8 @@ use crate::{
     label::{Label, MergeLabel},
     position::PosIdx,
     term::{
-        make as mk_term,
+        BinaryOp, IndexMap, Term, TypeAnnotation, make as mk_term,
         record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, IndexMap, Term, TypeAnnotation,
     },
 };
 
@@ -65,7 +64,7 @@ impl From<MergeMode> for MergeLabel {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Compute the merge of two evaluated operands. Support both standard merging and record contract
     /// application.
     ///
@@ -98,7 +97,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match (lens1.take(), lens2.take()) {
                     (inline1, inline2) if inline1 == inline2 => Ok(NickelValue::inline(
                         inline1,
-                        pos_op.to_inherited_inline(&mut self.pos_table),
+                        pos_op.to_inherited_inline(&mut self.context.pos_table),
                     )),
                     (inline1, inline2) => Err(EvalErrorData::MergeIncompatibleArgs {
                         // unwrap(): will go away soon, anyway
@@ -115,7 +114,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if n1 == n2 {
                     Ok(NickelValue::number(
                         n1,
-                        pos_op.to_inherited_block(&mut self.pos_table),
+                        pos_op.to_inherited_block(&mut self.context.pos_table),
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -132,7 +131,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if s1 == s2 {
                     Ok(NickelValue::string(
                         s1,
-                        pos_op.to_inherited_block(&mut self.pos_table),
+                        pos_op.to_inherited_block(&mut self.context.pos_table),
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -149,7 +148,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if label1 == label2 {
                     Ok(NickelValue::label(
                         label1,
-                        pos_op.to_inherited_block(&mut self.pos_table),
+                        pos_op.to_inherited_block(&mut self.context.pos_table),
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -175,7 +174,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                     ) if tag1 == tag2 => Ok(NickelValue::enum_tag(
                         tag1,
-                        pos_op.to_inherited_block(&mut self.pos_table),
+                        pos_op.to_inherited_block(&mut self.context.pos_table),
                     )),
                     (
                         EnumVariantBody {
@@ -189,14 +188,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ) if tag1 == tag2 => {
                         let arg = NickelValue::term_posless(Term::Op2(
                             BinaryOp::Merge(mode.into()),
-                            arg1.closurize(&mut self.cache, env1),
-                            arg2.closurize(&mut self.cache, env2),
+                            arg1.closurize(&mut self.context.cache, env1),
+                            arg2.closurize(&mut self.context.cache, env2),
                         ));
 
                         Ok(NickelValue::enum_variant(
                             tag1,
                             Some(arg),
-                            pos_op.to_inherited_block(&mut self.pos_table),
+                            pos_op.to_inherited_block(&mut self.context.pos_table),
                         ))
                     }
                     (enum1, enum2) => Err(EvalErrorData::MergeIncompatibleArgs {
@@ -215,8 +214,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 use crate::{mk_app, stdlib, typ::TypeF};
                 use std::rc::Rc;
 
-                let v1 = lens1.restore().closurize(&mut self.cache, env1);
-                let v2 = lens2.restore().closurize(&mut self.cache, env2);
+                let v1 = lens1.restore().closurize(&mut self.context.cache, env1);
+                let v2 = lens2.restore().closurize(&mut self.context.cache, env2);
 
                 // We reconstruct the contract we apply later on just to fill the label. This will be
                 // printed out when reporting the error.
@@ -260,7 +259,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ),
                     v2
                 )
-                .with_pos_idx(&mut self.pos_table, pos_op))
+                .with_pos_idx(&mut self.context.pos_table, pos_op))
             }
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
@@ -276,7 +275,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
                     return Err(EvalErrorData::IllegalPolymorphicTailAccess {
                         action: IllegalPolymorphicTailAction::Merge,
-                        evaluated_arg: label.get_evaluated_arg(&self.cache),
+                        evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                         label,
                     });
                 }
@@ -333,9 +332,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 let final_pos = if let MergeMode::Standard(_) = mode {
-                    pos_op.to_inherited_block(&mut self.pos_table)
+                    pos_op.to_inherited_block(&mut self.context.pos_table)
                 } else {
-                    pos1.to_inherited_block(&mut self.pos_table)
+                    pos1.to_inherited_block(&mut self.context.pos_table)
                 };
 
                 let merge_label = MergeLabel::from(mode);
@@ -359,20 +358,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // [crate::eval::cache::Cache::saturate()].
                 m.extend(
                     left.into_iter()
-                        .map(|(id, field)| (id, field.revert_closurize(&mut self.cache))),
+                        .map(|(id, field)| (id, field.revert_closurize(&mut self.context.cache))),
                 );
 
                 m.extend(
                     right
                         .into_iter()
-                        .map(|(id, field)| (id, field.revert_closurize(&mut self.cache))),
+                        .map(|(id, field)| (id, field.revert_closurize(&mut self.context.cache))),
                 );
 
                 for (id, (field1, field2)) in center.into_iter() {
                     m.insert(
                         id,
                         merge_fields(
-                            &mut self.cache,
+                            &mut self.context.cache,
                             merge_label,
                             field1,
                             field2,

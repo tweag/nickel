@@ -23,12 +23,15 @@
 use crate::{
     bytecode::{
         ast::{AstAlloc, compat::ToMainline},
-        value::NickelValue,
+        value::{NickelValue, ValueContent},
     },
     cache::*,
     closurize::Closurize as _,
-    error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
-    eval::{cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
+    error::{
+        Error, EvalError, EvalErrorData, IOError, ParseError, ParseErrors, Reporter,
+        warning::Warning,
+    },
+    eval::{Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
@@ -81,7 +84,7 @@ impl FieldPath {
         let parser = StaticFieldPathParser::new();
         let field_path = parser
             // This doesn't use the position table at all, since `LocIdent` currently stores a
-            // TermPos directly 
+            // TermPos directly
             .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
@@ -557,11 +560,13 @@ impl<EC: EvalCache> Program<EC> {
         mut transform: F,
     ) -> Result<(), TermCacheError<E>>
     where
-        F: FnMut(&mut CacheHub, NickelValue) -> Result<NickelValue, E>,
+        F: FnMut(&mut CacheHub, &mut PosTable, NickelValue) -> Result<NickelValue, E>,
     {
-        self.vm_ctxt
-            .import_resolver
-            .custom_transform(self.main_id, transform_id, &mut transform)
+        self.vm_ctxt.import_resolver.custom_transform(
+            self.main_id,
+            transform_id,
+            &mut |cache, value| transform(cache, &mut self.vm_ctxt.pos_table, value),
+        )
     }
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
@@ -617,7 +622,7 @@ impl<EC: EvalCache> Program<EC> {
                                 record = record.path(ovd.path.0).priority(ovd.priority).value(
                                     NickelValue::string(
                                         env_var,
-                                        self.vm.pos_table_mut().push_block(
+                                        self.vm_ctxt.pos_table.push_block(
                                             RawSpan::from_range(
                                                 value_file_id,
                                                 value_sep + 1..value_unparsed.len(),
@@ -692,7 +697,7 @@ impl<EC: EvalCache> Program<EC> {
                     ProgramContract::Term(contract) => Ok(contract.clone()),
                     ProgramContract::Source(file_id) => {
                         let cache = &mut self.vm_ctxt.import_resolver;
-                        cache.prepare(*file_id)?;
+                        cache.prepare(&mut self.vm_ctxt.pos_table, *file_id)?;
 
                         // unwrap(): we just prepared the file above, so it must be in the cache.
                         let value = cache.terms.get_owned(*file_id).unwrap();
@@ -703,7 +708,7 @@ impl<EC: EvalCache> Program<EC> {
                         let pos = value.pos_idx();
                         let typ = crate::typ::Type {
                             typ: crate::typ::TypeF::Contract(value.clone()),
-                            pos: self.vm.pos_table_mut().get(pos),
+                            pos: self.vm_ctxt.pos_table.get(pos),
                         };
 
                         let source_name = cache.sources.name(*file_id).to_string_lossy();
@@ -727,10 +732,9 @@ impl<EC: EvalCache> Program<EC> {
             })
             .collect();
 
-        prepared_body =
-            RuntimeContract::apply_all(prepared_body, runtime_contracts?, PosIdx::NONE);
+        prepared_body = RuntimeContract::apply_all(prepared_body, runtime_contracts?, PosIdx::NONE);
 
-        let prepared : Closure = prepared_body.into();
+        let prepared: Closure = prepared_body.into();
 
         let result = if for_query {
             prepared
@@ -870,10 +874,12 @@ impl<EC: EvalCache> Program<EC> {
         cache.load_stdlib()?;
         cache.parse_to_ast(self.main_id)?;
         // unwrap(): We just loaded the stdlib, so it should be there
-        cache.compile_stdlib().unwrap();
-        cache.compile(self.main_id).map_err(|cache_err| {
-            cache_err.unwrap_error("program::compile(): we just parsed the program")
-        })?;
+        cache.compile_stdlib(&mut self.vm_ctxt.pos_table).unwrap();
+        cache
+            .compile(&mut self.vm_ctxt.pos_table, self.main_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error("program::compile(): we just parsed the program")
+            })?;
 
         Ok(())
     }
@@ -1008,12 +1014,12 @@ impl<EC: EvalCache> Program<EC> {
             env: Environment,
             closurize: bool,
         ) -> Result<NickelValue, Error> {
-            let curr_thunk = term.as_ref().try_as_closure();
+            let curr_thunk = term.as_thunk();
 
-            if let Some(thunk) = curr_thunk.as_ref() {
+            if let Some(thunk) = curr_thunk {
                 // If the thunk is already locked, it's the thunk of some parent field, and we stop
                 // here to avoid infinite recursion.
-                if !thunk.lock() {
+                if !thunk.0.lock() {
                     return Ok(term);
                 }
             }
@@ -1022,8 +1028,8 @@ impl<EC: EvalCache> Program<EC> {
 
             // Once we're done evaluating all the children, or if there was an error, we unlock the
             // current thunk
-            if let Some(thunk) = curr_thunk.as_ref() {
-                thunk.unlock();
+            if let Some(thunk) = curr_thunk {
+                thunk.0.unlock();
             }
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
@@ -1036,7 +1042,10 @@ impl<EC: EvalCache> Program<EC> {
             // instead of resulting in documentation being silently skipped.
             if matches!(
                 result,
-                Err(Error::EvalError(EvalError::MissingFieldDef { .. }))
+                Err(Error::EvalError(EvalError {
+                    error: EvalErrorData::MissingFieldDef { .. },
+                    ..
+                }))
             ) {
                 return Ok(term);
             }
@@ -1053,9 +1062,12 @@ impl<EC: EvalCache> Program<EC> {
             closurize: bool,
         ) -> Result<NickelValue, Error> {
             let evaled = VirtualMachine::new(vm_ctxt).eval_closure(Closure { value: term, env })?;
+            let pos_idx = evaled.value.pos_idx();
 
-            match_sharedterm!(match (evaled.body.term) {
-                Term::Record(data) => {
+            match evaled.value.content() {
+                ValueContent::Record(lens) => {
+                    let data = lens.take().0;
+
                     let fields = data
                         .fields
                         .into_iter()
@@ -1086,18 +1098,19 @@ impl<EC: EvalCache> Program<EC> {
                         })
                         .collect::<Result<_, Error>>()?;
 
-                    Ok(NickelValue::new(
-                        Term::Record(RecordData { fields, ..data }),
-                        evaled.body.pos,
-                    ))
+                    // unwrap(): will go away
+                    Ok(NickelValue::record(RecordData { fields, ..data }, pos_idx).unwrap())
                 }
-                _ =>
+                lens => {
+                    let value = lens.restore();
+
                     if closurize {
-                        Ok(evaled.body.closurize(&mut vm_ctxt.cache, evaled.env))
+                        Ok(value.closurize(&mut vm_ctxt.cache, evaled.env))
                     } else {
-                        Ok(evaled.body)
-                    },
-            })
+                        Ok(value)
+                    }
+                }
+            }
         }
 
         eval_guarded(&mut self.vm_ctxt, prepared.value, prepared.env, closurize)
@@ -1134,9 +1147,13 @@ impl<EC: EvalCache> Program<EC> {
             .import_resolver
             .sources
             .parse_nickel(&ast_alloc, self.main_id)?;
-        let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+        let rt = measure_runtime!(
+            "runtime:ast_conversion",
+            ast.to_mainline(&mut self.vm_ctxt.pos_table)
+        );
         let rt = if apply_transforms {
-            transform(rt, None).map_err(EvalError::from)?
+            transform(&mut self.vm_ctxt.pos_table, rt, None)
+                .map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))?
         } else {
             rt
         };
@@ -1155,16 +1172,23 @@ impl<EC: EvalCache> Program<EC> {
 
 #[cfg(feature = "doc")]
 mod doc {
-    use crate::error::{Error, ExportErrorData, IOError};
-    use crate::term::{NickelValue, Term};
-    use comrak::arena_tree::{Children, NodeEdge};
-    use comrak::nodes::{
-        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+    use crate::{
+        bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef},
+        error::{Error, ExportErrorData, IOError},
+        term::Term,
     };
+
     use comrak::{Arena, ComrakOptions, format_commonmark, parse_document};
+    use comrak::{
+        arena_tree::{Children, NodeEdge},
+        nodes::{
+            Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+        },
+    };
+
     use serde::{Deserialize, Serialize};
-    use std::collections::HashMap;
-    use std::io::Write;
+
+    use std::{collections::HashMap, io::Write};
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1194,9 +1218,10 @@ mod doc {
     }
 
     impl ExtractedDocumentation {
-        pub fn extract_from_term(rt: &NickelValue) -> Option<Self> {
-            match rt.term.as_ref() {
-                Term::Record(record) | Term::RecRecord(record, ..) => {
+        pub fn extract_from_term(value: &NickelValue) -> Option<Self> {
+            match value.content_ref() {
+                ValueContentRef::Record(RecordBody(record))
+                | ValueContentRef::Term(TermBody(Term::RecRecord(record, ..))) => {
                     let fields = record
                         .fields
                         .iter()
@@ -1503,7 +1528,7 @@ mod tests {
         // [2, "ab", [1, [3]]]
         let expd = mk_array!(
             mk_term::integer(2),
-            Term::Str("ab".into()),
+            NickelValue::string_poslelss("ab"),
             mk_array!(mk_term::integer(1), mk_array!(mk_term::integer(3)))
         );
 
