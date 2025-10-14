@@ -281,7 +281,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.eval_deep_closure_impl(closure, false)
             .map(|result| Closure {
                 value: subst(
-                    &self.pos_table,
+                    &self.context.pos_table,
                     &self.context.cache,
                     result.value,
                     &self.initial_env,
@@ -296,7 +296,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.eval_deep_closure_impl(value.into(), true)
             .map(|result| {
                 subst(
-                    &self.pos_table,
+                    &self.context.pos_table,
                     &self.context.cache,
                     result.value,
                     &self.initial_env,
@@ -312,7 +312,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<NickelValue, EvalError> {
         self.eval_deep_closure_impl(closure, true).map(|result| {
             subst(
-                &self.pos_table,
+                &self.context.pos_table,
                 &self.context.cache,
                 result.value,
                 &self.initial_env,
@@ -459,7 +459,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             match current_evaled.value.content_ref() {
                 ValueContentRef::Record(RecordBody(record_data)) => {
                     let Some(next_field) = record_data.fields.get(id).cloned() else {
-                        let pos_op = self.pos_table.push_block(id.pos);
+                        let pos_op = self.context.pos_table.push_block(id.pos);
 
                         return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
@@ -511,7 +511,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn eval_ctxt(&mut self) -> EvalCtxt {
         EvalCtxt {
             call_stack: std::mem::take(&mut self.call_stack),
-            pos_table: self.pos_table.clone(),
+            pos_table: self.context.pos_table.clone(),
         }
     }
 
@@ -631,7 +631,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         env: &Environment,
         pos_idx: PosIdx,
     ) -> Result<CacheIndex, EvalErrorData> {
-        get_var(&self.pos_table, id, &self.initial_env, env, pos_idx)
+        get_var(&self.context.pos_table, id, &self.initial_env, env, pos_idx)
     }
 
     /// The main loop of evaluation.
@@ -733,7 +733,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.enter_cache_index(Some(*id), idx, pos_idx, env)?
                 }
                 ValueContentRef::Term(TermBody(Term::App(head, arg))) => {
-                    self.call_stack.enter_app(&self.pos_table, pos_idx);
+                    self.call_stack.enter_app(&self.context.pos_table, pos_idx);
 
                     self.stack.push_arg(
                         Closure {
@@ -905,14 +905,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 .collect();
 
                             NickelValue::array_force_pos(
-                                &mut self.pos_table,
+                                &mut self.context.pos_table,
                                 array,
                                 pending_contracts,
                                 pos_idx,
                             )
                         }
                         ValueContent::Record(lens) => NickelValue::record_force_pos(
-                            &mut self.pos_table,
+                            &mut self.context.pos_table,
                             lens.take().0.closurize(&mut self.context.cache, env),
                             pos_idx,
                         ),
@@ -953,7 +953,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 let field = Field {
                                     value: Some(NickelValue::thunk(
                                         self.get_var(incl.ident, &env, PosIdx::NONE)?,
-                                        self.pos_table.push_block(incl.ident.pos),
+                                        self.context.pos_table.push_block(incl.ident.pos),
                                     )),
                                     metadata: incl.metadata.clone(),
                                     pending_contracts: Vec::new(),
@@ -961,7 +961,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                                 Ok((
                                     incl.ident,
-                                    gen_pending_contracts::with_pending_contracts(&mut self.pos_table, field)?,
+                                    gen_pending_contracts::with_pending_contracts(&mut self.context.pos_table, field)?,
                                 ))
                             })
                             .collect();
@@ -1011,7 +1011,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        NickelValue::record_force_pos(&mut self.pos_table, static_part, pos_idx),
+                        NickelValue::record_force_pos(&mut self.context.pos_table, static_part, pos_idx),
                         |acc, (name_as_term, mut field)| {
                             let pos_idx = field
                                 .value
@@ -1042,14 +1042,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             match value {
                                 Some(value) => NickelValue::term(
                                     Term::App(extend, value),
-                                    pos_idx.to_inherited_block(&mut self.pos_table),
+                                    pos_idx.to_inherited_block(&mut self.context.pos_table),
                                 ),
                                 None => extend,
                             }
                         },
                     );
 
-                    extended.with_pos_idx(&mut self.pos_table, pos_idx).into()
+                    extended.with_pos_idx(&mut self.context.pos_table, pos_idx).into()
                 }
                 ValueContentRef::Term(TermBody(Term::ResolvedImport(id))) => {
                     increment!(format!("import:{id:?}"));
@@ -1093,8 +1093,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
-                    let static_contract = annot.static_contract(&mut self.pos_table);
-                    let contracts = annot.pending_contracts(&mut self.pos_table)?;
+                    let static_contract = annot.static_contract(&mut self.context.pos_table);
+                    let contracts = annot.pending_contracts(&mut self.context.pos_table)?;
                     let pos_idx = inner.pos_idx();
                     let inner = inner.clone();
 
@@ -1116,7 +1116,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // is just an argument to a primop or to put in the eval cache)
                 ValueContentRef::Term(TermBody(Term::Fun(arg, body))) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache) {
-                        self.call_stack.enter_fun(&self.pos_table, pos_app);
+                        self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
                         Closure {
                             value: body.clone(),
@@ -1278,11 +1278,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// abusive that the VM owns the two, which should be able to survive it or be initialized
     /// before it.
     pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T where F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T {
-        f(&mut self.pos_table, &mut self.import_resolver)
+        f(&mut self.context.pos_table, &mut self.context.import_resolver)
     }
 
     pub(crate) fn pos_table_mut(&mut self) -> &mut PosTable {
-        &mut self.pos_table
+        &mut self.context.pos_table
     }
 }
 
