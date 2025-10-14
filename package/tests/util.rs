@@ -4,7 +4,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    str::FromStr as _,
+    process::Command,
 };
 
 use gix::bstr::ByteSlice as _;
@@ -48,6 +48,18 @@ macro_rules! run {
             String::from_utf8_lossy(&output.stderr)
         );
     }};
+}
+
+/// A version of the run macro that doesn't do its own hacky arg splitting,
+/// and so is safer to use with things like paths that might contains spaces.
+fn run(cmd: &mut Command) {
+    let output = cmd.output().unwrap();
+    assert!(
+        output.status.success(),
+        "command {cmd:?} failed, stdout {}, stderr {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 pub struct ManifestBuilder {
@@ -134,6 +146,87 @@ impl ManifestBuilder {
     }
 }
 
+#[derive(Default)]
+pub struct PackageBuilder {
+    manifest: Option<ManifestFile>,
+    repo_dir: Option<PathBuf>,
+    id: Option<index::Id>,
+}
+
+impl PackageBuilder {
+    pub fn with_manifest(mut self, manifest: ManifestFile) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
+    pub fn with_repo_dir(mut self, path: impl AsRef<Path>) -> Self {
+        self.repo_dir = Some(path.as_ref().to_owned());
+        self
+    }
+
+    pub fn with_id(mut self, id: &str) -> Self {
+        self.id = Some(id.parse().unwrap());
+        self
+    }
+
+    pub fn build(self) -> Package {
+        Package {
+            manifest: self.manifest.unwrap(),
+            repo_dir: self.repo_dir,
+            id: self.id.unwrap(),
+        }
+    }
+}
+
+pub struct Package {
+    manifest: ManifestFile,
+    repo_dir: Option<PathBuf>,
+    id: index::Id,
+}
+
+impl Package {
+    /// Publishes this package in a test environment.
+    ///
+    /// Assumes that the "remote" index url and the "remote" github url are
+    /// actually local paths. Writes an index entry into the "remote" index
+    /// and puts the package contents in the appropriate place on "github"
+    pub fn publish(&self, config: &Config) {
+        eprintln!("publishing {}", &self.id);
+        let pkg = index::scrape::read_from_manifest(&self.id, &self.manifest).unwrap();
+
+        // We don't put the package in config.index_dir, because that's where our downloaded index
+        // goes. Instead we put them in the fake github index.
+        assert!(config.index_url.scheme.as_str() == "file");
+        let dir = Path::new(&config.index_url.path.to_os_str().unwrap()).to_owned();
+        let config = config.clone().with_index_dir(dir.clone());
+
+        PackageIndex::exclusive(config.clone())
+            .unwrap()
+            .save(pkg.clone())
+            .unwrap();
+
+        // Because the index will be fetched over git, we need to commit the changes.
+        run!(&dir, "git add .");
+        run!(&dir, "git commit -m update");
+
+        if let Some(contents_dir) = &self.repo_dir {
+            // Now copy the package contents to where they belong.
+            let download_spec = pkg.id.download_spec(&config);
+            let github_dir = Path::new(download_spec.url.path.to_os_str().unwrap());
+            dbg!(&contents_dir, &github_dir);
+
+            // If we've already published a version of the package then the directory
+            // will already exist. In that case, replace the contents and make a new
+            // commit.
+            if github_dir.exists() {
+                modify_git_repo(contents_dir, github_dir);
+            } else {
+                set_up_git_repo(contents_dir, github_dir);
+            }
+        }
+    }
+}
+
 /// Creates a new git repository in a temporary directory.
 ///
 /// The git repo will contain a dummy manifest file with no dependencies,
@@ -189,21 +282,57 @@ pub fn init_pkg() -> TempDir {
     dir
 }
 
-/// Add a package to our local test index.
-pub fn publish_package(config: &Config, manifest: &ManifestFile, id: &str) {
-    eprintln!("publishing {id}");
-    let id = index::Id::from_str(id).unwrap();
-    let pkg = index::scrape::read_from_manifest(&id, manifest).unwrap();
+// Copies the directory `contents` to `to`, and initializes a git repo in the
+// new location.
+pub fn set_up_git_repo(contents: &Path, to: &Path) {
+    // The rust stdlib doesn't have anything for recursively copying a directory. There are
+    // some crates for that, but it's easier just to shell out.
+    std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+    run(Command::new("cp").arg("-r").args([contents, to]));
 
-    // We don't put the package in config.index_dir, because that's where our downloaded packages
-    // go. Instead we put them in the fake github index.
-    assert!(config.index_url.scheme.as_str() == "file");
-    let dir = Path::new(&config.index_url.path.to_os_str().unwrap()).to_owned();
-    let config = config.clone().with_index_dir(dir.clone());
+    // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
+    // make a git tag named with the contents of that file. If the input contains a branch.txt file,
+    // make a git branch named with the contents of that file.
+    let tag = std::fs::read_to_string(to.join("tag.txt")).ok();
+    let branch = std::fs::read_to_string(to.join("branch.txt")).ok();
 
-    PackageIndex::exclusive(config).unwrap().save(pkg).unwrap();
+    run!(to, "git init");
+    run!(to, "git config user.email me@example.com");
+    run!(to, "git config user.name me");
 
-    // Because the index will be fetched over git, we need to commit the changes.
-    run!(&dir, "git add .");
-    run!(&dir, "git commit -m update");
+    if let Some(branch) = branch {
+        run!(to, "git commit -m initial --allow-empty");
+        run!(to, "git checkout -b {}", branch.trim());
+    }
+
+    run!(to, "git add --all");
+    run!(to, "git commit -m initial");
+
+    if let Some(tag) = tag {
+        run!(to, "git tag {}", tag.trim());
+    }
+}
+
+// Copies the everything in `contents` to `to` (which we assume already exists),
+// and commits them to the git repo that we assume is already in `to`.
+pub fn modify_git_repo(contents: &Path, to: &Path) {
+    // Delete the old contents (except the .git directory)
+    for old in std::fs::read_dir(to).unwrap() {
+        let old = old.unwrap();
+        if old.path().file_name().unwrap().to_str() != Some(".git") {
+            run(Command::new("rm").arg("-rf").arg(old.path()));
+        }
+    }
+
+    // Now expand `cp -r contents/* to`.
+    let contents = std::fs::read_dir(contents).unwrap();
+    for elt in contents {
+        run(Command::new("cp")
+            .arg("-r")
+            .arg(elt.unwrap().path())
+            .arg(to));
+    }
+
+    run!(to, "git add --all");
+    run!(to, "git commit -m update --allow-empty");
 }

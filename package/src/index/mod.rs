@@ -13,7 +13,6 @@ use std::{
 
 use gix::ObjectId;
 use nickel_lang_core::identifier::Ident;
-use nickel_lang_git::Spec;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serialize::PackageFormat;
@@ -267,9 +266,8 @@ impl<T: LockType> PackageIndex<T> {
             commit,
             path: _,
         } = index_id;
-        let url = format!("https://github.com/{org}/{name}.git");
-        let url: gix::Url = url.try_into()?;
 
+        let spec = index_id.download_spec(&self.cache.borrow().config);
         if target_dir.exists() {
             info!("Package {org}/{name}@{commit} already exists");
             return Ok(());
@@ -301,7 +299,7 @@ impl<T: LockType> PackageIndex<T> {
                 target_dir.display()
             );
             let tmp_dir = tempdir_in(parent_dir).with_path(parent_dir)?;
-            let _tree_id = nickel_lang_git::fetch(&Spec::commit(url, *commit), tmp_dir.path())?;
+            let _tree_id = nickel_lang_git::fetch(&spec, tmp_dir.path())?;
 
             std::fs::rename(tmp_dir.keep(), target_dir).with_path(target_dir)?;
         }

@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
     sync::Arc,
 };
-use util::publish_package;
+use util::{set_up_git_repo, PackageBuilder};
 
 use nickel_lang_core::error::report::report_as_str;
 use nickel_lang_package::{
@@ -123,50 +123,6 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
     }
 }
 
-// Copies the directory `contents` to `to`, and initializes a git repo in the
-// new location.
-fn set_up_git_repo(contents: &Path, to: &Path) {
-    let run = |cmd: &mut Command| {
-        let output = cmd.output().unwrap();
-        assert!(
-            output.status.success(),
-            "command {cmd:?} failed, stdout {}, stderr {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    };
-
-    let run_in_dir = |cmd: &mut Command| {
-        run(cmd.current_dir(to));
-    };
-
-    // The rust stdlib doesn't have anything for recursively copying a directory. There are
-    // some crates for that, but it's easier just to shell out.
-    run(Command::new("cp").arg("-r").arg(contents).arg(to));
-
-    // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
-    // make a git tag named with the contents of that file. If the input contains a branch.txt file,
-    // make a git branch named with the contents of that file.
-    let tag = std::fs::read_to_string(to.join("tag.txt")).ok();
-    let branch = std::fs::read_to_string(to.join("branch.txt")).ok();
-
-    run_in_dir(Command::new("git").arg("init"));
-    run_in_dir(Command::new("git").args(["config", "user.email", "me@example.com"]));
-    run_in_dir(Command::new("git").args(["config", "user.name", "me"]));
-
-    if let Some(branch) = branch {
-        run_in_dir(Command::new("git").args(["commit", "-m", "initial", "--allow-empty"]));
-        run_in_dir(Command::new("git").args(["checkout", "-b", branch.trim()]));
-    }
-
-    run_in_dir(Command::new("git").args(["add", "--all"]));
-    run_in_dir(Command::new("git").args(["commit", "-m", "initial"]));
-
-    if let Some(tag) = tag {
-        run_in_dir(Command::new("git").args(["tag", tag.trim()]));
-    }
-}
-
 // Creates an index in the configured location (which must be a directory), and
 // populates it with the packages found in `package/tests/integration/inputs/index`.
 fn set_up_test_index(config: &Config, tmp_dir: &Path) {
@@ -218,7 +174,13 @@ fn set_up_test_index(config: &Config, tmp_dir: &Path) {
                     } else {
                         format!("github:{org}/{pkg}/{subpath}")
                     };
-                    publish_package(config, &manifest, &id);
+
+                    PackageBuilder::default()
+                        .with_manifest(manifest)
+                        .with_id(&id)
+                        .with_repo_dir(version.path())
+                        .build()
+                        .publish(config);
                 }
             }
         }
