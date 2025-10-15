@@ -16,7 +16,7 @@ use nickel_lang_core::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
     error::{ImportError, IntoDiagnostics, ParseErrors},
-    eval::{cache::CacheImpl, VirtualMachine},
+    eval::{cache::CacheImpl, VirtualMachine, VmContext},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
     traverse::TraverseAlloc,
@@ -509,18 +509,19 @@ impl World {
 
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            let mut vm = VirtualMachine::<_, CacheImpl>::new(
+            let mut vm_ctxt: VmContext<_, CacheImpl> = VmContext::new(
                 self.cache_hub_for_eval(file_id),
                 std::io::stderr(),
                 reporter,
             );
-            // unwrap: we don't expect an error here, since we already typechecked above.
-            let rt = vm.prepare_eval_only(file_id).unwrap();
 
-            let errors = vm.eval_permissive(rt, recursion_limit);
+            // unwrap: we don't expect an error here, since we already typechecked above.
+            let rt = vm_ctxt.prepare_eval_only(file_id).unwrap();
+
+            let errors = VirtualMachine::new(&mut vm_ctxt).eval_permissive(rt, recursion_limit);
             // Get a possibly-updated files from the vm instead of relying on the one
             // in `world`.
-            let mut files = vm.import_resolver().sources.files().clone();
+            let mut files = vm_ctxt.import_resolver.sources.files().clone();
 
             diags.extend(
                 errors

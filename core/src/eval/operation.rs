@@ -112,7 +112,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
@@ -214,11 +214,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if self.stack.count_args() >= 2 {
                         let (fst, ..) = self
                             .stack
-                            .pop_arg(&self.cache)
+                            .pop_arg(&self.context.cache)
                             .expect("Condition already checked.");
                         let (snd, ..) = self
                             .stack
-                            .pop_arg(&self.cache)
+                            .pop_arg(&self.context.cache)
                             .expect("Condition already checked.");
 
                         Ok(if b { fst } else { snd })
@@ -258,7 +258,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::BoolAnd =>
             // The syntax should not allow partially applied boolean operators.
             {
-                if let Some((next, ..)) = self.stack.pop_arg(&self.cache) {
+                if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                     match &*t {
                         Term::Bool(true) => Ok(next),
                         // FIXME: this does not check that the second argument is actually a
@@ -277,7 +277,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::BoolOr => {
-                if let Some((next, ..)) = self.stack.pop_arg(&self.cache) {
+                if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                     match &*t {
                         Term::Bool(true) => Ok(Closure::atomic_closure(RichTerm {
                             term: t,
@@ -307,7 +307,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::Blame => match_sharedterm!(match (t) {
                 Term::Lbl(label) => Err(EvalError::BlameError {
-                    evaluated_arg: label.get_evaluated_arg(&self.cache),
+                    evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                     label,
                     call_stack: std::mem::take(&mut self.call_stack),
                 }),
@@ -326,13 +326,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::TagsOnlyMatch { has_default } => {
                 let (cases_closure, ..) = self
                     .stack
-                    .pop_arg(&self.cache)
+                    .pop_arg(&self.context.cache)
                     .expect("missing arg for match");
 
                 let default = if has_default {
                     Some(
                         self.stack
-                            .pop_arg(&self.cache)
+                            .pop_arg(&self.context.cache)
                             .map(|(clos, ..)| clos)
                             .expect("missing default case for match"),
                     )
@@ -462,7 +462,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     action: IllegalPolymorphicTailAction::FieldAccess {
                                         field: id.to_string(),
                                     },
-                                    evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                    evaluated_arg: t.label.get_evaluated_arg(&self.context.cache),
                                     label: t.label.clone(),
                                     call_stack: std::mem::take(&mut self.call_stack),
                                 })
@@ -521,12 +521,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 _ => mk_type_error!("Record"),
             }),
             UnaryOp::ArrayMap => {
-                let (f, ..) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(2, String::from("array/map"), pos_op)
                 })?;
                 match_sharedterm!(match (t) {
                     Term::Array(ts, attrs) => {
-                        let f_as_var = f.body.closurize(&mut self.cache, f.env);
+                        let f_as_var = f.body.closurize(&mut self.context.cache, f.env);
 
                         // Array elements are closurized to preserve laziness of data
                         // structures. It maintains the invariant that any data structure only
@@ -541,7 +541,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 );
 
                                 RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
-                                    .closurize(&mut self.cache, env.clone())
+                                    .closurize(&mut self.context.cache, env.clone())
                             })
                             .collect();
 
@@ -557,7 +557,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
             UnaryOp::ArrayGen => {
-                let (f, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(2, String::from("array/generate"), pos_op)
                 })?;
 
@@ -585,7 +585,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let f_closure = f.body.closurize(&mut self.cache, f.env);
+                let f_closure = f.body.closurize(&mut self.context.cache, f.env);
 
                 // Array elements are closurized to preserve laziness of data structures. It
                 // maintains the invariant that any data structure only contain indices (that is,
@@ -593,7 +593,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let ts = (0..n_int)
                     .map(|n| {
                         mk_app!(f_closure.clone(), Term::Num(n.into()))
-                            .closurize(&mut self.cache, env.clone())
+                            .closurize(&mut self.context.cache, env.clone())
                     })
                     .collect();
 
@@ -606,7 +606,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
             UnaryOp::RecordMap => {
-                let (f, ..) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(2, String::from("record/map"), pos_op)
                 })?;
 
@@ -621,13 +621,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
                             return Err(EvalError::IllegalPolymorphicTailAccess {
                                 action: IllegalPolymorphicTailAction::Map,
-                                evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                                 label,
                                 call_stack: std::mem::take(&mut self.call_stack),
                             });
                         }
 
-                        let f_closure = f.body.closurize(&mut self.cache, f.env);
+                        let f_closure = f.body.closurize(&mut self.context.cache, f.env);
 
                         // As for `ArrayMap` (see above), we closurize the content of fields
 
@@ -635,7 +635,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .fields
                             .into_iter()
                             .filter(|(_, field)| !field.is_empty_optional())
-                            .map_values_closurize(&mut self.cache, &env, |id, t| {
+                            .map_values_closurize(&mut self.context.cache, &env, |id, t| {
                                 let pos = t.pos.into_inherited();
 
                                 mk_app!(f_closure.clone(), mk_term::string(id.label()), t)
@@ -667,7 +667,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::Seq => self
                 .stack
-                .pop_arg(&self.cache)
+                .pop_arg(&self.context.cache)
                 .map(|(next, ..)| next)
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("seq"), pos_op)),
             UnaryOp::DeepSeq => {
@@ -716,7 +716,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     attrs.pending_contracts.iter().cloned(),
                                     pos.into_inherited(),
                                 )
-                                .closurize(&mut self.cache, env.clone());
+                                .closurize(&mut self.context.cache, env.clone());
                                 t_with_ctr
                             }),
                             pos_op,
@@ -732,7 +732,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }),
                     _ => {
-                        if let Some((next, ..)) = self.stack.pop_arg(&self.cache) {
+                        if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                             Ok(next)
                         } else {
                             Err(EvalError::NotEnoughArgs(
@@ -1081,7 +1081,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 !(field.is_empty_optional()
                                     || (ignore_not_exported && field.metadata.not_exported))
                             })
-                            .map_values_closurize(&mut self.cache, &env, |_, value| {
+                            .map_values_closurize(&mut self.context.cache, &env, |_, value| {
                                 mk_term::op1(
                                     UnaryOp::Force {
                                         ignore_not_exported,
@@ -1122,7 +1122,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         pos.into_inherited(),
                                     ),
                                 )
-                                .closurize(&mut self.cache, env.clone())
+                                .closurize(&mut self.context.cache, env.clone())
                             })
                             // It's important to collect here, otherwise the two usages below
                             // will each do their own .closurize(...) calls and end up with
@@ -1147,7 +1147,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             arg,
                         )
-                        .closurize(&mut self.cache, env.clone());
+                        .closurize(&mut self.context.cache, env.clone());
                         let cont = RichTerm::new(
                             Term::EnumVariant {
                                 tag,
@@ -1169,10 +1169,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 })
             }
             UnaryOp::RecDefault => {
-                Ok(RecPriority::Bottom.propagate_in_term(&mut self.cache, t, env, pos))
+                Ok(RecPriority::Bottom.propagate_in_term(&mut self.context.cache, t, env, pos))
             }
             UnaryOp::RecForce => {
-                Ok(RecPriority::Top.propagate_in_term(&mut self.cache, t, env, pos))
+                Ok(RecPriority::Top.propagate_in_term(&mut self.context.cache, t, env, pos))
             }
             UnaryOp::RecordEmptyWithTail => match_sharedterm!(match (t) {
                 Term::Record(r) => {
@@ -1206,7 +1206,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
                         return Err(EvalError::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Freeze,
-                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
                             call_stack: std::mem::take(&mut self.call_stack),
                         });
@@ -1226,7 +1226,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 pending_contracts: Vec::new(),
                                 ..field
                             }
-                            .closurize(&mut self.cache, env.clone());
+                            .closurize(&mut self.context.cache, env.clone());
 
                             (id, field)
                         })
@@ -1250,14 +1250,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }),
             UnaryOp::Trace => {
                 if let Term::Str(s) = &*t {
-                    let _ = writeln!(self.trace, "std.trace: {s}");
+                    let _ = writeln!(self.context.trace, "std.trace: {s}");
                     Ok(())
                 } else {
                     mk_type_error!("String")
                 }?;
 
                 self.stack
-                    .pop_arg(&self.cache)
+                    .pop_arg(&self.context.cache)
                     .map(|(next, ..)| next)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
@@ -1318,7 +1318,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return mk_type_error!("String");
                 };
 
-                let (arg_clos, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (arg_clos, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(2, String::from("enum/make_variant"), pos)
                 })?;
                 let arg_pos = arg_clos.body.pos;
@@ -1350,7 +1350,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // The continuation, that we must evaluate in the augmented environment.
                 let (mut cont, _) = self
                     .stack
-                    .pop_arg(&self.cache)
+                    .pop_arg(&self.context.cache)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("with_env"), pos_op))?;
 
                 match_sharedterm!(match (t) {
@@ -1366,7 +1366,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     _ => {
                                         cont.env.insert(
                                             id.ident(),
-                                            self.cache.add(
+                                            self.context.cache.add(
                                                 Closure {
                                                     body: value,
                                                     env: env.clone(),
@@ -1391,7 +1391,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::ContractCustom => {
                 let contract = if let Term::Fun(..) | Term::Match(_) = &*t {
-                    RichTerm { term: t, pos }.closurize(&mut self.cache, env)
+                    RichTerm { term: t, pos }.closurize(&mut self.context.cache, env)
                 } else {
                     return mk_type_error!("Function or MatchExpression");
                 };
@@ -1409,7 +1409,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 // We pop the second argument which isn't strict: we don't need to evaluate the
                 // label if there's no error.
-                let (label_closure, pos_label) = self.stack.pop_arg(&self.cache).unwrap();
+                let (label_closure, pos_label) = self.stack.pop_arg(&self.context.cache).unwrap();
 
                 match (tag.label(), arg) {
                     ("Ok", value) => Ok(Closure { body: value, env }),
@@ -1902,13 +1902,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // which need to sit underneath the value and the label (they will be run after
                     // the contract application is evaluated). We'll just push the value and the
                     // label back on the stack at the end.
-                    let (idx, stack_value_pos) =
-                        self.stack.pop_arg_as_idx(&mut self.cache).ok_or_else(|| {
+                    let (idx, stack_value_pos) = self
+                        .stack
+                        .pop_arg_as_idx(&mut self.context.cache)
+                        .ok_or_else(|| {
                             EvalError::NotEnoughArgs(3, String::from("contract/apply"), pos_op)
                         })?;
 
                     // We update the label and convert it back to a term form that can be cheaply cloned
-                    label.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
+                    label.arg_pos = self.context.cache.get_then(idx.clone(), |c| c.body.pos);
                     label.arg_idx = Some(idx.clone());
                     let new_label = RichTerm::new(Term::Lbl(label), pos2);
 
@@ -1984,7 +1986,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // Warn on naked function contracts, but not if they came from the
                             // stdlib. Some stdlib functions return naked function contracts.
                             if let Some(pos) = pos1.as_opt_ref() {
-                                if !self.import_resolver.files().is_stdlib(pos.src_id) {
+                                if !self.context.import_resolver.files().is_stdlib(pos.src_id) {
                                     self.warn(Warning::NakedFunctionContract {
                                         func_pos: pos1,
                                         app_pos: pos_op,
@@ -2050,7 +2052,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // contains closures at least, even if it's fully evaluated. As for serialization,
                 // we thus need to fully substitute all variables first.
                 let t1 = subst(
-                    &self.cache,
+                    &self.context.cache,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -2161,7 +2163,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env: env2,
                 };
 
-                match eq(&mut self.cache, c1, c2, pos_op_inh)? {
+                match eq(&mut self.context.cache, c1, c2, pos_op_inh)? {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -2175,8 +2177,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         ))),
                         (true, Some((c1, c2))) => {
-                            let t1 = c1.body.closurize(&mut self.cache, c1.env);
-                            let t2 = c2.body.closurize(&mut self.cache, c2.env);
+                            let t1 = c1.body.closurize(&mut self.context.cache, c1.env);
+                            let t2 = c2.body.closurize(&mut self.context.cache, c2.env);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Op2(BinaryOp::Eq, t1, t2), pos_op),
@@ -2290,7 +2292,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             action: IllegalPolymorphicTailAction::FieldAccess {
                                                 field: id.to_string(),
                                             },
-                                            evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                            evaluated_arg: t
+                                                .label
+                                                .get_evaluated_arg(&self.context.cache),
                                             label: t.label.clone(),
                                             call_stack: std::mem::take(&mut self.call_stack),
                                         })
@@ -2339,13 +2343,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // provided as an additional argument, so we pop it from the stack
                             let value = if let RecordExtKind::WithValue = ext_kind {
                                 let (value_closure, _) =
-                                    self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                                    self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                                         EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
                                     })?;
 
                                 let closurized = value_closure
                                     .body
-                                    .closurize(&mut self.cache, value_closure.env);
+                                    .closurize(&mut self.context.cache, value_closure.env);
                                 Some(closurized)
                             } else {
                                 None
@@ -2409,7 +2413,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         action: IllegalPolymorphicTailAction::FieldRemove {
                                             field: id.to_string(),
                                         },
-                                        evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                        evaluated_arg: t
+                                            .label
+                                            .get_evaluated_arg(&self.context.cache),
                                         label: t.label.clone(),
                                         call_stack: std::mem::take(&mut self.call_stack),
                                     })
@@ -2562,7 +2568,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         } else if ctrs_left_empty {
                             ts1.extend(ts2.into_iter().map(|t| {
                                 RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos1)
-                                    .closurize(&mut self.cache, env1.clone())
+                                    .closurize(&mut self.context.cache, env1.clone())
                             }));
                             ts1
                         } else {
@@ -2570,12 +2576,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             ts.extend(ts1.into_iter().map(|t| {
                                 RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
-                                    .closurize(&mut self.cache, env1.clone())
+                                    .closurize(&mut self.context.cache, env1.clone())
                             }));
 
                             ts.extend(ts2.into_iter().map(|t| {
                                 RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
-                                    .closurize(&mut self.cache, env2.clone())
+                                    .closurize(&mut self.context.cache, env2.clone())
                             }));
 
                             ts
@@ -2639,7 +2645,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (_, _) => mk_type_error!("Array", 1, t1, pos1),
             },
             BinaryOp::Merge(merge_label) => merge::merge(
-                &mut self.cache,
+                &mut self.context.cache,
                 RichTerm {
                     term: t1,
                     pos: pos1,
@@ -2702,7 +2708,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // Serialization needs all variables term to be fully substituted
                     let initial_env = Environment::new();
                     let rt2 = subst(
-                        &self.cache,
+                        &self.context.cache,
                         RichTerm {
                             term: t2,
                             pos: pos2,
@@ -2818,7 +2824,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (_, _) => mk_type_error!("String", 1, t1, pos1),
             },
             BinaryOp::ContractArrayLazyApp => {
-                let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (ctr, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(3, String::from("contract/array_lazy_app"), pos_op)
                 })?;
 
@@ -2839,7 +2845,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let mut final_env = env2;
 
                         // Preserve the environment of the contract in the resulting array.
-                        let contract = rt3.closurize(&mut self.cache, env3);
+                        let contract = rt3.closurize(&mut self.context.cache, env3);
                         RuntimeContract::push_dedup(
                             &mut attrs.pending_contracts,
                             &final_env,
@@ -2866,7 +2872,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: contract_env,
                     },
                     _,
-                ) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                ) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(3, String::from("contract/record_lazy_app"), pos_op)
                 })?;
 
@@ -2893,7 +2899,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 RichTerm::new(Term::Str(id.into()), id.pos)
                             )
                             .with_pos(pos)
-                            .closurize(&mut self.cache, contract_env.clone())
+                            .closurize(&mut self.context.cache, contract_env.clone())
                         };
 
                         for (id, field) in record_data.fields.iter_mut() {
@@ -2918,7 +2924,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // We want recursive occurrences of fields to pick this new value as
                         // well: hence, we need to recompute the fixpoint, which is done by
                         // `fixpoint::revert`.
-                        let reverted = super::fixpoint::revert(&mut self.cache, record_data);
+                        let reverted =
+                            super::fixpoint::revert(&mut self.context.cache, record_data);
 
                         Ok(Closure {
                             body: RichTerm::new(reverted, pos2),
@@ -2952,7 +2959,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // contains at least generated variables.
                 // As for serialization, we thus fully substitute all variables first.
                 let t1_subst = subst(
-                    &self.cache,
+                    &self.context.cache,
                     RichTerm {
                         term: t1,
                         pos: pos1,
@@ -3121,7 +3128,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
                         return Err(EvalError::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
-                            evaluated_arg: label.get_evaluated_arg(&self.cache),
+                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                             label,
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
@@ -3276,7 +3283,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match_sharedterm!(match (t1) {
                     Term::Lbl(lbl) => {
                         merge::merge(
-                            &mut self.cache,
+                            &mut self.context.cache,
                             RichTerm {
                                 term: t2,
                                 pos: pos2,
@@ -3361,7 +3368,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let mut r = r.clone();
 
                         let tail_closurized = RichTerm::from(Term::Record(tail.clone()))
-                            .closurize(&mut self.cache, env4);
+                            .closurize(&mut self.context.cache, env4);
                         let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
@@ -3426,7 +3433,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .sealed_tail
                         .and_then(|t| t.unseal(s).cloned())
                         .ok_or_else(|| EvalError::BlameError {
-                            evaluated_arg: l.get_evaluated_arg(&self.cache),
+                            evaluated_arg: l.get_evaluated_arg(&self.context.cache),
                             label: l.clone(),
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
@@ -4067,116 +4074,126 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::resolvers::DummyResolver;
-    use crate::error::NullReporter;
-    use crate::eval::cache::CacheImpl;
-    use crate::eval::Environment;
+    use crate::{
+        cache::resolvers::DummyResolver,
+        error::NullReporter,
+        eval::{cache::CacheImpl, Environment, VmContext},
+    };
+
+    // Initialize a VM with a default context
+    fn with_vm(test: impl FnOnce(VirtualMachine<'_, DummyResolver, CacheImpl>)) {
+        let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {});
+        let vm = VirtualMachine::new_empty_env(&mut vm_ctxt);
+        test(vm);
+    }
 
     #[test]
     fn ite_operation() {
-        let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, TermPos::None);
-        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
+        with_vm(|mut vm| {
+            let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, TermPos::None);
 
-        vm.stack
-            .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
-        vm.stack
-            .push_arg(Closure::atomic_closure(mk_term::integer(46)), TermPos::None);
+            vm.stack
+                .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
+            vm.stack
+                .push_arg(Closure::atomic_closure(mk_term::integer(46)), TermPos::None);
 
-        let mut clos = Closure {
-            body: Term::Bool(true).into(),
-            env: Environment::new(),
-        };
+            let mut clos = Closure {
+                body: Term::Bool(true).into(),
+                env: Environment::new(),
+            };
 
-        vm.stack.push_op_cont(cont, 0, TermPos::None);
+            vm.stack.push_op_cont(cont, 0, TermPos::None);
 
-        clos = vm.continuate_operation(clos).unwrap();
+            clos = vm.continuate_operation(clos).unwrap();
 
-        assert_eq!(
-            clos,
-            Closure {
-                body: mk_term::integer(46),
-                env: Environment::new()
-            }
-        );
-        assert_eq!(0, vm.stack.count_args());
+            assert_eq!(
+                clos,
+                Closure {
+                    body: mk_term::integer(46),
+                    env: Environment::new()
+                }
+            );
+            assert_eq!(0, vm.stack.count_args());
+        });
     }
 
     #[test]
     fn plus_first_term_operation() {
-        let cont = OperationCont::Op2First(
-            BinaryOp::Plus,
-            Closure {
-                body: mk_term::integer(6),
+        with_vm(|mut vm| {
+            let cont = OperationCont::Op2First(
+                BinaryOp::Plus,
+                Closure {
+                    body: mk_term::integer(6),
+                    env: Environment::new(),
+                },
+                TermPos::None,
+            );
+
+            let mut clos = Closure {
+                body: mk_term::integer(7),
                 env: Environment::new(),
-            },
-            TermPos::None,
-        );
+            };
 
-        let mut clos = Closure {
-            body: mk_term::integer(7),
-            env: Environment::new(),
-        };
-        let mut vm = VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
-        vm.stack.push_op_cont(cont, 0, TermPos::None);
+            vm.stack.push_op_cont(cont, 0, TermPos::None);
 
-        clos = vm.continuate_operation(clos).unwrap();
+            clos = vm.continuate_operation(clos).unwrap();
 
-        assert_eq!(
-            clos,
-            Closure {
-                body: mk_term::integer(6),
-                env: Environment::new()
-            }
-        );
+            assert_eq!(
+                clos,
+                Closure {
+                    body: mk_term::integer(6),
+                    env: Environment::new()
+                }
+            );
 
-        assert_eq!(1, vm.stack.count_conts());
-        assert_eq!(
-            (
-                OperationCont::Op2Second(
-                    BinaryOp::Plus,
-                    Closure {
-                        body: mk_term::integer(7),
-                        env: Environment::new(),
-                    },
-                    TermPos::None,
-                    TermPos::None,
+            assert_eq!(1, vm.stack.count_conts());
+            assert_eq!(
+                (
+                    OperationCont::Op2Second(
+                        BinaryOp::Plus,
+                        Closure {
+                            body: mk_term::integer(7),
+                            env: Environment::new(),
+                        },
+                        TermPos::None,
+                        TermPos::None,
+                    ),
+                    0,
+                    TermPos::None
                 ),
-                0,
-                TermPos::None
-            ),
-            vm.stack.pop_op_cont().expect("Condition already checked.")
-        );
+                vm.stack.pop_op_cont().expect("Condition already checked.")
+            );
+        });
     }
 
     #[test]
     fn plus_second_term_operation() {
-        let cont: OperationCont = OperationCont::Op2Second(
-            BinaryOp::Plus,
-            Closure {
-                body: mk_term::integer(7),
+        with_vm(|mut vm| {
+            let cont: OperationCont = OperationCont::Op2Second(
+                BinaryOp::Plus,
+                Closure {
+                    body: mk_term::integer(7),
+                    env: Environment::new(),
+                },
+                TermPos::None,
+                TermPos::None,
+            );
+
+            let mut clos = Closure {
+                body: mk_term::integer(6),
                 env: Environment::new(),
-            },
-            TermPos::None,
-            TermPos::None,
-        );
+            };
 
-        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {}, std::io::sink(), NullReporter {});
-        let mut clos = Closure {
-            body: mk_term::integer(6),
-            env: Environment::new(),
-        };
-        vm.stack.push_op_cont(cont, 0, TermPos::None);
+            vm.stack.push_op_cont(cont, 0, TermPos::None);
+            clos = vm.continuate_operation(clos).unwrap();
 
-        clos = vm.continuate_operation(clos).unwrap();
-
-        assert_eq!(
-            clos,
-            Closure {
-                body: mk_term::integer(13),
-                env: Environment::new()
-            }
-        );
+            assert_eq!(
+                clos,
+                Closure {
+                    body: mk_term::integer(13),
+                    env: Environment::new()
+                }
+            );
+        });
     }
 }

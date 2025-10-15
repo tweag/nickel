@@ -25,7 +25,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
-    eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
+    eval::{cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
@@ -230,8 +230,8 @@ pub enum ProgramContract {
 pub struct Program<EC: EvalCache> {
     /// The id of the program source in the file database.
     main_id: FileId,
-    /// The state of the Nickel virtual machine.
-    vm: VirtualMachine<CacheHub, EC>,
+    /// The context/persistent state of the Nickel virtual machine.
+    vm_ctxt: VmContext<CacheHub, EC>,
     /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
     /// override is imported in a separate in-memory source, for complete isolation (this way,
     /// overrides can't accidentally or intentionally capture other fields of the configuration).
@@ -297,10 +297,9 @@ impl<EC: EvalCache> Program<EC> {
             }
         };
 
-        let vm = VirtualMachine::new(cache, trace, reporter);
         Ok(Self {
             main_id,
-            vm,
+            vm_ctxt: VmContext::new(cache, trace, reporter),
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),
@@ -362,11 +361,9 @@ impl<EC: EvalCache> Program<EC> {
             format!("{merge_term}"),
         );
 
-        let vm = VirtualMachine::new(cache, trace, reporter);
-
         Ok(Self {
             main_id,
-            vm,
+            vm_ctxt: VmContext::new(cache, trace, reporter),
             overrides: Vec::new(),
             field: FieldPath::new(),
             contracts: Vec::new(),
@@ -445,7 +442,7 @@ impl<EC: EvalCache> Program<EC> {
         assignment: String,
         priority: MergePriority,
     ) -> Result<FieldOverride, ParseError> {
-        FieldOverride::parse(self.vm.import_resolver_mut(), assignment, priority)
+        FieldOverride::parse(&mut self.vm_ctxt.import_resolver, assignment, priority)
     }
 
     /// Parse a dot-separated field path of the form `path.to.field`.
@@ -453,7 +450,7 @@ impl<EC: EvalCache> Program<EC> {
     /// This method simply calls [FieldPath::parse] with the [crate::cache::CacheHub] of the current
     /// program.
     pub fn parse_field_path(&mut self, path: String) -> Result<FieldPath, ParseError> {
-        FieldPath::parse(self.vm.import_resolver_mut(), path)
+        FieldPath::parse(&mut self.vm_ctxt.import_resolver, path)
     }
 
     pub fn add_overrides(&mut self, overrides: impl IntoIterator<Item = FieldOverride>) {
@@ -482,8 +479,8 @@ impl<EC: EvalCache> Program<EC> {
                 let file_str = file.to_string_lossy().into_owned();
 
                 let file_id = self
-                    .vm
-                    .import_resolver_mut()
+                    .vm_ctxt
+                    .import_resolver
                     .sources
                     .add_file(file, InputFormat::Nickel)
                     .map_err(|err| {
@@ -506,21 +503,18 @@ impl<EC: EvalCache> Program<EC> {
     where
         PathBuf: From<P>,
     {
-        self.vm
-            .import_resolver_mut()
-            .sources
-            .add_import_paths(paths);
+        self.vm_ctxt.import_resolver.sources.add_import_paths(paths);
     }
 
     pub fn set_package_map(&mut self, map: PackageMap) {
-        self.vm.import_resolver_mut().sources.set_package_map(map)
+        self.vm_ctxt.import_resolver.sources.set_package_map(map)
     }
 
     /// Only parse the program (and any additional attached contracts), don't typecheck or
     /// evaluate. Returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
-        self.vm
-            .import_resolver_mut()
+        self.vm_ctxt
+            .import_resolver
             .parse_to_ast(self.main_id)
             .map_err(Error::ParseErrors)?;
 
@@ -528,8 +522,8 @@ impl<EC: EvalCache> Program<EC> {
             match source {
                 ProgramContract::Term(_) => (),
                 ProgramContract::Source(file_id) => {
-                    self.vm
-                        .import_resolver_mut()
+                    self.vm_ctxt
+                        .import_resolver
                         .parse_to_ast(*file_id)
                         .map_err(Error::ParseErrors)?;
                 }
@@ -537,8 +531,8 @@ impl<EC: EvalCache> Program<EC> {
         }
 
         Ok(self
-            .vm
-            .import_resolver()
+            .vm_ctxt
+            .import_resolver
             .terms
             .get_owned(self.main_id)
             .expect("File parsed and then immediately accessed doesn't exist"))
@@ -557,8 +551,8 @@ impl<EC: EvalCache> Program<EC> {
     where
         F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
     {
-        self.vm
-            .import_resolver_mut()
+        self.vm_ctxt
+            .import_resolver
             .custom_transform(self.main_id, transform_id, &mut transform)
     }
 
@@ -582,17 +576,17 @@ impl<EC: EvalCache> Program<EC> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
         let mut prepared_body = if self.overrides.is_empty() {
-            self.vm.prepare_eval(self.main_id)?
+            self.vm_ctxt.prepare_eval(self.main_id)?
         } else {
             let mut record = builder::Record::new();
 
             for ovd in self.overrides.iter().cloned() {
                 let value_file_id = self
-                    .vm
-                    .import_resolver_mut()
+                    .vm_ctxt
+                    .import_resolver
                     .sources
                     .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
-                let value_unparsed = self.vm.import_resolver().sources.source(value_file_id);
+                let value_unparsed = self.vm_ctxt.import_resolver.sources.source(value_file_id);
 
                 if let Some('@') = value_unparsed.chars().next() {
                     // We parse the sigil expression, which has the general form `@xxx/yyy:value` where
@@ -659,7 +653,7 @@ impl<EC: EvalCache> Program<EC> {
                         )),
                     }?;
                 } else {
-                    self.vm.prepare_eval(value_file_id)?;
+                    self.vm_ctxt.prepare_eval(value_file_id)?;
                     record = record
                         .path(ovd.path.0)
                         .priority(ovd.priority)
@@ -667,7 +661,7 @@ impl<EC: EvalCache> Program<EC> {
                 }
             }
 
-            let t = self.vm.prepare_eval(self.main_id)?;
+            let t = self.vm_ctxt.prepare_eval(self.main_id)?;
             let built_record = record.build();
             // For now, we can't do much better than using `Label::default`, but this is
             // hazardous. `Label::default` was originally written for tests, and although it
@@ -686,7 +680,7 @@ impl<EC: EvalCache> Program<EC> {
                 match contract {
                     ProgramContract::Term(contract) => Ok(contract.clone()),
                     ProgramContract::Source(file_id) => {
-                        let cache = self.vm.import_resolver_mut();
+                        let cache = &mut self.vm_ctxt.import_resolver;
                         cache.prepare(*file_id)?;
 
                         // unwrap(): we just prepared the file above, so it must be in the cache.
@@ -730,18 +724,22 @@ impl<EC: EvalCache> Program<EC> {
         let result = if for_query {
             prepared
         } else {
-            self.vm.extract_field_value_closure(prepared, &self.field)?
+            VirtualMachine::new(&mut self.vm_ctxt)
+                .extract_field_value_closure(prepared, &self.field)?
         };
 
         Ok(result)
     }
 
+    /// Creates an new VM instance borrowing from [Self::vm_ctxt].
+    fn new_vm(&mut self) -> VirtualMachine<'_, CacheHub, EC> {
+        VirtualMachine::new(&mut self.vm_ctxt)
+    }
+
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
-
-        self.vm.reset();
-        Ok(self.vm.eval_closure(prepared)?.body)
+        Ok(self.new_vm().eval_closure(prepared)?.body)
     }
 
     /// Evaluate a closure using the same virtual machine (and import resolver)
@@ -749,16 +747,14 @@ impl<EC: EvalCache> Program<EC> {
     /// evaluation, with imports resolved and any necessary transformations
     /// applied.
     pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
-        self.vm.reset();
-        Ok(self.vm.eval_closure(closure)?.body)
+        Ok(self.new_vm().eval_closure(closure)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        self.vm.reset();
-        Ok(self.vm.eval_full_closure(prepared)?.body)
+        Ok(self.new_vm().eval_full_closure(prepared)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -777,24 +773,21 @@ impl<EC: EvalCache> Program<EC> {
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        self.vm.reset();
-        Ok(self.vm.eval_full_for_export_closure(prepared)?)
+        Ok(self.new_vm().eval_full_for_export_closure(prepared)?)
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let prepared = self.prepare_eval()?;
 
-        self.vm.reset();
-        Ok(self.vm.eval_deep_closure(prepared)?)
+        Ok(self.new_vm().eval_deep_closure(prepared)?)
     }
 
     /// Same as `eval_closure`, but does a full evaluation and does not substitute all variables.
     ///
     /// (Or, same as `eval_deep` but takes a closure.)
     pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
-        self.vm.reset();
-        self.vm.eval_deep_closure(closure)
+        self.new_vm().eval_deep_closure(closure)
     }
 
     /// Prepare for evaluation, then fetch the metadata of `self.field`, or list the fields of the
@@ -802,7 +795,9 @@ impl<EC: EvalCache> Program<EC> {
     pub fn query(&mut self) -> Result<Field, Error> {
         let prepared = self.prepare_query()?;
 
-        Ok(self.vm.query_closure(prepared, &self.field)?)
+        // We have to inline `new_vm()` to get the borrow checker to understand that we can both
+        // borrow `vm_ctxt` mutably and `field` immutably at the same time.
+        Ok(VirtualMachine::new(&mut self.vm_ctxt).query_closure(prepared, &self.field)?)
     }
 
     /// Load, parse, and typecheck the program (together with additional contracts) and the
@@ -811,26 +806,26 @@ impl<EC: EvalCache> Program<EC> {
         // If the main file is known to not be Nickel, we don't bother parsing it into an AST
         // (`cache.typecheck()` will ignore it anyway)
         let is_nickel = matches!(
-            self.vm.import_resolver().input_format(self.main_id),
+            self.vm_ctxt.import_resolver.input_format(self.main_id),
             None | Some(InputFormat::Nickel)
         );
 
         if is_nickel {
-            self.vm.import_resolver_mut().parse_to_ast(self.main_id)?;
+            self.vm_ctxt.import_resolver.parse_to_ast(self.main_id)?;
         }
 
         for source in self.contracts.iter() {
             match source {
                 ProgramContract::Term(_) => (),
                 ProgramContract::Source(file_id) => {
-                    self.vm.import_resolver_mut().parse_to_ast(*file_id)?;
+                    self.vm_ctxt.import_resolver.parse_to_ast(*file_id)?;
                 }
             }
         }
 
-        self.vm.import_resolver_mut().load_stdlib()?;
-        self.vm
-            .import_resolver_mut()
+        self.vm_ctxt.import_resolver.load_stdlib()?;
+        self.vm_ctxt
+            .import_resolver
             .typecheck(self.main_id, initial_mode)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
@@ -840,8 +835,8 @@ impl<EC: EvalCache> Program<EC> {
             match source {
                 ProgramContract::Term(_) => (),
                 ProgramContract::Source(file_id) => {
-                    self.vm
-                        .import_resolver_mut()
+                    self.vm_ctxt
+                        .import_resolver
                         .typecheck(*file_id, initial_mode)
                         .map_err(|cache_err| {
                             cache_err.unwrap_error(
@@ -859,7 +854,7 @@ impl<EC: EvalCache> Program<EC> {
     /// done as part of the various `prepare_xxx` methods, but for some specific workflows (such as
     /// `nickel test`), compilation might need to be performed explicitly.
     pub fn compile(&mut self) -> Result<(), Error> {
-        let cache = self.vm.import_resolver_mut();
+        let cache = &mut self.vm_ctxt.import_resolver;
 
         cache.load_stdlib()?;
         cache.parse_to_ast(self.main_id)?;
@@ -976,19 +971,17 @@ impl<EC: EvalCache> Program<EC> {
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
         fn eval_contracts<EC: EvalCache>(
-            vm: &mut VirtualMachine<CacheHub, EC>,
+            vm_ctxt: &mut VmContext<CacheHub, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
             closurize: bool,
         ) -> Result<Vec<RuntimeContract>, Error> {
-            vm.reset();
-
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
                 // Note that contracts can't be referred to recursively, as they aren't binding
                 // anything. Only fields are. This is why we pass `None` for `self_idx`: there is
                 // no locking required here.
-                ctr.contract = eval_guarded(vm, rt, current_env.clone(), closurize)?;
+                ctr.contract = eval_guarded(vm_ctxt, rt, current_env.clone(), closurize)?;
             }
 
             Ok(pending_contracts)
@@ -997,13 +990,11 @@ impl<EC: EvalCache> Program<EC> {
         // Handles thunk locking (and unlocking upon errors) to detect infinite recursion, but
         // hands over the meat of the work to `do_eval`.
         fn eval_guarded<EC: EvalCache>(
-            vm: &mut VirtualMachine<CacheHub, EC>,
+            vm_ctxt: &mut VmContext<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
         ) -> Result<RichTerm, Error> {
-            vm.reset();
-
             let curr_thunk = term.as_ref().try_as_closure();
 
             if let Some(thunk) = curr_thunk.as_ref() {
@@ -1014,7 +1005,7 @@ impl<EC: EvalCache> Program<EC> {
                 }
             }
 
-            let result = do_eval(vm, term.clone(), env, closurize);
+            let result = do_eval(vm_ctxt, term.clone(), env, closurize);
 
             // Once we're done evaluating all the children, or if there was an error, we unlock the
             // current thunk
@@ -1043,12 +1034,12 @@ impl<EC: EvalCache> Program<EC> {
         // Evaluates the closure, and if it's a record, recursively evaluate its fields and their
         // contracts.
         fn do_eval<EC: EvalCache>(
-            vm: &mut VirtualMachine<CacheHub, EC>,
+            vm_ctxt: &mut VmContext<CacheHub, EC>,
             term: RichTerm,
             env: Environment,
             closurize: bool,
         ) -> Result<RichTerm, Error> {
-            let evaled = vm.eval_closure(Closure { body: term, env })?;
+            let evaled = VirtualMachine::new(vm_ctxt).eval_closure(Closure { body: term, env })?;
 
             match_sharedterm!(match (evaled.body.term) {
                 Term::Record(data) => {
@@ -1062,11 +1053,16 @@ impl<EC: EvalCache> Program<EC> {
                                     value: field
                                         .value
                                         .map(|value| {
-                                            eval_guarded(vm, value, evaled.env.clone(), closurize)
+                                            eval_guarded(
+                                                vm_ctxt,
+                                                value,
+                                                evaled.env.clone(),
+                                                closurize,
+                                            )
                                         })
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
-                                        vm,
+                                        vm_ctxt,
                                         field.pending_contracts,
                                         evaled.env.clone(),
                                         closurize,
@@ -1084,14 +1080,14 @@ impl<EC: EvalCache> Program<EC> {
                 }
                 _ =>
                     if closurize {
-                        Ok(evaled.body.closurize(&mut vm.cache, evaled.env))
+                        Ok(evaled.body.closurize(&mut vm_ctxt.cache, evaled.env))
                     } else {
                         Ok(evaled.body)
                     },
             })
         }
 
-        eval_guarded(&mut self.vm, prepared.body, prepared.env, closurize)
+        eval_guarded(&mut self.vm_ctxt, prepared.body, prepared.env, closurize)
     }
 
     /// Extract documentation from the program
@@ -1107,7 +1103,7 @@ impl<EC: EvalCache> Program<EC> {
 
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
-        self.vm.import_resolver_mut().skip_stdlib = true;
+        self.vm_ctxt.import_resolver.skip_stdlib = true;
     }
 
     pub fn pprint_ast(
@@ -1117,16 +1113,14 @@ impl<EC: EvalCache> Program<EC> {
     ) -> Result<(), Error> {
         use crate::{pretty::*, transform::transform};
 
-        let Program {
-            ref main_id, vm, ..
-        } = self;
         let allocator = Allocator::default();
 
         let ast_alloc = AstAlloc::new();
-        let ast = vm
-            .import_resolver()
+        let ast = self
+            .vm_ctxt
+            .import_resolver
             .sources
-            .parse_nickel(&ast_alloc, *main_id)?;
+            .parse_nickel(&ast_alloc, self.main_id)?;
         let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
         let rt = if apply_transforms {
             transform(rt, None).map_err(EvalError::from)?
@@ -1142,7 +1136,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Returns a copy of the program's current `Files` database. This doesn't actually clone the content of the source files, see [crate::files::Files].
     pub fn files(&self) -> Files {
-        self.vm.import_resolver().files().clone()
+        self.vm_ctxt.import_resolver.files().clone()
     }
 }
 

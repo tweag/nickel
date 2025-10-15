@@ -1,27 +1,41 @@
-use super::cache::CacheImpl;
-use super::*;
-use crate::cache::resolvers::{DummyResolver, SimpleResolver};
-use crate::error::{ImportError, NullReporter};
-use crate::files::Files;
-use crate::label::Label;
-use crate::parser::{grammar, lexer, ErrorTolerantParserCompat};
-use crate::term::make as mk_term;
-use crate::term::Number;
-use crate::term::{BinaryOp, StrChunk, UnaryOp};
-use crate::transform::import_resolution::strict::resolve_imports;
-use crate::{mk_app, mk_fun, mk_record};
+use super::{
+    cache::{Cache as _, CacheImpl},
+    *,
+};
+use crate::{
+    cache::resolvers::{DummyResolver, SimpleResolver},
+    error::{ImportError, NullReporter},
+    files::Files,
+    label::Label,
+    parser::{grammar, lexer, ErrorTolerantParserCompat},
+    term::make as mk_term,
+    term::Number,
+    term::{BinaryOp, StrChunk, UnaryOp},
+    transform::import_resolution::strict::resolve_imports,
+    {mk_app, mk_fun, mk_record},
+};
 use assert_matches::assert_matches;
+
+/// Generates a minimal VM context for test purpose.
+fn vm_ctxt() -> VmContext<DummyResolver, CacheImpl> {
+    VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {})
+}
+
+/// Creates an non-unwinding machine with an empty initial environment from a VM contex.
+fn new_no_unwind_vm<R: ImportResolver, C: cache::Cache>(
+    vm_ctxt: &mut VmContext<R, C>,
+) -> NoUnwindVirtualMachine<'_, R, C> {
+    NoUnwindVirtualMachine::new(VirtualMachine::new_empty_env(vm_ctxt))
+}
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink(), NullReporter {})
-        .eval(t)
-        .map(Term::from)
+    new_no_unwind_vm(&mut vm_ctxt()).eval(t).map(Term::from)
 }
 
 /// Fully evaluate a term without import support.
 fn eval_full_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink(), NullReporter {})
+    new_no_unwind_vm(&mut vm_ctxt())
         .eval_full(t)
         .map(Term::from)
 }
@@ -122,31 +136,29 @@ fn asking_for_various_types() {
 
 #[test]
 fn imports() {
-    let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink(), NullReporter {});
-    vm.import_resolver_mut()
-        .add_source(String::from("two"), String::from("1 + 1"));
-    vm.import_resolver_mut()
-        .add_source(String::from("lib"), String::from("{f = true}"));
-    vm.import_resolver_mut()
-        .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
-    vm.import_resolver_mut().add_source(
+    let mut import_resolver = SimpleResolver::new();
+
+    import_resolver.add_source(String::from("two"), String::from("1 + 1"));
+    import_resolver.add_source(String::from("lib"), String::from("{f = true}"));
+    import_resolver.add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
+    import_resolver.add_source(
         String::from("nested"),
         String::from("let x = import \"two\" as 'Nickel in x + 1"),
     );
-    vm.import_resolver_mut().add_source(
+    import_resolver.add_source(
         String::from("cycle"),
         String::from("let x = import \"cycle_b\" as 'Nickel in {a = 1, b = x.a}"),
     );
-    vm.import_resolver_mut().add_source(
+    import_resolver.add_source(
         String::from("cycle_b"),
         String::from("let x = import \"cycle\" as 'Nickel in {a = x.a}"),
     );
 
     fn mk_import<R>(
+        import_resolver: &mut R,
         var: &str,
         import: &str,
         body: RichTerm,
-        vm: &mut VirtualMachine<R, CacheImpl>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
@@ -157,44 +169,60 @@ fn imports() {
                 mk_term::import(import, crate::cache::InputFormat::Nickel),
                 body,
             ),
-            vm.import_resolver_mut(),
+            import_resolver,
         )
         .map(|resolve_result| resolve_result.transformed_term)
     }
 
     // let x = import "does_not_exist" in x
-    match mk_import("x", "does_not_exist", mk_term::var("x"), &mut vm).unwrap_err() {
+    match mk_import(
+        &mut import_resolver,
+        "x",
+        "does_not_exist",
+        mk_term::var("x"),
+    )
+    .unwrap_err()
+    {
         ImportError::IOError(_, _, _) => (),
         _ => panic!(),
     };
 
     // let x = import "bad" in x
-    match mk_import("x", "bad", mk_term::var("x"), &mut vm).unwrap_err() {
+    match mk_import(&mut import_resolver, "x", "bad", mk_term::var("x")).unwrap_err() {
         ImportError::ParseErrors(_, _) => (),
         _ => panic!(),
     };
 
     // let x = import "two" in x
-    let mk_import_two = mk_import("x", "two", mk_term::var("x"), &mut vm).unwrap();
-    vm.reset();
+    let mk_import_two = mk_import(&mut import_resolver, "x", "two", mk_term::var("x")).unwrap();
+
+    let mut vm_ctxt: VmContext<_, CacheImpl> =
+        VmContext::new(import_resolver, std::io::sink(), NullReporter {});
+
     assert_eq!(
-        vm.eval(mk_import_two).map(RichTerm::without_pos).unwrap(),
+        new_no_unwind_vm(&mut vm_ctxt)
+            .eval(mk_import_two)
+            .map(RichTerm::without_pos)
+            .unwrap(),
         mk_term::integer(2)
     );
 
     // let x = import "lib" in x.f
     let mk_import_lib = mk_import(
+        &mut vm_ctxt.import_resolver,
         "x",
         "lib",
         mk_term::op1(
             UnaryOp::RecordAccess(LocIdent::from("f")),
             mk_term::var("x"),
         ),
-        &mut vm,
     );
-    vm.reset();
+
     assert_eq!(
-        vm.eval(mk_import_lib.unwrap()).map(Term::from).unwrap(),
+        new_no_unwind_vm(&mut vm_ctxt)
+            .eval(mk_import_lib.unwrap())
+            .map(Term::from)
+            .unwrap(),
         Term::Bool(true)
     );
 }
@@ -272,45 +300,31 @@ fn initial_env() {
     );
 
     let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("x"));
+
+    let mut vm_ctxt: VmContext<_, CacheImpl> =
+        VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {});
+
+    let mut vm = NoUnwindVirtualMachine::new(
+        VirtualMachine::new_empty_env(&mut vm_ctxt).with_initial_env(initial_env.clone()),
+    );
+
     assert_eq!(
-        VirtualMachine::new_with_cache(
-            DummyResolver {},
-            eval_cache.clone(),
-            std::io::sink(),
-            NullReporter {}
-        )
-        .with_initial_env(initial_env.clone())
-        .eval(t)
-        .map(RichTerm::without_pos),
+        vm.eval(t).map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );
 
     let t = mk_term::let_one_in("x", mk_term::integer(2), mk_term::var("g"));
+
     assert_eq!(
-        VirtualMachine::new_with_cache(
-            DummyResolver {},
-            eval_cache.clone(),
-            std::io::sink(),
-            NullReporter {}
-        )
-        .with_initial_env(initial_env.clone())
-        .eval(t)
-        .map(RichTerm::without_pos),
+        vm.eval(t).map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
     );
 
     // Shadowing of the initial environment
     let t = mk_term::let_one_in("g", mk_term::integer(2), mk_term::var("g"));
+
     assert_eq!(
-        VirtualMachine::new_with_cache(
-            DummyResolver {},
-            eval_cache.clone(),
-            std::io::sink(),
-            NullReporter {}
-        )
-        .with_initial_env(initial_env.clone())
-        .eval(t)
-        .map(RichTerm::without_pos),
+        vm.eval(t).map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );
 }

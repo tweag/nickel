@@ -586,12 +586,13 @@ pub mod toml_deser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::resolvers::DummyResolver;
-    use crate::error::NullReporter;
-    use crate::eval::cache::CacheImpl;
-    use crate::eval::VirtualMachine;
-    use crate::program::Program;
-    use crate::term::{make as mk_term, BinaryOp};
+    use crate::{
+        cache::resolvers::DummyResolver,
+        error::NullReporter,
+        eval::{cache::CacheImpl, VirtualMachine, VmContext},
+        program::Program,
+        term::{make as mk_term, BinaryOp},
+    };
     use serde_json::json;
     use std::io::Cursor;
 
@@ -617,16 +618,14 @@ mod tests {
 
     #[track_caller]
     fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
+        let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::stderr(), NullReporter {});
+
         assert_eq!(
-            VirtualMachine::<_, CacheImpl>::new(
-                DummyResolver {},
-                std::io::stderr(),
-                NullReporter {}
-            )
-            .eval(mk_term::op2(BinaryOp::Eq, term, expected))
-            .map(Term::from),
+            VirtualMachine::<_, CacheImpl>::new_empty_env(&mut vm_ctxt)
+                .eval(mk_term::op2(BinaryOp::Eq, term, expected))
+                .map(Term::from),
             Ok(Term::Bool(true))
-        )
+        );
     }
 
     #[track_caller]
