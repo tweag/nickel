@@ -236,8 +236,12 @@ impl World {
     }
 
     /// Returns all of the diagnostics encountered during parsing.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `file_id` is invalid.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
-        let errs = match self.file_format(file_id).unwrap_or_default() {
+        let errs = match self.file_format(file_id).unwrap() {
             InputFormat::Nickel => {
                 let mut errs = nickel_lang_core::error::ParseErrors::default();
                 self.analysis_reg
@@ -1643,7 +1647,7 @@ mod tests {
 
         std::fs::write(
             dir.path().join(crate::contracts::CONFIG_FILE_NAME),
-            r#"{ "*.yaml" = { contract_path = "C.ncl" } }"#,
+            r#"[{ glob = "*.yaml", contract_path = "C.ncl" }]"#,
         )
         .unwrap();
 

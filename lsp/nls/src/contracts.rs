@@ -1,6 +1,5 @@
 //! Configuration for the Nickel Language Server
 use lsp_types::Url;
-use nickel_lang_core::term::IndexMap;
 use notify_debouncer_full::{
     notify::{EventKind, RecommendedWatcher, RecursiveMode},
     DebouncedEvent, Debouncer, RecommendedCache,
@@ -21,53 +20,46 @@ pub const CONFIG_FILE_NAME: &str = "Nls-contracts.ncl";
 /// Contract configuration for nls.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ContractConfig {
+    /// Which set of files should this contract be applied to?
+    pub glob: glob::Pattern,
     pub contract_path: PathBuf,
 }
 
 /// Contract configuration for nls.
 #[derive(Debug, Deserialize)]
 pub struct ContractConfigFormat {
+    /// Which set of files should this contract be applied to?
+    glob: String,
     /// This can be a relative or absolute path. If relative, it's relative to
     /// the local config file that this belongs to.
     contract_path: PathBuf,
 }
 
 impl ContractConfigFormat {
-    fn relative_to(self, parent_path: &Path) -> ContractConfig {
-        ContractConfig {
+    fn relative_to(self, parent_path: &Path) -> Result<ContractConfig, glob::PatternError> {
+        Ok(ContractConfig {
+            glob: self.glob.parse()?,
             contract_path: parent_path.join(self.contract_path),
-        }
+        })
     }
 }
 
 /// A collection of file-local nls configurations, provided by a single
 /// config file.
 ///
-/// When we find a config file (called `nls.ncl`) in the filesystem,
+/// When we find a config file (named [`CONFIG_FILE_NAME`]) in the filesystem,
 /// we look inside for a "glob -> config" mapping, and apply the
 /// provided config to every file matching the glob.
-///
-/// For example, if you have a directory containing `nls.ncl` and
-/// `foo.ncl`, and `nls.ncl` has contents
-///
-/// ```ncl
-/// {
-///   "*o.ncl" = { eval_config.eval_limits.timeout = "10 seconds" }
-/// }
-/// ```
-///
-/// then the background eval job for `foo.ncl` will have an evalution
-/// timeout of 10 seconds.
 #[derive(Debug, Default, PartialEq)]
 pub struct LocalConfig {
-    globs: IndexMap<glob::Pattern, ContractConfig>,
+    globs: Vec<ContractConfig>,
 }
 
 /// The serialization format for [`LocalConfig`].
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
 struct LocalConfigFormat {
-    globs: IndexMap<String, ContractConfigFormat>,
+    globs: Vec<ContractConfigFormat>,
 }
 
 impl LocalConfigFormat {
@@ -76,7 +68,7 @@ impl LocalConfigFormat {
             globs: self
                 .globs
                 .into_iter()
-                .map(|(glob, config)| Ok((glob.parse()?, config.relative_to(parent_path))))
+                .map(|cfg| cfg.relative_to(parent_path))
                 .collect::<Result<_, glob::PatternError>>()?,
         })
     }
@@ -113,9 +105,9 @@ impl LocalConfigs {
         let mut cur = path.as_path();
         while let Some(parent) = cur.parent() {
             if let Some(nls_conf) = self.configs.get(parent) {
-                for (glob, config) in &nls_conf.globs {
+                for config in &nls_conf.globs {
                     if let Ok(relative) = path.strip_prefix(parent) {
-                        if glob.matches_path(relative) {
+                        if config.glob.matches_path(relative) {
                             return Some(config.clone());
                         }
                     }
@@ -272,15 +264,15 @@ mod tests {
 
     #[test]
     fn read_local_config() {
-        let empty = from_str("{}");
+        let empty = from_str("[]");
         assert_eq!(empty, LocalConfig::default());
 
         let single_entry_with_setting =
-            from_str(r#"{ "**/*.yaml" = { contract_path = "C.ncl" } }"#);
+            from_str(r#"[ { glob = "**/*.yaml", contract_path = "C.ncl" } ]"#);
         assert_eq!(
             &single_entry_with_setting
                 .globs
-                .into_values()
+                .into_iter()
                 .next()
                 .unwrap()
                 .contract_path,

@@ -17,6 +17,8 @@ fn location_to_position(
     byte_index: usize,
 ) -> Result<LspPosition, Error> {
     if column > line_str.len() {
+        // Be permissive with the column index. For example, serde_json
+        // sometimes gives its error position as one past the end of the file.
         column = line_str.len();
     }
     if !line_str.is_char_boundary(column) {
