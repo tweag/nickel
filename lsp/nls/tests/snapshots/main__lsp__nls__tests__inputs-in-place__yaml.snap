@@ -1,0 +1,19 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+lsp/nls/tests/inputs-in-place/yaml/Nls-contracts.ncl:
+
+[]
+lsp/nls/tests/inputs-in-place/yaml/contract.ncl:
+
+[]
+lsp/nls/tests/inputs-in-place/yaml/fail.yaml:
+
+[0:5-0:6: "contract broken by the value of `foo`", 0:5-0:6: "applied to this expression"]
+lsp/nls/tests/inputs-in-place/yaml/no-contract.yml:
+
+[]
+lsp/nls/tests/inputs-in-place/yaml/pass.yaml:
+
+[]

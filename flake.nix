@@ -177,6 +177,7 @@
           importsFilter = mkFilter ".*/core/tests/integration/inputs/imports/imported/.*$";
           testsInputsFilter = mkFilter ".*/cli/tests/integration/inputs/.*$";
           cliTestsImportsFilter = mkFilter ".*/cli/tests/snapshot/imports/.*$";
+          nlsTestsInputsFilter = mkFilter ".*/lsp/nls/tests/.*$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -196,6 +197,7 @@
               importsFilter
               testsInputsFilter
               cliTestsImportsFilter
+              nlsTestsInputsFilter
             ];
         };
 

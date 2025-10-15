@@ -24,6 +24,7 @@ use serde::Deserialize;
 /// The test is executed by loading the files into the language server and then
 /// executing the requests one-by-one. The responses are printed and compared
 /// against a reference response.
+#[derive(Default)]
 pub struct TestFixture {
     pub files: Vec<TestFile>,
     pub reqs: Vec<Request>,

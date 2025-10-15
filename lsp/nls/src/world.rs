@@ -336,7 +336,6 @@ impl World {
         let Some(cfg) = self.contract_configs.config_for(uri) else {
             return Ok(());
         };
-        dbg!(&cfg);
 
         let Some(contract_id) = self
             .sources
