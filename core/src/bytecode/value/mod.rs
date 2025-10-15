@@ -17,12 +17,14 @@ use crate::{
         ForeignIdPayload, Number, RuntimeContract, SealingKey, Term, record::RecordData,
         string::NickelString,
     },
+    traverse::{Traverse as _, TraverseOrder},
     typ::Type,
 };
 use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
     cmp::max,
+    convert::Infallible,
     marker::PhantomData,
     mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
@@ -464,25 +466,36 @@ impl NickelValue {
     }
 
     /// Allocates a new enum variant value.
-    pub fn enum_variant(tag: LocIdent, arg: Option<NickelValue>, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(EnumVariantBody { tag, arg }, pos_idx).into()
+    pub fn enum_variant(
+        tag: impl Into<LocIdent>,
+        arg: Option<NickelValue>,
+        pos_idx: PosIdx,
+    ) -> Self {
+        ValueBlockRc::encode(
+            EnumVariantBody {
+                tag: tag.into(),
+                arg,
+            },
+            pos_idx,
+        )
+        .into()
     }
 
     /// Allocates a new enum variant value without any position set. Equivalent to
     /// `Self::enum_variant(tag, arg, PosIdx::NONE)`.
-    pub fn enum_variant_posless(tag: LocIdent, arg: Option<NickelValue>) -> Self {
-        Self::enum_variant(tag, arg, PosIdx::NONE)
+    pub fn enum_variant_posless(tag: impl Into<LocIdent>, arg: Option<NickelValue>) -> Self {
+        Self::enum_variant(tag.into(), arg, PosIdx::NONE)
     }
 
     /// Allocates a new enum tag value. Same as `Self::enum_variant(tag, None, pos_idx)`.
-    pub fn enum_tag(tag: LocIdent, pos_idx: PosIdx) -> Self {
-        Self::enum_variant(tag, None, pos_idx)
+    pub fn enum_tag(tag: impl Into<LocIdent>, pos_idx: PosIdx) -> Self {
+        Self::enum_variant(tag.into(), None, pos_idx)
     }
 
     /// Allocates a new enum tag value without any position set. Equivalent to `Self::enum_tag(tag,
     /// arg, PosIdx::NONE)`.
-    pub fn enum_tag_posless(tag: LocIdent) -> Self {
-        Self::enum_tag(tag, PosIdx::NONE)
+    pub fn enum_tag_posless(tag: impl Into<LocIdent>) -> Self {
+        Self::enum_tag(tag.into(), PosIdx::NONE)
     }
 
     /// Allocates a new foreign ID value.
@@ -601,6 +614,12 @@ impl NickelValue {
     /// Returns a reference to the inner type stored in this value if `self` is a value with a type
     /// inside, or `None` otherwise.
     pub fn as_type(&self) -> Option<&TypeBody> {
+        self.as_value_body()
+    }
+
+    /// Returns a reference to the inner foreign id stored in this value if `self` is a value
+    /// block with a foreign value inside, or `None` otherwise.
+    pub fn as_foreign_id(&self) -> Option<&ForeignIdBody> {
         self.as_value_body()
     }
 
@@ -1132,6 +1151,31 @@ impl NickelValue {
     /// Returns the position associated to this value.
     pub fn pos(&self, table: &PosTable) -> TermPos {
         table.get(self.pos_idx())
+    }
+
+    /// Returns the same value with all the positions (recursively) cleared (set to
+    /// [crate::position::PosIdx::NONE]).
+    ///
+    /// This is currently only used in test code, but because it's used from integration
+    /// tests we cannot hide it behind `#[cfg(test)]`.
+    pub fn without_pos(self) -> Self {
+        self.traverse(
+            &mut |t: Type| {
+                Ok::<_, Infallible>(Type {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse(
+            &mut |val: NickelValue| {
+                Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE))
+            },
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
     }
 }
 

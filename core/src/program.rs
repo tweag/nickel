@@ -1478,11 +1478,10 @@ mod doc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{EvalError, NullReporter};
-    use crate::eval::cache::CacheImpl;
-    use crate::identifier::LocIdent;
-    use crate::position::TermPos;
-    use crate::term::array::ArrayAttrs;
+    use crate::{
+        error::NullReporter,
+        eval::cache::CacheImpl,
+    };
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
@@ -1492,10 +1491,10 @@ mod tests {
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError::Other(
-                        format!("IO error: {io_err}"),
-                        TermPos::None,
-                    ))
+                    Error::EvalError(EvalError {
+                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                        ctxt: Default::default(),
+                    })
                 },
             )?;
         p.eval_full()
@@ -1507,10 +1506,10 @@ mod tests {
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError::Other(
-                        format!("IO error: {io_err}"),
-                        TermPos::None,
-                    ))
+                    Error::EvalError(EvalError {
+                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                        ctxt: Default::default(),
+                    })
                 },
             )?;
         p.typecheck(TypecheckMode::Walk)
@@ -1520,7 +1519,7 @@ mod tests {
     fn evaluation_full() {
         use crate::{
             mk_array, mk_record,
-            term::{Term, make as mk_term},
+            term::make as mk_term,
         };
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
@@ -1528,7 +1527,7 @@ mod tests {
         // [2, "ab", [1, [3]]]
         let expd = mk_array!(
             mk_term::integer(2),
-            NickelValue::string_poslelss("ab"),
+            NickelValue::string_posless("ab"),
             mk_array!(mk_term::integer(1), mk_array!(mk_term::integer(3)))
         );
 

@@ -23,17 +23,17 @@ use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use nickel_lang_core::{
+    bytecode::value::{self, NickelValue},
     deserialize::RustDeserializationError as DeserializationError,
-    error::{report::DiagnosticsWrapper, IntoDiagnostics, NullReporter},
-    eval::{cache::CacheImpl, Closure, Environment},
+    error::{IntoDiagnostics, NullReporter, report::DiagnosticsWrapper},
+    eval::{Closure, Environment, cache::CacheImpl},
     files::Files,
     identifier::{Ident, LocIdent},
     program::Program,
-    serialize::{to_string, validate, ExportFormat},
+    serialize::{ExportFormat, to_string, validate},
     term::{
         self,
         record::{Field, RecordData},
-        RichTerm, Term,
     },
 };
 
@@ -218,7 +218,7 @@ impl Context {
             files: program.files(),
         })?;
 
-        Ok(Expr { rt })
+        Ok(Expr { value: rt })
     }
 
     /// Evaluate a Nickel program deeply, returning the resulting expression.
@@ -238,7 +238,7 @@ impl Context {
             files: program.files(),
         })?;
 
-        Ok(Expr { rt })
+        Ok(Expr { value: rt })
     }
 
     /// Evaluate a Nickel program to weak head normal form (WHNF).
@@ -263,7 +263,7 @@ impl Context {
             files: program.files(),
         })?;
 
-        Ok((VirtualMachine { program }, Expr { rt }))
+        Ok((VirtualMachine { program }, Expr { value: rt }))
     }
 }
 
@@ -290,16 +290,16 @@ impl VirtualMachine {
         // public API for making an `Expr` with an unclosurized term.
         // But Program::eval_closure wants an explicit Closure.
         let clos = Closure {
-            body: expr.rt,
+            value: expr.value,
             env: Environment::new(),
         };
 
-        let rt = self.program.eval_closure(clos).map_err(|error| Error {
+        let value = self.program.eval_closure(clos).map_err(|error| Error {
             error: Box::new(error.into()),
             files: self.program.files(),
         })?;
 
-        Ok(Expr { rt })
+        Ok(Expr { value })
     }
 }
 
@@ -309,7 +309,7 @@ impl VirtualMachine {
 /// or might have unevaluated sub-expressions (if you got it from [`Context::eval_shallow`]).
 #[derive(Clone)]
 pub struct Expr {
-    rt: RichTerm,
+    value: NickelValue,
 }
 
 /// A Nickel record.
@@ -332,12 +332,12 @@ pub struct RecordIter<'a> {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Array<'a> {
-    array: &'a term::array::Array,
+    array: &'a value::Array,
 }
 
 /// An iterator over elements in an [`Array`].
 pub struct ArrayIter<'a> {
-    inner: <&'a nickel_lang_core::term::array::Array as IntoIterator>::IntoIter,
+    inner: <&'a value::Array as IntoIterator>::IntoIter,
 }
 
 /// A Nickel number.
@@ -345,7 +345,7 @@ pub struct ArrayIter<'a> {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Number<'a> {
-    num: &'a nickel_lang_core::term::Number,
+    num: &'a term::Number,
 }
 
 /// Metadata attached to a record field.
@@ -368,8 +368,8 @@ pub enum MergePriority<'a> {
 
 impl Expr {
     fn export(&self, format: ExportFormat) -> Result<String, Error> {
-        validate(format, &self.rt)?;
-        Ok(to_string(format, &self.rt)?)
+        validate(format, &self.value)?;
+        Ok(to_string(format, &self.value)?)
     }
 
     /// Convert this expression to JSON.
@@ -401,15 +401,12 @@ impl Expr {
 
     /// Is this expression the "null" value?
     pub fn is_null(&self) -> bool {
-        matches!(self.rt.as_ref(), Term::Null)
+        self.value.is_null()
     }
 
     /// Get the boolean value of this expression, if it is a boolean.
     pub fn as_bool(&self) -> Option<bool> {
-        match self.rt.as_ref() {
-            Term::Bool(b) => Some(*b),
-            _ => None,
-        }
+        self.value.as_bool()
     }
 
     /// Is this expression a boolean?
@@ -418,34 +415,28 @@ impl Expr {
     }
 
     /// Is this expression a number?
-    pub fn is_num(&self) -> bool {
-        matches!(self.rt.as_ref(), Term::Num(_))
+    pub fn is_number(&self) -> bool {
+        self.as_number().is_some()
     }
 
-    /// Is this expression a number?
-    pub fn as_num(&self) -> Option<Number<'_>> {
-        match self.rt.as_ref() {
-            Term::Num(num) => Some(Number { num }),
-            _ => None,
-        }
+    /// Get the number value of this expression, if it is a number.
+    pub fn as_number(&self) -> Option<Number<'_>> {
+        self.value.as_number().map(|num| Number { num: &num.0 })
     }
 
     /// If this expression is an integer within the range of an `i64`, return it.
     pub fn as_i64(&self) -> Option<i64> {
-        self.as_num().and_then(|n| n.as_i64())
+        self.as_number().and_then(|n| n.as_i64())
     }
 
     /// If this expression is a number, round it to an `f64` and return it.
     pub fn as_f64(&self) -> Option<f64> {
-        self.as_num().map(|n| n.as_f64())
+        self.as_number().map(|n| n.as_f64())
     }
 
     /// If this expression is a string, return it.
     pub fn as_str(&self) -> Option<&str> {
-        match self.rt.as_ref() {
-            Term::Str(s) => Some(s),
-            _ => None,
-        }
+        self.value.as_string().map(|s| s.0.as_str())
     }
 
     /// Is this expression a string?
@@ -455,10 +446,7 @@ impl Expr {
 
     /// If this expression is an enum tag, return it.
     pub fn as_enum_tag(&self) -> Option<&str> {
-        match self.rt.as_ref() {
-            Term::Enum(tag) => Some(tag.label()),
-            _ => None,
-        }
+        self.value.as_enum_tag().map(|tag| tag.label())
     }
 
     /// Is this expression an enum tag?
@@ -468,17 +456,19 @@ impl Expr {
 
     /// If this expression is an enum variant, return its tag and its payload.
     pub fn as_enum_variant(&self) -> Option<(&str, Expr)> {
-        match self.rt.as_ref() {
-            Term::EnumVariant { tag, arg, attrs: _ } => {
-                Some((tag.label(), Expr { rt: arg.clone() }))
-            }
-            _ => None,
-        }
+        self.value.as_enum_variant().and_then(|enum_var| {
+            Some((
+                enum_var.tag.label(),
+                Expr {
+                    value: enum_var.arg.as_ref()?.clone(),
+                },
+            ))
+        })
     }
 
     /// Is this expression an enum variant?
     pub fn is_enum_variant(&self) -> bool {
-        matches!(self.rt.as_ref(), Term::EnumVariant { .. })
+        self.as_enum_variant().is_some()
     }
 
     /// Is this expression a record?
@@ -491,10 +481,9 @@ impl Expr {
     /// The returned record handle can be used to access the
     /// record's elements.
     pub fn as_record(&self) -> Option<Record<'_>> {
-        match self.rt.as_ref() {
-            Term::Record(data) => Some(Record { data }),
-            _ => None,
-        }
+        self.value
+            .as_record()
+            .map(|record| Record { data: &record.0 })
     }
 
     /// If this expression is an array, return a handle to it.
@@ -502,10 +491,9 @@ impl Expr {
     /// The returned array handle can be used to access the
     /// array's elements.
     pub fn as_array(&self) -> Option<Array<'_>> {
-        match self.rt.as_ref() {
-            Term::Array(array, _) => Some(Array { array }),
-            _ => None,
-        }
+        self.value.as_array().map(|array| Array {
+            array: &array.array,
+        })
     }
 
     /// Is this expression an array?
@@ -521,11 +509,7 @@ impl Expr {
     /// and you can use the [`VirtualMachine`] you got from `eval_shallow` to
     /// evaluate this expression further.
     pub fn is_value(&self) -> bool {
-        // The term here should always be closurized, because the only public way to
-        // construct an Expr is via evaluation. Therefore we do not check is_eff_whnf,
-        // which doesn't do what we want with with `eval_deep` because `subst` resets
-        // the `closurized` property.
-        self.rt.as_ref().is_whnf()
+        self.value.is_whnf()
     }
 
     /// Converts this expression into any type that implements `serde::Deserialize`.
@@ -548,7 +532,7 @@ impl Expr {
     /// assert_eq!(p.x, 1.0);
     /// ```
     pub fn to_serde<'de, T: serde::Deserialize<'de>>(&self) -> Result<T, DeserializationError> {
-        T::deserialize(self.rt.clone())
+        T::deserialize(self.value.clone())
     }
 }
 
@@ -569,7 +553,7 @@ impl Record<'_> {
             .fields
             .get(&Ident::new(key))
             .and_then(|fld| fld.value.as_ref())
-            .map(|rt| Expr { rt: rt.clone() })
+            .map(|rt| Expr { value: rt.clone() })
     }
 
     /// Return the field name and value at the given index.
@@ -581,7 +565,7 @@ impl Record<'_> {
         self.data.fields.get_index(idx).map(|(key, fld)| {
             (
                 key.label(),
-                fld.value.as_ref().map(|rt| Expr { rt: rt.clone() }),
+                fld.value.as_ref().map(|rt| Expr { value: rt.clone() }),
             )
         })
     }
@@ -610,7 +594,7 @@ impl<'a> Iterator for RecordIter<'a> {
         self.inner.next().map(|(k, v)| {
             (
                 k.label(),
-                v.value.as_ref().map(|rt| Expr { rt: rt.clone() }),
+                v.value.as_ref().map(|rt| Expr { value: rt.clone() }),
             )
         })
     }
@@ -629,7 +613,7 @@ impl Array<'_> {
 
     /// Returns the element at the requested index, if the index is in-bounds.
     pub fn get(&self, idx: usize) -> Option<Expr> {
-        self.array.get(idx).map(|rt| Expr { rt: rt.clone() })
+        self.array.get(idx).map(|rt| Expr { value: rt.clone() })
     }
 
     /// Returns an iterator over the elements of this array.
@@ -653,7 +637,7 @@ impl<'a> Iterator for ArrayIter<'a> {
     type Item = Expr;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|rt| Expr { rt: rt.clone() })
+        self.inner.next().map(|rt| Expr { value: rt.clone() })
     }
 }
 

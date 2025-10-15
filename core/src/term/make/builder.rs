@@ -9,7 +9,7 @@
 //!     .priority(MergePriority::Bottom)
 //!     .doc("foo?")
 //!     .not_exported()
-//!     .value(Term::Str("foo".into()));
+//!     .value(NickelValue::string_posless("foo"));
 //! let t : NickelValue = b
 //!     .field("bar")
 //!     .value(Term::Num(42.into()))
@@ -24,9 +24,9 @@ use crate::{
     identifier::{Ident, LocIdent},
     label::Label,
     term::{
+        BinaryOp, LabeledType, MergePriority,
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, MergePriority,
     },
     typ::Type,
 };
@@ -382,20 +382,16 @@ mod tests {
 
     use super::*;
 
-    fn term(t: Term) -> record::Field {
-        record::Field::from(NickelValue::from(t))
-    }
-
     #[test]
     fn trivial() {
         let t: NickelValue = Record::new()
             .field("foo")
-            .value(Term::Str("bar".into()))
+            .value(NickelValue::string_posless("bar"))
             .into();
         assert_eq!(
             t,
             build_record(
-                vec![("foo".into(), term(Term::Str("bar".to_owned().into())))],
+                vec![("foo".into(), NickelValue::string_posless("bar").into())],
                 Default::default()
             )
             .into()
@@ -405,16 +401,16 @@ mod tests {
     #[test]
     fn from_iter() {
         let t: NickelValue = Record::from([
-            Field::name("foo").value(Term::Null),
-            Field::name("bar").value(Term::Null),
+            Field::name("foo").value(NickelValue::null()),
+            Field::name("bar").value(NickelValue::null()),
         ])
         .into();
         assert_eq!(
             t,
             build_record(
                 vec![
-                    ("foo".into(), term(Term::Null)),
-                    ("bar".into(), term(Term::Null)),
+                    ("foo".into(), NickelValue::null().into()),
+                    ("bar".into(), NickelValue::null().into()),
                 ],
                 Default::default()
             )
@@ -460,16 +456,16 @@ mod tests {
     fn fields() {
         let t: NickelValue = Record::new()
             .fields([
-                Field::name("foo").value(Term::Str("foo".into())),
-                Field::name("bar").value(Term::Str("bar".into())),
+                Field::name("foo").value(NickelValue::string_posless("foo")),
+                Field::name("bar").value(NickelValue::string_posless("bar")),
             ])
             .into();
         assert_eq!(
             t,
             build_record(
                 vec![
-                    ("foo".into(), term(Term::Str("foo".into()))),
-                    ("bar".into(), term(Term::Str("bar".into()))),
+                    ("foo".into(), NickelValue::string_posless("foo").into()),
+                    ("bar".into(), NickelValue::string_posless("bar").into()),
                 ],
                 Default::default()
             )
@@ -512,29 +508,29 @@ mod tests {
 
     #[test]
     fn overriding() {
-        let t: NickelValue = Record::new()
+        let v: NickelValue = Record::new()
             .path(vec!["terraform", "required_providers"])
             .value(Record::from([
-                Field::name("foo").value(Term::Null),
-                Field::name("bar").value(Term::Null),
+                Field::name("foo").value(NickelValue::null()),
+                Field::name("bar").value(NickelValue::null()),
             ]))
             .path(vec!["terraform", "required_providers", "foo"])
-            .value(Term::Str("hello world!".into()))
+            .value(NickelValue::string_posless("hello world!"))
             .into();
-        eprintln!("{t:?}");
         assert_eq!(
-            t,
+            v,
             build_record(
                 vec![
                     elaborate_field_path(
                         vec!["terraform".into(), "required_providers".into()],
-                        term(build_record(
+                        build_record(
                             vec![
-                                ("foo".into(), term(Term::Null)),
-                                ("bar".into(), term(Term::Null))
+                                ("foo".into(), NickelValue::null().into()),
+                                ("bar".into(), NickelValue::null().into())
                             ],
                             Default::default()
-                        ))
+                        )
+                        .into()
                     ),
                     elaborate_field_path(
                         vec![
@@ -542,8 +538,8 @@ mod tests {
                             "required_providers".into(),
                             "foo".into(),
                         ],
-                        term(Term::Str("hello world!".into()))
-                    )
+                        NickelValue::string_posless("hello world!").into()
+                    ),
                 ],
                 Default::default()
             )

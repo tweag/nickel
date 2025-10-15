@@ -2,13 +2,15 @@ use std::{fs::File, io::read_to_string, iter::once};
 
 use codespan_reporting::term::termcolor::NoColor;
 use comrak::{
+    ComrakOptions,
     arena_tree::{Node, NodeEdge},
     nodes::{Ast, AstNode, NodeCodeBlock, NodeValue},
-    parse_document, ComrakOptions,
+    parse_document,
 };
 use nickel_lang_core::{
     error,
     eval::cache::CacheImpl,
+    position::PosTable,
     repl::{EvalResult, Repl, ReplImpl},
 };
 use nickel_lang_utils::{project_root::project_root, test_program};
@@ -138,7 +140,7 @@ fn check_error_report(actual: impl AsRef<str>, expected: MessageExpectation) {
 }
 
 fn check_repl(content: String) {
-    use error::report::{report_with, ErrorFormat};
+    use error::report::{ErrorFormat, report_with};
 
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::sink());
     repl.load_stdlib().unwrap();
@@ -176,7 +178,7 @@ fn check_eval(program: String) {
 
 fn check_parse(program: String) {
     eprintln!("{program}"); // Print the program to stderr to make tracking test failures easier
-    test_program::parse(&program).unwrap();
+    test_program::parse(&mut PosTable::new(), &program).unwrap();
 }
 
 impl CodeBlock {

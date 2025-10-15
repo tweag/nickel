@@ -313,7 +313,7 @@ impl CompilePart for ConstantPatternData {
             let type_matches = make::op2(
                 BinaryOp::Eq,
                 make::op1(UnaryOp::Typeof, Term::Var(value_id)),
-                NickelValue::enum_variant_posless(nickel_type.into(), None),
+                NickelValue::enum_variant_posless(nickel_type, None),
             );
 
             // value_id == <value>
@@ -594,7 +594,7 @@ impl CompilePart for RecordPattern {
         let is_record: NickelValue = make::op2(
             BinaryOp::Eq,
             make::op1(UnaryOp::Typeof, Term::Var(value_id)),
-            NickelValue::enum_variant_posless("Record".into(), None),
+            NickelValue::enum_variant_posless("Record", None),
         );
 
         let final_bindings_id = LocIdent::fresh();
@@ -784,7 +784,7 @@ impl CompilePart for ArrayPattern {
         let is_array: NickelValue = make::op2(
             BinaryOp::Eq,
             make::op1(UnaryOp::Typeof, Term::Var(value_id)),
-            NickelValue::enum_variant_posless("Array".into(), None),
+            NickelValue::enum_variant_posless("Array", None),
         );
 
         let comp_op = if self.is_open() {
@@ -907,7 +907,7 @@ impl CompilePart for EnumPattern {
             let is_enum = make::op2(
                 BinaryOp::Eq,
                 make::op1(UnaryOp::Typeof, Term::Var(value_id)),
-                NickelValue::enum_variant_posless("Enum".into(), None),
+                NickelValue::enum_variant_posless("Enum", None),
             );
 
             // !(%enum/is_variant% value_id)
