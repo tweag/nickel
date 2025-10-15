@@ -122,7 +122,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
     }
 }
 
-/// The context of the Nickel virtual machine. The context stores external state might need to
+/// The context of the Nickel virtual machine. The context stores external state that might need to
 /// outlive one VM instance. The virtual machine typically borrows the context mutably.
 pub struct VmContext<R: ImportResolver, C: Cache> {
     /// The interface used to resolve and fetch imports.
