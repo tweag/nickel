@@ -1,12 +1,12 @@
 use libtest_mimic::{Arguments, Trial};
-use std::{
-    path::Path,
-    process::{Command, ExitCode},
-    sync::Arc,
-};
-use util::publish_package;
+use std::{path::Path, process::ExitCode, sync::Arc};
+use util::{set_up_git_repo, PackageBuilder};
 
-use nickel_lang_core::error::report::report_as_str;
+use nickel_lang_core::{
+    error::{report::report_as_str, NullReporter},
+    eval::cache::lazy::CBNCache,
+    program::Program,
+};
 use nickel_lang_package::{
     config::Config, index::PackageIndex, lock::LockFile, manifest::MANIFEST_NAME, resolve,
     snapshot::Snapshot, ManifestFile,
@@ -28,7 +28,7 @@ pub fn main() -> ExitCode {
 
     let fixture = Arc::new(Fixture::default());
 
-    let tests: Vec<_> = manifest_glob
+    let mut tests: Vec<_> = manifest_glob
         .map(|p| {
             let path = p.unwrap();
             let name = path.strip_prefix(&root).unwrap().to_owned();
@@ -39,6 +39,21 @@ pub fn main() -> ExitCode {
             })
         })
         .collect();
+
+    let eval_manifest_glob = glob::glob(&format!(
+        "{root_str}/package/tests/integration/inputs/eval/**/Nickel-pkg.ncl"
+    ))
+    .unwrap();
+
+    tests.extend(eval_manifest_glob.map(|p| {
+        let path = p.unwrap();
+        let name = path.strip_prefix(&root).unwrap().to_owned();
+        let fixture = fixture.clone();
+        Trial::test(name.display().to_string(), move || {
+            eval_all(&name, &fixture.config);
+            Ok(())
+        })
+    }));
 
     libtest_mimic::run(&args, tests).exit_code()
 }
@@ -123,50 +138,6 @@ fn set_up_git_repos(config: &mut Config, git_dir: &TempDir) {
     }
 }
 
-// Copies the directory `contents` to `to`, and initializes a git repo in the
-// new location.
-fn set_up_git_repo(contents: &Path, to: &Path) {
-    let run = |cmd: &mut Command| {
-        let output = cmd.output().unwrap();
-        assert!(
-            output.status.success(),
-            "command {cmd:?} failed, stdout {}, stderr {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    };
-
-    let run_in_dir = |cmd: &mut Command| {
-        run(cmd.current_dir(to));
-    };
-
-    // The rust stdlib doesn't have anything for recursively copying a directory. There are
-    // some crates for that, but it's easier just to shell out.
-    run(Command::new("cp").arg("-r").arg(contents).arg(to));
-
-    // We have some hacky ways to test branch/tag fetching: if the input contains a tag.txt file,
-    // make a git tag named with the contents of that file. If the input contains a branch.txt file,
-    // make a git branch named with the contents of that file.
-    let tag = std::fs::read_to_string(to.join("tag.txt")).ok();
-    let branch = std::fs::read_to_string(to.join("branch.txt")).ok();
-
-    run_in_dir(Command::new("git").arg("init"));
-    run_in_dir(Command::new("git").args(["config", "user.email", "me@example.com"]));
-    run_in_dir(Command::new("git").args(["config", "user.name", "me"]));
-
-    if let Some(branch) = branch {
-        run_in_dir(Command::new("git").args(["commit", "-m", "initial", "--allow-empty"]));
-        run_in_dir(Command::new("git").args(["checkout", "-b", branch.trim()]));
-    }
-
-    run_in_dir(Command::new("git").args(["add", "--all"]));
-    run_in_dir(Command::new("git").args(["commit", "-m", "initial"]));
-
-    if let Some(tag) = tag {
-        run_in_dir(Command::new("git").args(["tag", tag.trim()]));
-    }
-}
-
 // Creates an index in the configured location (which must be a directory), and
 // populates it with the packages found in `package/tests/integration/inputs/index`.
 fn set_up_test_index(config: &Config, tmp_dir: &Path) {
@@ -218,43 +189,21 @@ fn set_up_test_index(config: &Config, tmp_dir: &Path) {
                     } else {
                         format!("github:{org}/{pkg}/{subpath}")
                     };
-                    publish_package(config, &manifest, &id);
+
+                    PackageBuilder::default()
+                        .with_manifest(manifest)
+                        .with_id(&id)
+                        .with_repo_dir(version.path())
+                        .build()
+                        .publish(config);
                 }
             }
         }
     }
 }
 
-fn generate_lock_file(path: &Path, config: &Config) {
-    let full_path = project_root().join(path);
-    let index_dir = TempDir::new().unwrap();
-
-    let config = config.clone();
-
-    // Make an empty git repo as the index.
-    Command::new("git")
-        .arg("init")
-        .current_dir(index_dir.path())
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["config", "user.email", "me@example.com"])
-        .current_dir(index_dir.path())
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["config", "user.name", "Me"])
-        .current_dir(index_dir.path())
-        .output()
-        .unwrap();
-
-    Command::new("git")
-        .args(["commit", "--allow-empty", "-m", "initial"])
-        .current_dir(index_dir.path())
-        .output()
-        .unwrap();
-
-    let manifest = match ManifestFile::from_path(&full_path) {
+fn eval_manifest(path: &Path) -> ManifestFile {
+    match ManifestFile::from_path(path) {
         Ok(m) => m,
         Err(nickel_lang_package::error::Error::ManifestEval {
             package: _package,
@@ -264,11 +213,18 @@ fn generate_lock_file(path: &Path, config: &Config) {
             panic!("{}", report_as_str(&mut files, *error, Default::default()));
         }
         Err(e) => panic!("{}", e),
-    };
+    }
+}
+
+/// Generate the lock file for the manifest at `path`, comparing its snapshot.
+fn generate_lock_file(path: &Path, config: &Config) {
+    let full_path = project_root().join(path);
+
+    let manifest = eval_manifest(&full_path);
     let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
 
-    let snap = Snapshot::new(&config, &manifest.parent_dir, &manifest).unwrap();
-    match resolve::resolve(&manifest, snap, index, config) {
+    let snap = Snapshot::new(config, &manifest.parent_dir, &manifest).unwrap();
+    match resolve::resolve(&manifest, snap, index, config.clone()) {
         Ok(resolution) => {
             let lock = LockFile::new(&manifest, &resolution).unwrap();
             let lock_contents = serde_json::to_string_pretty(&lock).unwrap();
@@ -277,6 +233,39 @@ fn generate_lock_file(path: &Path, config: &Config) {
         }
         Err(e) => {
             assert_snapshot_filtered!(path.display().to_string(), e.to_string());
+        }
+    }
+}
+
+/// Evaluate all the nickel files in the same directory as `manifest_path`,
+/// using the manifest to provide any dependencies.
+fn eval_all(manifest_path: &Path, config: &Config) {
+    let full_manifest_path = project_root().join(manifest_path);
+
+    let manifest = eval_manifest(&full_manifest_path);
+    let index = PackageIndex::shared_or_initialize(config.clone()).unwrap();
+    let snap = Snapshot::new(config, &manifest.parent_dir, &manifest).unwrap();
+    let resolution = resolve::resolve(&manifest, snap, index, config.clone()).unwrap();
+
+    nickel_lang_package::index::ensure_index_packages_downloaded(&resolution).unwrap();
+    let map = resolution.package_map(&manifest).unwrap();
+
+    for entry in std::fs::read_dir(&manifest.parent_dir).unwrap() {
+        let path = entry.unwrap().path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name == MANIFEST_NAME || !name.ends_with(".ncl") {
+            continue;
+        }
+        let mut program =
+            Program::<CBNCache>::new_from_file(&path, std::io::sink(), NullReporter {}).unwrap();
+        program.set_package_map(map.clone());
+        if let Err(e) = program.eval_full() {
+            panic!(
+                "{}",
+                report_as_str(&mut program.files().clone(), e, Default::default())
+            );
         }
     }
 }

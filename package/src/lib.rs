@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use gix::{bstr::ByteSlice as _, Url};
+use index::{LockType, PackageIndex};
 use lock::{LockFileDep, LockPrecisePkg};
 use nickel_lang_core::cache::normalize_abs_path;
 
@@ -180,12 +181,55 @@ pub struct PreciseIndexPkg {
     pub version: SemVer,
 }
 
+impl PreciseIndexPkg {
+    /// Where on the local filesystem can we find the root of the git repository
+    /// containing this package?
+    ///
+    /// We don't currently support git filters, so for index packages that live
+    /// in a subdirectory of a git repository we fetch the whole repository
+    /// (into the path returned by this method). The package itself lives in a
+    /// subdirectory; see [`PreciseIndexPkg::local_path`] for that one.
+    pub fn local_path_without_subdir<T: LockType>(
+        &self,
+        config: &Config,
+        index: &PackageIndex<T>,
+    ) -> Result<PathBuf, Error> {
+        let pkg = index.package(&self.id, &self.version)?;
+
+        Ok(config
+            .index_package_dir
+            .join("contents")
+            .join(pkg.id.object_id().to_string()))
+    }
+
+    /// Where on the local filesystem can this package be found?
+    //
+    /// Note that the package might not actually be there yet.
+    pub fn local_path<T: LockType>(
+        &self,
+        config: &Config,
+        index: &PackageIndex<T>,
+    ) -> Result<PathBuf, Error> {
+        let index::Id::Github { path, .. } = &self.id;
+        Ok(self.local_path_without_subdir(config, index)?.join(path))
+    }
+}
+
 /// A git package, with a precise version.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PreciseGitPkg {
     url: gix::Url,
     id: ObjectId,
     path: PathBuf,
+}
+
+impl PreciseGitPkg {
+    /// Where on the local filesystem can this package be found?
+    //
+    /// Note that the package might not actually be there yet.
+    pub fn local_path(&self, config: &Config) -> PathBuf {
+        repo_root(config, &self.id).join(&self.path)
+    }
 }
 
 /// A precise package version, in a format suitable for putting into a lockfile.
@@ -209,14 +253,23 @@ impl PrecisePkg {
     ///
     /// Note that the package might not actually be there yet, if it's a git or
     /// index package that hasn't been fetched.
-    pub fn local_path(&self, config: &Config) -> PathBuf {
+    pub fn local_path<T: LockType>(
+        &self,
+        config: &Config,
+        index: &PackageIndex<T>,
+    ) -> Result<PathBuf, Error> {
         match self {
-            PrecisePkg::Git(PreciseGitPkg { id, path, .. }) => repo_root(config, id).join(path),
-            PrecisePkg::Path(path) => path.clone(),
-            PrecisePkg::Index(PreciseIndexPkg { id, version }) => config
-                .index_package_dir
-                .join(id.path())
-                .join(version.to_string()),
+            PrecisePkg::Git(pkg) => Ok(pkg.local_path(config)),
+            PrecisePkg::Path(path) => Ok(path.clone()),
+            PrecisePkg::Index(PreciseIndexPkg { id, version }) => {
+                let pkg = index.package(id, version)?;
+                let index::Id::Github { path, .. } = id;
+                Ok(config
+                    .index_package_dir
+                    .join("contents")
+                    .join(pkg.id.object_id().to_string())
+                    .join(path))
+            }
         }
     }
 
@@ -226,7 +279,11 @@ impl PrecisePkg {
     }
 
     /// Is this package available offline? If not, it needs to be fetched.
-    pub fn is_available_offline(&self, config: &Config) -> bool {
+    pub fn is_available_offline<T: LockType>(
+        &self,
+        config: &Config,
+        index: &PackageIndex<T>,
+    ) -> bool {
         // We consider path-dependencies to be always available offline, even if they don't exist.
         // We consider git-dependencies to be available offline if there's a directory at
         // `~/.cache/nickel/git/ed8234.../` (or wherever the cache directory is on your system). We
@@ -234,7 +291,7 @@ impl PrecisePkg {
         // with the contents of `~/.cache/nickel`, that's your problem.
         match self {
             PrecisePkg::Path { .. } => true,
-            _ => self.local_path(config).is_dir(),
+            _ => self.local_path(config, index).is_ok_and(|p| p.is_dir()),
         }
     }
 

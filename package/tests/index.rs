@@ -4,7 +4,7 @@ use tempfile::tempdir;
 
 mod util;
 
-use util::{init_git, publish_package, test_config, ManifestBuilder};
+use util::{init_git, test_config, ManifestBuilder, PackageBuilder};
 
 #[test]
 fn index_fetch_on_lock() {
@@ -14,7 +14,11 @@ fn index_fetch_on_lock() {
     // This manifest doesn't match what's stored in the git dir, but no one checks...
     let index_manifest = ManifestBuilder::default().with_dir(git_dir.path()).build();
 
-    publish_package(&config, &index_manifest, "github:myorg/mypackage");
+    PackageBuilder::default()
+        .with_manifest(index_manifest.clone())
+        .with_id("github:myorg/mypackage")
+        .build()
+        .publish(&config);
 
     // No one has downloaded the index yet.
     assert!(!config.index_dir.exists());
@@ -30,7 +34,11 @@ fn index_fetch_on_lock() {
     assert!(config.index_dir.exists());
     assert!(config.index_dir.join("github/myorg/mypackage").exists());
 
-    publish_package(&config, &index_manifest, "github:myorg/myotherpackage");
+    PackageBuilder::default()
+        .with_manifest(index_manifest.clone())
+        .with_id("github:myorg/myotherpackage")
+        .build()
+        .publish(&config);
 
     // Locking again won't trigger an index update, because it wasn't necessary.
     manifest.lock(config.clone()).unwrap();

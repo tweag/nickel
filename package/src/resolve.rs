@@ -573,10 +573,6 @@ impl Resolution {
     }
 
     /// Returns a package map containing the entire dependency tree.
-    ///
-    /// Once index packages are supported, this will need to move: the entire dependency
-    /// tree will involve both snapshotted packages and resolved index packages. We only
-    /// know about the first kind.
     pub fn package_map(&self, manifest: &ManifestFile) -> Result<PackageMap, Error> {
         let parent_dir = manifest.parent_dir.clone();
         let manifest_dir = normalize_path(&parent_dir).with_path(&parent_dir)?;
@@ -600,12 +596,17 @@ impl Resolution {
 
         let mut packages = HashMap::new();
         for p in &all {
-            let p_path = p.clone().with_abs_path(&manifest_dir).local_path(config);
+            let p_path = p
+                .clone()
+                .with_abs_path(&manifest_dir)
+                .local_path(config, &self.index)?;
             let root_path = &manifest_dir;
             for (dep_id, _, dep_precise) in self.sorted_dependencies(p)? {
                 packages.insert(
                     (p_path.clone(), dep_id),
-                    dep_precise.with_abs_path(root_path).local_path(config),
+                    dep_precise
+                        .with_abs_path(root_path)
+                        .local_path(config, &self.index)?,
                 );
             }
         }
@@ -616,14 +617,14 @@ impl Resolution {
                 .dependencies
                 .iter()
                 .map(|(name, source)| {
-                    (
+                    Ok((
                         *name,
                         self.precise(source)
                             .with_abs_path(&manifest_dir)
-                            .local_path(config),
-                    )
+                            .local_path(config, &self.index)?,
+                    ))
                 })
-                .collect(),
+                .collect::<Result<_, Error>>()?,
 
             packages,
         })

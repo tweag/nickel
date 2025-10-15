@@ -12,7 +12,7 @@ use crate::{
     error::{Error, IoResultExt as _},
     lock::{LockFile, LockFileDep, LockPrecisePkg},
     manifest::MANIFEST_NAME,
-    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PreciseGitPkg, PrecisePkg,
+    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PreciseGitPkg,
     UnversionedDependency, UnversionedPrecisePkg,
 };
 
@@ -205,11 +205,11 @@ impl Snapshot {
         let id: ObjectId = id.as_slice().try_into().unwrap();
 
         // Now that we know the object hash, move the fetched repo to the right place in the cache.
-        let precise = PrecisePkg::Git(PreciseGitPkg {
+        let precise = PreciseGitPkg {
             id,
             url: url.clone(),
             path: PathBuf::default(),
-        });
+        };
         let path = precise.local_path(config);
 
         if path.is_dir() {

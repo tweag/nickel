@@ -5,9 +5,9 @@ expression: err
 error: failed to evaluate package manifest
 
 error: missing definition for `authors`
-     ┌─ <stdlib/std.ncl>:3441:13
+     ┌─ <stdlib/std.ncl>:3451:13
      │
-3441 │             authors
+3451 │             authors
      │             ^^^^^^^ required here
      │
      ┌─ [INPUTS_PATH]/package/missing-field.ncl:4:1
@@ -18,9 +18,3 @@ error: missing definition for `authors`
    7 │ │   minimal_nickel_version = "1.10.0",
    8 │ │ }
      │ ╰─' in this record
-
-note: 
-     ┌─ <stdlib/std.ncl>:3442:17
-     │
-3442 │               | Array String
-     │                 ^^^^^^^^^^^^ bound here

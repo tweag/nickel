@@ -4,7 +4,7 @@ use tempfile::TempDir;
 
 mod util;
 
-use util::{init_git, publish_package, test_config, ManifestBuilder};
+use util::{init_git, test_config, ManifestBuilder, PackageBuilder};
 
 #[test]
 fn prefer_previously_locked() {
@@ -17,13 +17,21 @@ fn prefer_previously_locked() {
         .with_dir(git_dir.path())
         .with_version(SemVer::new(0, 1, 0))
         .build();
-    publish_package(&config, &index_manifest, "github:myorg/mypackage");
+    PackageBuilder::default()
+        .with_manifest(index_manifest.clone())
+        .with_id("github:myorg/mypackage")
+        .build()
+        .publish(&config);
 
     let index_manifest = ManifestBuilder::default()
         .with_dir(git_dir.path())
         .with_version(SemVer::new(0, 1, 1))
         .build();
-    publish_package(&config, &index_manifest, "github:myorg/mypackage");
+    PackageBuilder::default()
+        .with_manifest(index_manifest.clone())
+        .with_id("github:myorg/mypackage")
+        .build()
+        .publish(&config);
 
     // Set the manifest to have a dependency "dep" with a constraint "req" and
     // return the resolved version.
