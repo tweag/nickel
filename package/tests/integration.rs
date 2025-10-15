@@ -216,6 +216,7 @@ fn eval_manifest(path: &Path) -> ManifestFile {
     }
 }
 
+/// Generate the lock file for the manifest at `path`, comparing its snapshot.
 fn generate_lock_file(path: &Path, config: &Config) {
     let full_path = project_root().join(path);
 
@@ -236,6 +237,8 @@ fn generate_lock_file(path: &Path, config: &Config) {
     }
 }
 
+/// Evaluate all the nickel files in the same directory as `manifest_path`,
+/// using the manifest to provide any dependencies.
 fn eval_all(manifest_path: &Path, config: &Config) {
     let full_manifest_path = project_root().join(manifest_path);
 

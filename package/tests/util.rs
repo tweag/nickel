@@ -146,6 +146,7 @@ impl ManifestBuilder {
     }
 }
 
+/// A builder interface for [`Package`].
 #[derive(Default)]
 pub struct PackageBuilder {
     manifest: Option<ManifestFile>,
@@ -154,21 +155,40 @@ pub struct PackageBuilder {
 }
 
 impl PackageBuilder {
+    /// Set the package's manifest file.
     pub fn with_manifest(mut self, manifest: ManifestFile) -> Self {
         self.manifest = Some(manifest);
         self
     }
 
+    /// Set the directory containing the package's contents.
+    ///
+    /// If this is provided, the packages contents live in this location. Not
+    /// necessarily the *root* of this location, but somewhere in it.
+    ///
+    /// When the package is published, the contents of this directory will be
+    /// published too. For example, if this is the package for `github:foo/bar`
+    /// then publishing the package will put all the contents of `repo_dir`
+    /// into `https://github.com/foo/bar`. (Not for real, obviously: the fake
+    /// local version of github that we're using for tests.)
+    ///
+    /// This is optional, because if this package only exists to test resolution
+    /// then it doesn't need contents. Those are only needed for packages that
+    /// want to test evaluation.
     pub fn with_repo_dir(mut self, path: impl AsRef<Path>) -> Self {
         self.repo_dir = Some(path.as_ref().to_owned());
         self
     }
 
+    /// Set the package's id, like "github:foo/bar".
     pub fn with_id(mut self, id: &str) -> Self {
         self.id = Some(id.parse().unwrap());
         self
     }
 
+    /// Build the package.
+    ///
+    /// Panics if either the id or the manifest is missing.
     pub fn build(self) -> Package {
         Package {
             manifest: self.manifest.unwrap(),
@@ -178,10 +198,11 @@ impl PackageBuilder {
     }
 }
 
+/// A fake package for testing.
 pub struct Package {
     manifest: ManifestFile,
-    repo_dir: Option<PathBuf>,
     id: index::Id,
+    repo_dir: Option<PathBuf>,
 }
 
 impl Package {
@@ -284,6 +305,8 @@ pub fn init_pkg() -> TempDir {
 
 // Copies the directory `contents` to `to`, and initializes a git repo in the
 // new location.
+//
+// The directory at `to` is assumed not to exist yet.
 pub fn set_up_git_repo(contents: &Path, to: &Path) {
     // The rust stdlib doesn't have anything for recursively copying a directory. There are
     // some crates for that, but it's easier just to shell out.
@@ -313,7 +336,7 @@ pub fn set_up_git_repo(contents: &Path, to: &Path) {
     }
 }
 
-// Copies the everything in `contents` to `to` (which we assume already exists),
+// Copies everything in `contents` to `to` (which we assume already exists),
 // and commits them to the git repo that we assume is already in `to`.
 pub fn modify_git_repo(contents: &Path, to: &Path) {
     // Delete the old contents (except the .git directory)
