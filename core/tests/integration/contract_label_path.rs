@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang_core::error::{Error, EvalError, IntoDiagnostics};
+use nickel_lang_core::error::{Error, EvalError, EvalErrorData, IntoDiagnostics};
 use nickel_lang_core::files::Files;
 
 use nickel_lang_utils::test_program::eval;
@@ -10,10 +10,13 @@ fn array_contracts_label_path_is_set_correctly() {
 
     let res = eval("%force% ([{a = [1]}] | Array {a: Array String}) false");
     match &res {
-        Err(Error::EvalError(EvalError::BlameError {
-            evaluated_arg: _,
-            ref label,
-            call_stack: _,
+        Err(Error::EvalError(EvalError {
+            error:
+                EvalErrorData::BlameError {
+                    evaluated_arg: _,
+                    label,
+                },
+            ctxt: _,
         })) => assert_matches!(
             label.path.as_slice(),
             [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a"
@@ -31,10 +34,13 @@ fn array_contracts_label_path_is_set_correctly() {
         ) 0) false",
     );
     match &res {
-        Err(Error::EvalError(EvalError::BlameError {
-            evaluated_arg: _,
-            ref label,
-            call_stack: _,
+        Err(Error::EvalError(EvalError {
+            error:
+                EvalErrorData::BlameError {
+                    evaluated_arg: _,
+                    label,
+                },
+            ctxt: _,
         })) => assert_matches!(
             label.path.as_slice(),
             [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo"
@@ -50,10 +56,13 @@ fn dictionary_contracts_label_path_is_set_correctly() {
 
     let res = eval("%force% ({foo = 1} | {_ | String}) false");
     match &res {
-        Err(Error::EvalError(EvalError::BlameError {
-            evaluated_arg: _,
-            ref label,
-            call_stack: _,
+        Err(Error::EvalError(EvalError {
+            error:
+                EvalErrorData::BlameError {
+                    evaluated_arg: _,
+                    label,
+                },
+            ctxt: _,
         })) => {
             assert_matches!(label.path.as_slice(), [Elem::Dict])
         }

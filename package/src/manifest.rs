@@ -6,13 +6,14 @@ use std::{
 };
 
 use nickel_lang_core::{
+    bytecode::value::NickelValue,
     cache::normalize_rel_path,
     error::NullReporter,
     eval::cache::CacheImpl,
     identifier::Ident,
     label::Label,
     program::{Program, ProgramContract},
-    term::{make, RichTerm, RuntimeContract, Term},
+    term::{make, RuntimeContract, Term},
 };
 use serde::Deserialize;
 
@@ -375,8 +376,8 @@ impl ManifestFile {
         Snapshot::new(config, &self.parent_dir, self)
     }
 
-    // Convert from a `RichTerm` (that we assume was evaluated deeply).
-    fn from_term(path: &Path, rt: &RichTerm) -> Result<Self, Error> {
+    // Convert from a `NickelValue` (that we assume was evaluated deeply).
+    fn from_term(path: &Path, value: &NickelValue) -> Result<Self, Error> {
         // This is only ever called with terms that have passed the `std.package.Manifest`
         // contract, so we can assume that they have the right fields.
         let ManifestFileFormat {
@@ -388,7 +389,7 @@ impl ManifestFile {
             description,
             keywords,
             license,
-        } = ManifestFileFormat::deserialize(rt.clone()).map_err(|e| {
+        } = ManifestFileFormat::deserialize(value.clone()).map_err(|e| {
             Error::InternalManifestError {
                 path: path.to_owned(),
                 msg: e.to_string(),

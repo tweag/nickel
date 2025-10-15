@@ -1448,6 +1448,7 @@ mod tests {
             grammar::{FixedTypeParser, TermParser},
             lexer::Lexer,
         },
+        position::PosTable,
     };
     use pretty::Doc;
 
@@ -1457,20 +1458,18 @@ mod tests {
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
         let id = Files::new().add("<test>", s);
-        let mut pos_table = PosTable::new();
 
         FixedTypeParser::new()
-            .parse_strict_compat(pos_table, id, Lexer::new(s))
+            .parse_strict_compat(&mut PosTable::new(), id, Lexer::new(s))
             .unwrap()
     }
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> NickelValue {
         let id = Files::new().add("<test>", s);
-        let mut pos_table = PosTable::new();
 
         TermParser::new()
-            .parse_strict_compat(pos_table, id, Lexer::new(s))
+            .parse_strict_compat(&mut PosTable::new(), id, Lexer::new(s))
             .unwrap()
     }
 

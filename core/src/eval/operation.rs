@@ -267,9 +267,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // simpler and more efficient, but can make debugging harder. In any case,
                         // it should be solved only once primary operators have better support for
                         // laziness in some arguments.
-                        Some(false) => {
-                            Ok(value.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
-                        }
+                        Some(false) => Ok(value
+                            .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                            .into()),
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
@@ -279,9 +279,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::BoolOr => {
                 if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                     match value.as_bool() {
-                        Some(true) => {
-                            Ok(value.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
-                        }
+                        Some(true) => Ok(value
+                            .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                            .into()),
                         // FIXME: this does not check that the second argument is actually a
                         // boolean. This means `false || 2` silently evaluates to `2`. This is
                         // simpler and more efficient, but can make debugging harder. In any case,
@@ -326,7 +326,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // }),
             UnaryOp::EnumEmbed(_id) => {
                 if let Some(_) = value.as_enum_variant() {
-                    Ok(value.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
+                    Ok(value
+                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                        .into())
                 } else {
                     mk_type_error!("Enum")
                 }
@@ -497,7 +499,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .field_names(op_kind)
                         .into_iter()
                         .map(|id| {
-                            NickelValue::string(id.label(), self.context.pos_table.push_block(id.pos))
+                            NickelValue::string(
+                                id.label(),
+                                self.context.pos_table.push_block(id.pos),
+                            )
                         })
                         .collect();
 
@@ -1011,7 +1016,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ),
                     };
 
-                    Ok(result.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
+                    Ok(result
+                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                        .into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
@@ -1551,7 +1558,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
             })?;
 
-            Ok(NickelValue::number(result, pos_op.to_inherited_block(&mut self.context.pos_table)).into())
+            Ok(NickelValue::number(
+                result,
+                pos_op.to_inherited_block(&mut self.context.pos_table),
+            )
+            .into())
         } else {
             Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
@@ -2770,12 +2781,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // error location, this would be easy to fix. Unfortunately getting the
                     // locations right would involve handling location shifts caused by
                     // escape sequences and interpolation.
-                    "Yaml" => crate::serialize::yaml::load_yaml_value(&mut self.context.pos_table, s, None)
-                        .map_err(|err| EvalErrorData::DeserializationErrorWithInner {
+                    "Yaml" => crate::serialize::yaml::load_yaml_value(
+                        &mut self.context.pos_table,
+                        s,
+                        None,
+                    )
+                    .map_err(|err| {
+                        EvalErrorData::DeserializationErrorWithInner {
                             format: InputFormat::Yaml,
                             inner: err,
                             pos: pos_op,
-                        })?,
+                        }
+                    })?,
                     "Toml" => toml::from_str(s).map_err(|err| {
                         EvalErrorData::DeserializationError(
                             String::from("toml"),
@@ -2786,7 +2803,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     _ => return mk_err_fst(),
                 };
 
-                Ok(deser.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
+                Ok(deser
+                    .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                    .into())
             }
             BinaryOp::StringSplit => self.binary_string_fn(
                 |input, sep| {
@@ -3129,7 +3148,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 record1.attrs = Combine::combine(record1.attrs, record2.attrs);
                 record1.sealed_tail = sealed_tail;
 
-                Ok(value1.with_pos_idx(&mut self.context.pos_table, pos_op_inh).into())
+                Ok(value1
+                    .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                    .into())
             }
         }
     }
@@ -4055,28 +4076,16 @@ mod tests {
     #[test]
     fn ite_operation() {
         with_vm(|mut vm| {
-            let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, TermPos::None);
+            let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, PosIdx::NONE);
 
-            vm.stack
-                .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
-            vm.stack
-                .push_arg(Closure::atomic_closure(mk_term::integer(46)), TermPos::None);
+            vm.stack.push_arg(mk_term::integer(5).into(), PosIdx::NONE);
+            vm.stack.push_arg(mk_term::integer(46).into(), PosIdx::NONE);
 
-            let mut clos = Closure {
-                value: Term::Bool(true).into(),
-                env: Environment::new(),
-            };
-
-            vm.stack.push_op_cont(cont, 0, TermPos::None);
-
-            clos = vm.continuate_operation(clos).unwrap();
+            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                clos,
-                Closure {
-                    value: mk_term::integer(46),
-                    env: Environment::new()
-                }
+                vm.continuate_operation(NickelValue::bool_true().into()),
+                Ok(mk_term::integer(46).into())
             );
             assert_eq!(0, vm.stack.count_args());
         });
@@ -4091,28 +4100,26 @@ mod tests {
                     value: mk_term::integer(6),
                     env: Environment::new(),
                 },
-                TermPos::None,
+                PosIdx::NONE,
             );
 
-            vm.stack.push_op_cont(cont, 0, TermPos::None);
-            let clos = vm.continuate_operation(mk_term::integer(7).into()).unwrap();
+            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                clos,
-                mk_term::integer(6).into(),
+                vm.continuate_operation(mk_term::integer(7).into()),
+                Ok(mk_term::integer(6).into())
             );
-
             assert_eq!(1, vm.stack.count_conts());
             assert_eq!(
                 (
                     OperationCont::Op2Second(
                         BinaryOp::Plus,
                         mk_term::integer(7).into(),
-                        TermPos::None,
-                        TermPos::None,
+                        PosIdx::NONE,
+                        PosIdx::NONE,
                     ),
                     0,
-                    TermPos::None
+                    PosIdx::NONE
                 ),
                 vm.stack.pop_op_cont().expect("Condition already checked.")
             );
@@ -4128,19 +4135,18 @@ mod tests {
                     value: mk_term::integer(7),
                     env: Environment::new(),
                 },
-                TermPos::None,
-                TermPos::None,
+                PosIdx::NONE,
+                PosIdx::NONE,
             );
 
-            vm.stack.push_op_cont(cont, 0, TermPos::None);
-            let clos = vm.continuate_operation(mk_term::integer(6).into()).unwrap();
+            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                clos,
-                Closure {
+                vm.continuate_operation(mk_term::integer(6).into()),
+                Ok(Closure {
                     value: mk_term::integer(13),
                     env: Environment::new()
-                }
+                })
             );
         });
     }

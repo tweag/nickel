@@ -101,7 +101,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::{error::NullReporter, eval::cache::CacheImpl, program::Program, term::Term};
+    use crate::{error::NullReporter, eval::cache::CacheImpl, program::Program, term::Number};
     use nickel_lang_utils::project_root::project_root;
 
     // Test basic package map functionality by building one manually out of
@@ -126,6 +126,6 @@ mod tests {
         .unwrap();
         p.set_package_map(map);
 
-        assert_eq!(p.eval_full().unwrap().as_ref(), &Term::Num(44.into()));
+        assert_eq!(p.eval_full().unwrap().as_number().unwrap().0, Number::from(44));
     }
 }

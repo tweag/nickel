@@ -1,26 +1,35 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
-use crate::error::ParseError;
-use crate::files::Files;
-use crate::identifier::LocIdent;
-use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParserCompat};
-use crate::term::Number;
-use crate::term::Term::*;
-use crate::term::{make as mk_term, Term};
-use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
+use crate::{
+    bytecode::value::NickelValue,
+    error::ParseError,
+    files::Files,
+    identifier::LocIdent,
+    parser::{ErrorTolerantParserCompat, error::ParseError as InternalParseError},
+    position::PosTable,
+    term::Number,
+    term::{
+        Term::*,
+        {BinaryOp, StrChunk, UnaryOp, record}, {Term, make as mk_term},
+    },
+};
 
 use crate::mk_app;
 use assert_matches::assert_matches;
 
-fn parse(s: &str) -> Result<RichTerm, ParseError> {
+fn parse(pos_table: &mut PosTable, s: &str) -> Result<NickelValue, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     super::grammar::TermParser::new()
-        .parse_strict_compat(id, Lexer::new(s))
+        .parse_strict_compat(pos_table, id, Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
-fn parse_without_pos(s: &str) -> RichTerm {
-    parse(s).unwrap().without_pos()
+fn parse_without_pos(s: &str) -> NickelValue {
+    parse_no_table(s).unwrap().without_pos()
+}
+
+fn parse_no_table(s: &str) -> Result<NickelValue, ParseError> {
+    parse(&mut PosTable::new(), s)
 }
 
 fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, InternalParseError> {
@@ -32,38 +41,35 @@ fn lex_without_pos(s: &str) -> Result<Vec<Token>, InternalParseError> {
 }
 
 /// Wrap a single string literal in a `StrChunks`.
-fn mk_single_chunk(s: &str) -> RichTerm {
+fn mk_single_chunk(s: &str) -> NickelValue {
     StrChunks(vec![StrChunk::Literal(String::from(s))]).into()
 }
 
-fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
-    use crate::term::{make::builder, SharedTerm};
+fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
+    use crate::{bytecode::value::ValueContent, term::make::builder};
 
-    let mut result: RichTerm = builder::Record::new()
+    let result: NickelValue = builder::Record::new()
         .field("tag")
-        .value(Term::Enum("SymbolicString".into()))
+        .value(NickelValue::enum_tag_posless("SymbolicString"))
         .field("prefix")
-        .value(Term::Enum(prefix.into()))
+        .value(NickelValue::enum_tag_posless(prefix))
         .field("fragments")
-        .value(Array(
+        .value(NickelValue::array_posless(
             std::iter::once(mk_single_chunk(s)).collect(),
-            Default::default(),
+            Vec::new(),
         ))
         .into();
 
-    // The builder interface is nice, but it produces non recursive records. Since the new AST
-    // symbolic string chunks produce recursive records (they're not really recursive, but there's
-    // no distinction in the source syntax, and it gets translated to a `RecRecord` by default).
+    // The builder interface is nice, but it produces non recursive records. On the other hand, the
+    // new AST symbolic string chunks produce recursive records (they're not really recursive, but
+    // there's no distinction in the source syntax, and it gets translated to a `RecRecord` by
+    // default).
     //
     // We hack around it by "peeling off" the outer record layer and replacing it with a recursive
     // record.
 
-    let term_mut = SharedTerm::make_mut(&mut result.term);
-    let content = std::mem::replace(term_mut, Term::Null);
-
-    if let Term::Record(data) = content {
-        *term_mut = RecRecord(data, Vec::new(), Vec::new(), None);
-        result
+    if let ValueContent::Record(lens) = result.content() {
+        NickelValue::term_posless(RecRecord(lens.take().0, Vec::new(), Vec::new(), None))
     } else {
         unreachable!(
             "record was built using Record::builder, expected a record term, got something else"
@@ -77,7 +83,7 @@ fn numbers() {
     assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
     assert_eq!(
         parse_without_pos("22.22"),
-        Num(Number::try_from_float_simplest(22.22).unwrap()).into()
+        NickelValue::number_posless(Number::try_from_float_simplest(22.22).unwrap())
     );
     assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
     assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));
@@ -132,7 +138,7 @@ fn plus() {
         parse_without_pos("(true + false) + 4"),
         Op2(
             BinaryOp::Plus,
-            Op2(BinaryOp::Plus, Bool(true).into(), Bool(false).into()).into(),
+            Op2(BinaryOp::Plus, NickelValue::bool_true(), NickelValue::bool_false()).into(),
             mk_term::integer(4),
         )
         .into()
@@ -141,8 +147,8 @@ fn plus() {
 
 #[test]
 fn booleans() {
-    assert_eq!(parse_without_pos("true"), Bool(true).into());
-    assert_eq!(parse_without_pos("false"), Bool(false).into());
+    assert_eq!(parse_without_pos("true"), NickelValue::bool_true());
+    assert_eq!(parse_without_pos("false"), NickelValue::bool_false());
 }
 
 #[test]
@@ -150,7 +156,7 @@ fn ite() {
     assert_eq!(
         parse_without_pos("if true then 3 else 4"),
         mk_app!(
-            mk_term::op1(UnaryOp::IfThenElse, Bool(true)),
+            mk_term::op1(UnaryOp::IfThenElse, NickelValue::bool_true()),
             mk_term::integer(3),
             mk_term::integer(4)
         )
@@ -161,7 +167,7 @@ fn ite() {
 fn applications() {
     assert_eq!(
         parse_without_pos("1 true 2"),
-        mk_app!(mk_term::integer(1), Bool(true), mk_term::integer(2))
+        mk_app!(mk_term::integer(1), NickelValue::bool_true(), mk_term::integer(2))
     );
 
     assert_eq!(
@@ -176,13 +182,13 @@ fn applications() {
 
 #[test]
 fn variables() {
-    assert!(parse("x1_x_").is_ok());
+    assert_matches!(parse_no_table("x1_x_"), Ok(..));
 }
 
 #[test]
 fn lets() {
-    assert_matches!(parse("let x1 = x2 in x3"), Ok(..));
-    assert_matches!(parse("x (let x1 = x2 in x3) y"), Ok(..));
+    assert_matches!(parse_no_table("let x1 = x2 in x3"), Ok(..));
+    assert_matches!(parse_no_table("x (let x1 = x2 in x3) y"), Ok(..));
 }
 
 #[test]
@@ -206,23 +212,23 @@ fn enum_terms() {
         (
             "simple raw enum tag",
             "'foo",
-            Enum(LocIdent::from("foo")).into(),
+            NickelValue::enum_tag_posless("foo"),
         ),
         (
             "raw enum tag with keyword ident",
             "'if",
-            Enum(LocIdent::from("if")).into(),
+            NickelValue::enum_tag_posless("if"),
         ),
-        ("empty string tag", "'\"\"", Enum(LocIdent::from("")).into()),
+        ("empty string tag", "'\"\"", NickelValue::enum_tag_posless("")),
         (
             "string tag with non-ident chars",
             "'\"foo:bar\"",
-            Enum(LocIdent::from("foo:bar")).into(),
+            NickelValue::enum_tag_posless("foo:bar"),
         ),
         (
             "string with spaces",
             "'\"this works!\"",
-            Enum(LocIdent::from("this works!")).into(),
+            NickelValue::enum_tag_posless("this works!"),
         ),
     ];
 
@@ -240,7 +246,7 @@ fn enum_terms() {
     ];
 
     for (name, input) in failure_cases {
-        let actual = parse(input);
+        let actual = parse_no_table(input);
         assert_matches!(actual, Err(..), "test case \"{}\" failed", name);
     }
 }
@@ -312,13 +318,15 @@ fn record_terms() {
 /// Regression test for [#876](https://github.com/tweag/nickel/issues/876)
 #[test]
 fn invalid_record_types() {
+    let mut pos_table = PosTable::new();
+
     assert_matches!(
-        parse("let x | forall r. { n | Num; r } = {} in x"),
+        parse_no_table("let x | forall r. { n | Num; r } = {} in x"),
         Err(ParseError::InvalidRecordType { .. })
     );
 
     assert_matches!(
-        parse("let x : forall r. { n = fun i => i; r } = {} in x"),
+        parse_no_table("let x : forall r. { n = fun i => i; r } = {} in x"),
         Err(ParseError::InvalidRecordType { .. })
     );
 }
@@ -436,7 +444,7 @@ fn string_lexing() {
 #[test]
 fn str_escape() {
     assert_matches!(
-        parse("\"bad escape \\g\""),
+        parse_no_table("\"bad escape \\g\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_eq!(
@@ -456,34 +464,37 @@ fn str_escape() {
 #[test]
 fn carriage_returns() {
     assert_eq!(parse_without_pos("\"\\r\""), mk_single_chunk("\r"),);
-    assert_matches!(parse("foo\rbar"), Err(ParseError::UnexpectedToken(..)))
+    assert_matches!(
+        parse_no_table("foo\rbar"),
+        Err(ParseError::UnexpectedToken(..))
+    )
 }
 
 #[test]
 fn ascii_escape() {
     assert_matches!(
-        parse("\"\\x[f\""),
+        parse_no_table("\"\\x[f\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_matches!(
-        parse("\"\\x0\""),
+        parse_no_table("\"\\x0\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
     assert_matches!(
-        parse("\"\\x0z\""),
+        parse_no_table("\"\\x0z\""),
         Err(ParseError::InvalidEscapeSequence(..))
     );
 
     assert_matches!(
-        parse("\"\\x80\""),
+        parse_no_table("\"\\x80\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
     assert_matches!(
-        parse("\"\\xab\""),
+        parse_no_table("\"\\xab\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
     assert_matches!(
-        parse("\"\\xFF\""),
+        parse_no_table("\"\\xFF\""),
         Err(ParseError::InvalidAsciiEscapeCode(..))
     );
 
@@ -551,7 +562,7 @@ fn ty_var_kind_mismatch() {
         ),
     ] {
         assert_matches!(
-            parse(src),
+            parse_no_table(src),
             Err(ParseError::TypeVariableKindMismatch { .. }),
             "{}",
             name
@@ -566,7 +577,7 @@ fn import() {
         mk_term::import("file.ncl", crate::cache::InputFormat::Nickel)
     );
     assert_matches!(
-        parse("import \"file.ncl\" some args"),
+        parse_no_table("import \"file.ncl\" some args"),
         Err(ParseError::UnexpectedToken(_, _))
     );
     assert_eq!(

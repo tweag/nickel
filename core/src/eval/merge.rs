@@ -409,7 +409,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         result.map(|value| {
             if wrap_in_ok {
                 let pos = value.pos_idx();
-                NickelValue::enum_variant("Ok".into(), Some(value), pos).into()
+                NickelValue::enum_variant("Ok", Some(value), pos).into()
             } else {
                 value.into()
             }

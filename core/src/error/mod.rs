@@ -103,7 +103,7 @@ impl<E> Reporter<E> for NullReporter {
 }
 
 /// A general error occurring during either parsing or evaluation.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Error {
     EvalError(EvalError),
     TypecheckError(TypecheckError),
@@ -117,13 +117,13 @@ pub enum Error {
 /// Runtime errors might need additional context to be properly reported. The most important one is
 /// the position table, which is need to map position indices stored inside a [NickelValue] back to
 /// a [TermPos]. Additional data is useful, such as the callstack.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct EvalCtxt {
     pub pos_table: PosTable,
     pub call_stack: CallStack,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct EvalError {
     pub ctxt: EvalCtxt,
     pub error: EvalErrorData,

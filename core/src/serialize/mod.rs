@@ -7,7 +7,7 @@ use crate::{
     error::{ExportError, ExportErrorData},
     identifier::{Ident, LocIdent},
     metrics,
-    term::{record::RecordData, IndexMap, Number, Term, TypeAnnotation},
+    term::{IndexMap, Number, Term, TypeAnnotation, record::RecordData},
 };
 
 use serde::{
@@ -118,9 +118,9 @@ where
 fn number_from_float<F: PrimitiveFloat, E: serde::de::Error>(float_value: F) -> Result<Number, E>
 where
     Number: TryFrom<
-        F,
-        Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
-    >,
+            F,
+            Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
+        >,
 {
     Number::try_from_float_simplest(float_value).map_err(|_| {
         E::custom(format!(
@@ -743,9 +743,9 @@ mod tests {
     use crate::{
         cache::resolvers::DummyResolver,
         error::NullReporter,
-        eval::{cache::CacheImpl, VirtualMachine, VmContext},
+        eval::{VirtualMachine, VmContext, cache::CacheImpl},
         program::Program,
-        term::{make as mk_term, BinaryOp},
+        term::{BinaryOp, make as mk_term},
     };
     use serde_json::json;
     use std::io::Cursor;
@@ -771,14 +771,14 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
+    fn assert_nickel_eq(value: NickelValue, expected: NickelValue) {
         let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::stderr(), NullReporter {});
 
-        assert_eq!(
+        assert!(
             VirtualMachine::<_, CacheImpl>::new_empty_env(&mut vm_ctxt)
-                .eval(mk_term::op2(BinaryOp::Eq, term, expected))
-                .map(Term::from),
-            Ok(Term::Bool(true))
+                .eval(mk_term::op2(BinaryOp::Eq, value, expected))
+                .unwrap()
+                .phys_eq(&NickelValue::bool_true())
         );
     }
 

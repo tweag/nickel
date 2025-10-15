@@ -11,14 +11,14 @@ use lsp_server::ResponseError;
 use lsp_types::{TextDocumentPositionParams, Url};
 
 use nickel_lang_core::{
-    bytecode::ast::{pattern::bindings::Bindings as _, primop::PrimOp, Ast, Import, Node},
+    bytecode::ast::{Ast, Import, Node, pattern::bindings::Bindings as _, primop::PrimOp},
     cache::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
     error::{ImportError, IntoDiagnostics, ParseErrors},
-    eval::{cache::CacheImpl, VirtualMachine, VmContext},
+    eval::{VirtualMachine, VmContext, cache::CacheImpl},
     files::FileId,
-    position::{RawPos, RawSpan, TermPos},
+    position::{PosTable, RawPos, RawSpan, TermPos},
     traverse::TraverseAlloc,
 };
 
@@ -66,7 +66,10 @@ pub struct World {
     /// derive [nickel_lang_core::cache::CacheHub] instances for background evaluation while
     /// avoiding work duplication as much as possible. In particular, the instances will use this
     /// parsed and converted representation of the stdlib and will share the same source cache.
-    compiled_stdlib: nickel_lang_core::term::RichTerm,
+    compiled_stdlib: nickel_lang_core::bytecode::value::NickelValue,
+    /// Since we hold a compiled version of the stdlib, we also need the corresponding position
+    /// table.
+    pos_table: PosTable,
 }
 
 impl World {
@@ -80,7 +83,11 @@ impl World {
         }
 
         let analysis_reg = AnalysisRegistry::with_std(&mut sources);
-        let compiled_stdlib = analysis_reg.stdlib_analysis().ast().to_mainline();
+        let mut pos_table = PosTable::new();
+        let compiled_stdlib = analysis_reg
+            .stdlib_analysis()
+            .ast()
+            .to_mainline(&mut pos_table);
 
         Self {
             sources,
@@ -90,6 +97,7 @@ impl World {
             file_uris: HashMap::new(),
             failed_imports: HashMap::new(),
             compiled_stdlib,
+            pos_table,
         }
     }
 
@@ -449,7 +457,7 @@ impl World {
     /// provide the original completion request any needed information. Diagnostics are ignored: if
     /// an imported file fails to typecheck, the completion request will just ignore it.
     pub fn reparse_range(&mut self, range_err: RawSpan, reparse_range: RawSpan) -> bool {
-        use nickel_lang_core::typecheck::{typecheck_visit, TypecheckMode};
+        use nickel_lang_core::typecheck::{TypecheckMode, typecheck_visit};
 
         let new_ids = self
             .analysis_reg
@@ -506,12 +514,16 @@ impl World {
         file_id: FileId,
         recursion_limit: usize,
     ) -> Vec<SerializableDiagnostic> {
+        use nickel_lang_core::error::{EvalError, EvalErrorData};
+
         let mut diags = self.parse_and_typecheck(file_id);
 
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
-            let mut vm_ctxt: VmContext<_, CacheImpl> = VmContext::new(
-                self.cache_hub_for_eval(file_id),
+            let (cache_hub, pos_table) = self.cache_hub_for_eval(file_id);
+            let mut vm_ctxt: VmContext<_, CacheImpl> = VmContext::new_with_pos_table(
+                cache_hub,
+                pos_table,
                 std::io::stderr(),
                 reporter,
             );
@@ -530,7 +542,10 @@ impl World {
                     .filter(|e| {
                         !matches!(
                             e,
-                            nickel_lang_core::error::EvalError::MissingFieldDef { .. }
+                            EvalError {
+                                error: EvalErrorData::MissingFieldDef { .. },
+                                ctxt: _
+                            }
                         )
                     })
                     .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id)),
@@ -798,19 +813,21 @@ impl World {
             .id_of(&SourcePath::Path(path, InputFormat::Nickel)))
     }
 
-    /// Returns a [nickel_lang_core::cache::CacheHub] instance derived from this world and targeted
-    /// at the evaluation of a given file. NLS handles files on its own, but we want to avoid
-    /// duplicating work when doing background evaluation: loading the stdlib, parsing, etc.
+    /// Returns a [nickel_lang_core::cache::CacheHub] instance and an associated position table
+    /// derived from this world and targeted at the evaluation of a given file. NLS handles files
+    /// on its own, but we want to avoid duplicating work when doing background evaluation: loading
+    /// the stdlib, parsing, etc.
     ///
     /// This method spins up a new cache, and pre-fill the old AST representation for the stdlib,
     /// the given file and the transitive closure of its imports.
-    pub fn cache_hub_for_eval(&self, file_id: FileId) -> CacheHub {
+    pub fn cache_hub_for_eval(&self, file_id: FileId) -> (CacheHub, PosTable) {
         use nickel_lang_core::{
             bytecode::ast::compat::ToMainline,
             cache::{TermEntry, TermEntryState},
         };
 
         let mut cache = CacheHub::new();
+        let mut pos_table = self.pos_table.clone();
         cache.sources = self.sources.clone();
         cache.import_data = self.import_data.clone();
 
@@ -826,7 +843,7 @@ impl World {
         cache.terms.insert(
             file_id,
             TermEntry {
-                value: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(),
+                value: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(&mut pos_table),
                 state: TermEntryState::default(),
                 format: InputFormat::Nickel,
             },
@@ -851,7 +868,7 @@ impl World {
             cache.terms.insert(
                 next,
                 TermEntry {
-                    value: analysis.ast().to_mainline(),
+                    value: analysis.ast().to_mainline(&mut pos_table),
                     state: TermEntryState::default(),
                     format: InputFormat::Nickel,
                 },
@@ -860,7 +877,7 @@ impl World {
             work_stack.extend(self.import_data.imports(next));
         }
 
-        cache
+        (cache, pos_table)
     }
 
     pub fn get_import_target(&self, pos: TermPos) -> Option<FileId> {
@@ -1017,7 +1034,9 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 // for JSON files, for example.
                 let parse_errors = self
                     .sources
-                    .parse_other(file_id, format)
+                    // For now, we only care about parse error diagnostics, which doesn't need to
+                    // preserve the position table.
+                    .parse_other(&mut PosTable::new(), file_id, format)
                     .err()
                     .map(|e| ParseErrors::new(vec![e]))
                     .unwrap_or_else(|| ParseErrors::new(vec![]));
@@ -1125,12 +1144,14 @@ mod tests {
         world.parse(parent);
         let _ = world.typecheck(parent);
 
-        assert!(!world
-            .analysis_reg
-            .get(child)
-            .unwrap()
-            .parse_errors()
-            .no_errors())
+        assert!(
+            !world
+                .analysis_reg
+                .get(child)
+                .unwrap()
+                .parse_errors()
+                .no_errors()
+        )
     }
 
     #[test]

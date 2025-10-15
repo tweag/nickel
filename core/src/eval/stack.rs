@@ -367,7 +367,7 @@ mod tests {
     }
 
     fn some_closure() -> Closure {
-        Closure::atomic_closure(Term::Bool(true).into())
+        NickelValue::bool_true().into()
     }
 
     fn some_cont() -> OperationCont {
