@@ -749,6 +749,7 @@
           checkRustDoc
           nickel-lang
           nickel-lang-c-test
+          nickel-lang-pkg
           rustfmt;
         nickelWasm = buildNickelWasm { profile = "dev"; };
         inherit vscodeExtension stdlibTests;
