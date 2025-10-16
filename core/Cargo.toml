@@ -133,5 +133,9 @@ harness = false
 name = "typecheck-nixpkgs-lib"
 harness = false
 
+[[bench]]
+name = "deserialization"
+harness = false
+
 [lints.clippy]
 new_without_default = "allow"

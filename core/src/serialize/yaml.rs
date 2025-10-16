@@ -19,7 +19,7 @@ use crate::{
         Ast, AstAlloc,
     },
     error::ParseError,
-    files::FileId,
+    files::{FileId, Files},
     identifier::{Ident, LocIdent},
     match_sharedterm,
     position::{RawSpan, TermPos},
@@ -166,6 +166,8 @@ impl<'ast> AnchorMap<'ast> {
 }
 
 struct YamlLoader<'ast> {
+    /// For error reporting, do we claim to be loading YAML or JSON?
+    format_name: &'static str,
     alloc: &'ast AstAlloc,
     /// Keeps track of the anchors we've encountered so far.
     anchor_map: AnchorMap<'ast>,
@@ -217,7 +219,7 @@ impl<'ast> YamlLoader<'ast> {
                         });
                     } else {
                         self.err = Some(ParseError::ExternalFormatError(
-                            "yaml".into(),
+                            self.format_name.to_owned(),
                             "Nickel records only support string keys".into(),
                             node.pos().as_opt_ref().cloned(),
                         ));
@@ -248,13 +250,14 @@ impl<'ast> YamlLoader<'ast> {
         // it as a string.
         fn parse_float<'a>(
             v: &str,
+            fmt: &str,
             pos: TermPos,
             alloc: &'a AstAlloc,
         ) -> Result<Option<ast::Node<'a>>, ParseError> {
             match v {
                 ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" | "-.inf" | "-.Inf"
                 | "-.INF" | ".nan" | ".NaN" | ".NAN" => Err(ParseError::ExternalFormatError(
-                    "yaml".into(),
+                    fmt.to_owned(),
                     "Nickel numbers cannot be inf or NaN".into(),
                     pos.into_opt(),
                 )),
@@ -272,6 +275,7 @@ impl<'ast> YamlLoader<'ast> {
         // Parse a YAML scalar, inferring the type from the value itself.
         fn parse<'a>(
             v: &str,
+            fmt: &str,
             pos: TermPos,
             alloc: &'a AstAlloc,
         ) -> Result<ast::Node<'a>, ParseError> {
@@ -295,7 +299,7 @@ impl<'ast> YamlLoader<'ast> {
                 _ => {
                     if let Ok(i) = v.parse::<i64>() {
                         Ok(alloc.number(i.into()))
-                    } else if let Some(f) = parse_float(v, pos, alloc)? {
+                    } else if let Some(f) = parse_float(v, fmt, pos, alloc)? {
                         Ok(f)
                     } else {
                         Ok(alloc.string(v))
@@ -319,7 +323,8 @@ impl<'ast> YamlLoader<'ast> {
                         .parse::<i64>()
                         .map(|i| self.alloc.number(i.into()))
                         .map_err(|_| "invalid int scalar"),
-                    "float" => parse_float(value, pos, self.alloc)?.ok_or("invalid float scalar"),
+                    "float" => parse_float(value, self.format_name, pos, self.alloc)?
+                        .ok_or("invalid float scalar"),
                     "null" => match value {
                         "~" | "null" => Ok(ast::Node::Null),
                         _ => Err("invalid null scalar"),
@@ -328,15 +333,19 @@ impl<'ast> YamlLoader<'ast> {
                     _ => Err("unknown tag"),
                 };
                 t.map_err(|msg| {
-                    ParseError::ExternalFormatError("yaml".into(), msg.into(), pos.into_opt())
+                    ParseError::ExternalFormatError(
+                        self.format_name.to_owned(),
+                        msg.into(),
+                        pos.into_opt(),
+                    )
                 })?
             } else {
                 // If it isn't a core schema tag, try to infer the type.
-                parse(value, pos, self.alloc)?
+                parse(value, self.format_name, pos, self.alloc)?
             }
         } else {
             // If there's no tag, try to infer the type.
-            parse(value, pos, self.alloc)?
+            parse(value, self.format_name, pos, self.alloc)?
         };
 
         let node = Node::Scalar(Ast { node: t, pos });
@@ -466,7 +475,32 @@ pub fn load_yaml<'ast>(
     s: &str,
     file_id: Option<FileId>,
 ) -> Result<Ast<'ast>, ParseError> {
+    load(alloc, s, file_id, "yaml")
+}
+
+/// Parse a JSON string and convert it to an [`Ast`].
+///
+/// If the location is provided, the `Ast` will have its positions filled out.
+pub fn load_json<'ast>(
+    alloc: &'ast AstAlloc,
+    s: &str,
+    location: Option<(FileId, &Files)>,
+) -> Result<Ast<'ast>, ParseError> {
+    // JSON is a subset of YAML (or at least, YAML 1.2, which is what saphyr implements).
+    // We can't *just* use saphyr to parse JSON because it would be overly permissive.
+    let _val: serde_json::Value =
+        serde_json::from_str(s).map_err(|err| ParseError::from_serde_json(err, location))?;
+    load(alloc, s, location.map(|x| x.0), "json")
+}
+
+fn load<'ast>(
+    alloc: &'ast AstAlloc,
+    s: &str,
+    file_id: Option<FileId>,
+    format_name: &'static str,
+) -> Result<Ast<'ast>, ParseError> {
     let mut loader = YamlLoader {
+        format_name,
         file_id,
         alloc,
         anchor_map: Default::default(),
@@ -513,25 +547,40 @@ pub fn load_yaml<'ast>(
     }
 }
 
+// Convert a pure-data Ast to a pure-data RichTerm.
+//
+// The mainline conversion creates RecRecords, but since they came from data we know they're
+// just normal Records. This is important for std.deserialize, since it expects deserialized
+// data to be evaluated.
+fn ast_to_term(ast: Ast<'_>) -> RichTerm {
+    let rt: RichTerm = ast.to_mainline();
+    rt.traverse::<_, Infallible>(
+        &mut |rt: RichTerm| {
+            match_sharedterm!(match (rt.term) {
+                Term::RecRecord(record, ..) => Ok(RichTerm::new(Term::Record(record), rt.pos)),
+                _ => Ok(rt),
+            })
+        },
+        crate::traverse::TraverseOrder::BottomUp,
+    )
+    // unwrap: our traversal is infallible
+    .unwrap()
+}
+
+/// Parse a YAML string and convert it to a [`RichTerm`].
+///
+/// If `file_id` is provided, the `RichTerm` will have its positions filled out.
 pub fn load_yaml_term(s: &str, file_id: Option<FileId>) -> Result<RichTerm, ParseError> {
     let alloc = AstAlloc::new();
-    let rt: RichTerm = load_yaml(&alloc, s, file_id)?.to_mainline();
+    Ok(ast_to_term(load_yaml(&alloc, s, file_id)?))
+}
 
-    // The mainline conversion creates RecRecords, but since they came from YAML we know they're
-    // just normal Records. This is important for std.deserialize, since it expects deserialized
-    // data to be evaluated.
-    Ok(rt
-        .traverse::<_, Infallible>(
-            &mut |rt: RichTerm| {
-                match_sharedterm!(match (rt.term) {
-                    Term::RecRecord(record, ..) => Ok(RichTerm::new(Term::Record(record), rt.pos)),
-                    _ => Ok(rt),
-                })
-            },
-            crate::traverse::TraverseOrder::BottomUp,
-        )
-        // unwrap: our traversal is infallible
-        .unwrap())
+/// Parse a JSON string and convert it to a [`RichTerm`].
+///
+/// If a location is provided, the `RichTerm` will have its positions filled out.
+pub fn load_json_term(s: &str, location: Option<(FileId, &Files)>) -> Result<RichTerm, ParseError> {
+    let alloc = AstAlloc::new();
+    Ok(ast_to_term(load_json(&alloc, s, location)?))
 }
 
 #[cfg(test)]
