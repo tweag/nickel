@@ -20,8 +20,8 @@ use crate::{
     traverse::{Traverse as _, TraverseOrder},
     typ::Type,
 };
-use nickel_lang_vector::Slice;
 use malachite::base::num::conversion::traits::ToSci as _;
+use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
     cmp::max,
@@ -978,29 +978,48 @@ impl NickelValue {
     /// class is less precise than the type and indicates the general shape of the term: `Record`
     /// for records, `Array` for arrays, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<&'static str> {
-        match self.tag() {
-            ValueTag::Pointer => match self.body_tag().unwrap() {
-                BodyTag::Number => Some("Number"),
-                BodyTag::Array => Some("Array"),
-                BodyTag::Record => Some("Record"),
-                BodyTag::String => Some("String"),
-                BodyTag::Label => Some("Label"),
-                BodyTag::EnumVariant => {
-                    let variant = self.as_value_body::<EnumVariantBody>().unwrap();
-                    if variant.arg.is_some() {
-                        Some("EnumVariant")
-                    } else {
-                        Some("EnumTag")
-                    }
-                }
-                BodyTag::ForeignId => Some("ForeignId"),
-                BodyTag::SealingKey => Some("SealingKey"),
-                BodyTag::CustomContract => Some("CustomContract"),
-                BodyTag::Type => Some("Type"),
-                BodyTag::Thunk | BodyTag::Term => None,
+        match self.content_ref() {
+            ValueContentRef::Inline(inline) => match inline {
+                InlineValue::True | InlineValue::False => Some("Bool"),
+                InlineValue::Null => Some("Other"),
+                InlineValue::EmptyArray => Some("Array"),
+                InlineValue::EmptyRecord => Some("Record"),
             },
-            // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => unsafe { self.as_inline_unchecked().type_of() },
+            ValueContentRef::Number(_) => Some("Number"),
+            ValueContentRef::Array(_) => Some("Array"),
+            ValueContentRef::Record(_) => Some("Record"),
+            ValueContentRef::String(_) => Some("String"),
+            ValueContentRef::Term(term_body) => match &term_body.0 {
+                Term::Value(v) | Term::Closurize(v) => v.type_of(),
+                Term::RecRecord(..) => Some("Record"),
+                Term::Fun(..) | Term::FunPattern(..) => Some("Function"),
+                Term::Match { .. } => Some("MatchExpression"),
+                Term::Sealed(..) => Some("Sealed"),
+                Term::Annotated(..) => Some("Annotated"),
+                Term::Let(..)
+                | Term::LetPattern(..)
+                | Term::App(_, _)
+                | Term::Var(_)
+                | Term::Op1(_, _)
+                | Term::Op2(_, _, _)
+                | Term::OpN(..)
+                | Term::Import(_)
+                | Term::ResolvedImport(_)
+                | Term::StrChunks(_)
+                | Term::ParseError(_)
+                | Term::RuntimeError(_) => None,
+            },
+            ValueContentRef::Label(_) => Some("Label"),
+            ValueContentRef::EnumVariant(EnumVariantBody { arg: None, tag: _ }) => Some("EnumTag"),
+            ValueContentRef::EnumVariant(EnumVariantBody {
+                arg: Some(_),
+                tag: _,
+            }) => Some("EnumVariant"),
+            ValueContentRef::ForeignId(_) => Some("ForeignId"),
+            ValueContentRef::SealingKey(_) => Some("SealingKey"),
+            ValueContentRef::CustomContract(_) => Some("CustomContract"),
+            ValueContentRef::Type(_) => Some("Type"),
+            _ => None,
         }
     }
 
