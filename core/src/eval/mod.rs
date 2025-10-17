@@ -148,7 +148,7 @@ impl<R: ImportResolver, C: Cache> VmContext<R, C> {
         trace: impl Write + 'static,
         reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> Self {
-        Self::new_with_pos_table(import_resolver, PosTable::new(), trace,  reporter)
+        Self::new_with_pos_table(import_resolver, PosTable::new(), trace, reporter)
     }
 
     /// Creates a new VM context from a resolver, a position table, a trace sink and a reporter.
@@ -181,7 +181,11 @@ impl<C: Cache> VmContext<ImportCaches, C> {
         self.prepare_eval_impl(main_id, false)
     }
 
-    fn prepare_eval_impl(&mut self, main_id: FileId, typecheck: bool) -> Result<NickelValue, Error> {
+    fn prepare_eval_impl(
+        &mut self,
+        main_id: FileId,
+        typecheck: bool,
+    ) -> Result<NickelValue, Error> {
         measure_runtime!(
             "runtime:prepare_stdlib",
             self.import_resolver.prepare_stdlib(&mut self.pos_table)?
@@ -192,7 +196,8 @@ impl<C: Cache> VmContext<ImportCaches, C> {
             if typecheck {
                 self.import_resolver.prepare(&mut self.pos_table, main_id)
             } else {
-                self.import_resolver.prepare_eval_only(&mut self.pos_table, main_id)
+                self.import_resolver
+                    .prepare_eval_only(&mut self.pos_table, main_id)
             }
         )?;
 
@@ -898,7 +903,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 .into_iter()
                                 .map(|ctr| {
                                     RuntimeContract::new(
-                                        ctr.contract.closurize(&mut self.context.cache, env.clone()),
+                                        ctr.contract
+                                            .closurize(&mut self.context.cache, env.clone()),
                                         ctr.label,
                                     )
                                 })
@@ -961,7 +967,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                                 Ok((
                                     incl.ident,
-                                    gen_pending_contracts::with_pending_contracts(&mut self.context.pos_table, field)?,
+                                    gen_pending_contracts::with_pending_contracts(
+                                        &mut self.context.pos_table,
+                                        field,
+                                    )?,
                                 ))
                             })
                             .collect();
@@ -975,7 +984,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         data.fields.extend(includes_as_terms?);
                         closurize_rec_record(
                             &mut self.context.cache,
-                            data.clone(),
+                            data,
                             dyn_fields.clone(),
                             deps.clone(),
                             env,
@@ -987,8 +996,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         (data.clone(), dyn_fields.clone())
                     };
 
-                    let rec_env =
-                        fixpoint::rec_env(&mut self.context.cache, static_part.fields.iter(), pos_idx);
+                    let rec_env = fixpoint::rec_env(
+                        &mut self.context.cache,
+                        static_part.fields.iter(),
+                        pos_idx,
+                    );
 
                     for rt in static_part.fields.values_mut() {
                         fixpoint::patch_field(&mut self.context.cache, rt, &rec_env);
@@ -1011,7 +1023,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        NickelValue::record_force_pos(&mut self.context.pos_table, static_part, pos_idx),
+                        NickelValue::record_force_pos(
+                            &mut self.context.pos_table,
+                            static_part,
+                            pos_idx,
+                        ),
                         |acc, (name_as_term, mut field)| {
                             let pos_idx = field
                                 .value
@@ -1049,7 +1065,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         },
                     );
 
-                    extended.with_pos_idx(&mut self.context.pos_table, pos_idx).into()
+                    extended
+                        .with_pos_idx(&mut self.context.pos_table, pos_idx)
+                        .into()
                 }
                 ValueContentRef::Term(TermBody(Term::ResolvedImport(id))) => {
                     increment!(format!("import:{id:?}"));
@@ -1115,7 +1133,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
                 ValueContentRef::Term(TermBody(Term::Fun(arg, body))) if !has_cont_on_stack => {
-                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache) {
+                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
+                    {
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
                         Closure {
@@ -1277,8 +1296,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// owned by something else and just passed for evaluation, or any other design - but it sounds
     /// abusive that the VM owns the two, which should be able to survive it or be initialized
     /// before it.
-    pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T where F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T {
-        f(&mut self.context.pos_table, &mut self.context.import_resolver)
+    pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T
+    where
+        F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T,
+    {
+        f(
+            &mut self.context.pos_table,
+            &mut self.context.import_resolver,
+        )
     }
 
     pub(crate) fn pos_table_mut(&mut self) -> &mut PosTable {
@@ -1379,42 +1404,37 @@ pub fn env_add_record<C: Cache>(
         return Ok(());
     }
 
-    //TODO[RFC007]: empty records?
-    let record = closure
-        .value
-        .as_record()
-        .map(|record| &record.0)
-        .or_else(|| {
-            closure.value.as_term().and_then(|term| {
-                if let Term::RecRecord(record, ..) = &term.0 {
-                    Some(record)
-                } else {
-                    None
-                }
-            })
-        });
-
-    if let Some(record) = record {
-        let ext = record.fields.iter().filter_map(|(id, field)| {
-            field.value.as_ref().map(|value| {
-                (
-                    id.ident(),
-                    cache.add(
-                        Closure {
-                            value: value.clone(),
-                            env: closure.env.clone(),
-                        },
-                        BindingType::Normal,
-                    ),
-                )
-            })
-        });
-
-        env.extend(ext);
-        Ok(())
+    // We unwrap potential `Closurize` sprinkled in unevaluated terms, which is typically the case
+    // for the stdlib.
+    let value = if let Some(TermBody(Term::Closurize(inner))) = closure.value.as_term() {
+        inner
     } else {
-        Err(EnvBuildError::NotARecord(closure.value))
-    }
+        &closure.value
+    };
+
+    let record = match value.content_ref() {
+        ValueContentRef::Record(RecordBody(record)) => record,
+        ValueContentRef::Term(TermBody(Term::RecRecord(record, ..))) => record,
+        _ => return Err(EnvBuildError::NotARecord(closure.value)),
+    };
+
+    let ext = record.fields.iter().filter_map(|(id, field)| {
+        field.value.as_ref().map(|value| {
+            (
+                id.ident(),
+                cache.add(
+                    Closure {
+                        value: value.clone(),
+                        env: closure.env.clone(),
+                    },
+                    BindingType::Normal,
+                ),
+            )
+        })
+    });
+
+    env.extend(ext);
+    Ok(())
 }
 
 /// Bind a closure in an environment.
