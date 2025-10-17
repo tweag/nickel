@@ -157,7 +157,7 @@ impl CollectFreeVars for Term {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::RecRecord(record, includes, dyn_fields, deps) => {
+            Term::RecRecord(record, includes, dyn_fields, deps, _) => {
                 let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
                 // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in

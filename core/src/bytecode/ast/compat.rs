@@ -460,7 +460,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 alloc.app(fun.to_ast(alloc, pos_table), args)
             }
             Term::Var(id) => Node::Var(*id),
-            Term::RecRecord(data, includes, dyn_fields, _deps) => {
+            Term::RecRecord(data, includes, dyn_fields, _deps, _closurized) => {
                 let mut field_defs = Vec::new();
 
                 field_defs.extend(data.fields.iter().map(|(id, field)| {
@@ -1117,6 +1117,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                                 Vec::new(),
                                 vec![(expr, acc)],
                                 None,
+                                false,
                             ),
                             pos_table.push_block(pos),
                         ))
@@ -1571,6 +1572,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                             .collect(),
                         dyn_fields,
                         None,
+                        false,
                     ),
                     pos_table.push_block(ast.pos),
                 )
