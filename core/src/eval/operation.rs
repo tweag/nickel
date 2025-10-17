@@ -3682,32 +3682,36 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     }
 }
 
-// The enum tag returned by Typeof and Cast.
+/// The enum tag returned by Typeof and Cast.
+///
+/// This function is a less precise version of `v.type_of()`, because `type_tag` has backward
+/// compatibility guarantees to uphold. Instead of relying on
+/// [crate::bytecode::value::NickelValue::type_of], it's safer to duplicate the logic here.
 fn type_tag(v: &NickelValue) -> &'static str {
-    use crate::bytecode::value::{BodyTag, InlineValue, ValueTag};
-    // This is almost like `v.type_of()`, but there are a few subtle differences, and `type_tag`
-    // has backward compatibility guarantees to uphold. Instead of relying on `type_of`, it's safer
-    // to duplicate the logic here.
-    match v.tag() {
-        ValueTag::Pointer => match v.body_tag().unwrap() {
-            BodyTag::Number => "Number",
-            BodyTag::Array => "Array",
-            BodyTag::Record => "Record",
-            BodyTag::String => "String",
-            BodyTag::Label => "Label",
-            BodyTag::EnumVariant => "Enum",
-            BodyTag::ForeignId => "ForeignId",
-            BodyTag::CustomContract => "CustomContract",
-            BodyTag::Type => "Type",
-            _ => "Other",
-        },
-        // unwrap(): if the body tag is inline, `v` must be an inline value
-        ValueTag::Inline => match v.as_inline().unwrap() {
+    use crate::bytecode::value::InlineValue;
+
+    match v.content_ref() {
+        ValueContentRef::Inline(inline) => match inline {
             InlineValue::True | InlineValue::False => "Bool",
             InlineValue::Null => "Other",
             InlineValue::EmptyArray => "Array",
             InlineValue::EmptyRecord => "Record",
         },
+        ValueContentRef::Number(_) => "Number",
+        ValueContentRef::Array(_) => "Array",
+        ValueContentRef::Record(_) => "Record",
+        ValueContentRef::String(_) => "String",
+        ValueContentRef::Term(term_body) => match term_body.0 {
+            Term::RecRecord(..) => "Record",
+            Term::Fun(..) | Term::Match { .. } => "Function",
+            _ => "Other",
+        },
+        ValueContentRef::Label(_) => "Label",
+        ValueContentRef::EnumVariant(_) => "Enum",
+        ValueContentRef::ForeignId(_) => "ForeignId",
+        ValueContentRef::CustomContract(_) => "CustomContract",
+        ValueContentRef::Type(_) => "Type",
+        _ => "Other",
     }
 }
 
