@@ -100,7 +100,7 @@ impl NickelValue {
         //
         // Since `!Self::inline_pos_idx_MASK` is `FF_FF_FF_FF`, `AND`ing `self.data` with this mask
         // ensures that the result fit in a u32, so we can use `as` fearlessly.
-        transmute::<u32, InlineValue>((self.data & !Self::INLINE_POS_IDX_MASK) as u32)
+        unsafe { transmute::<u32, InlineValue>((self.data & !Self::INLINE_POS_IDX_MASK) as u32) }
     }
 
     /// Makes a raw byte-to-byte copy of another Nickel value, entirely ignoring reference counting
@@ -109,10 +109,9 @@ impl NickelValue {
     /// # Safety
     ///
     /// - the ref count of the value block must be adjusted manually to compensate for dropping `self`. Possible solutions are:
-    ///   - manually increment the reference count,
-    ///   - prevent `self` from being dropped ever
-    ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
-    ///   - derive `ptr` from a value or a value block that won't be dropped ever
+    ///   - manually increment the reference count
+    ///   - prevent `other` from being dropped (e.g. using [std::mem::ManuallyDrop])
+    ///   - prevent `self` from being dropped
     unsafe fn raw_copy(other: &Self) -> Self {
         NickelValue { data: other.data }
     }
@@ -124,9 +123,9 @@ impl NickelValue {
     /// - `ptr` must be a valid pointer to a [ValueBlockRc].
     /// - the ref count of the value block must be adjusted manually to compensate for dropping `self`. Possible solutions are:
     ///   - manually increment the reference count,
-    ///   - prevent `self` from being dropped ever
+    ///   - prevent `self` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
-    ///   - derive `ptr` from a value or a value block that won't be dropped ever
+    ///   - derive `ptr` from a value or a value block that won't be dropped
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
@@ -172,7 +171,7 @@ impl NickelValue {
         // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout as
         // `self.0`. The precondition of the function ensures that `self.0` is a valid value for
         // [InlineValue].
-        transmute::<usize, InlineValue>(self.data)
+        unsafe { transmute::<usize, InlineValue>(self.data) }
     }
 
     /// Makes a raw byte-to-byte copy of another Nickel value, entirely ignoring reference counting
@@ -180,12 +179,10 @@ impl NickelValue {
     ///
     /// # Safety
     ///
-    /// - the ref count of the value block must be adjusted manually to compensate for dropping
-    ///   `self`. Possible solutions are:
-    ///   - manually increment the reference count,
-    ///   - prevent `self` from being dropped ever
-    ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
-    ///   - derive `ptr` from a value or a value block that won't be dropped ever
+    /// - the ref count of the value block must be adjusted manually to compensate for dropping `self`. Possible solutions are:
+    ///   - manually increment the reference count
+    ///   - prevent `other` from being dropped (e.g. using [std::mem::ManuallyDrop])
+    ///   - prevent `self` from being dropped
     unsafe fn raw_copy(other: &Self) -> Self {
         NickelValue {
             data: other.data,
@@ -198,12 +195,11 @@ impl NickelValue {
     /// # Safety
     ///
     /// - `ptr` must be a valid pointer to a [ValueBlockRc].
-    /// - the ref count of the value block must be adjusted manually to compensate for dropping
-    ///   `self`. Possible solutions are:
+    /// - the ref count of the value block must be adjusted manually to compensate for dropping `self`. Possible solutions are:
     ///   - manually increment the reference count,
-    ///   - prevent `self` from being dropped ever
+    ///   - prevent `self` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
-    ///   - derive `ptr` from a value or a value block that won't be dropped ever
+    ///   - derive `ptr` from a value or a value block that won't be dropped
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
@@ -728,8 +724,8 @@ impl NickelValue {
                 // Safety:
                 //  - additionally, the lifetime of the return `ValueContentRef<'_>` is tied to
                 //    `&mut self`, so the former won't outlive the value block.
-                //  - we've checked above that `ref_count` is `1`, and we have a mutable borrow
-                //    over `self`, so there can't be other active mutable borrows to the block
+                //  - we've checked above that `ref_count` is `1`, and we hold a mutable borrow of
+                //  `  self`, so there can't be other active mutable borrows to the block
                 Some(match header.tag {
                     BodyTag::Number => ValueContentRefMut::Number(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
@@ -805,24 +801,16 @@ impl NickelValue {
                                 Term::StrChunks(_) => {
                                     TermContent::StrChunks(ValueLens::term_str_chunks_lens(self))
                                 }
-                                Term::Fun(..) => {
-                                    TermContent::Fun(ValueLens::term_fun_lens(self))
-                                }
+                                Term::Fun(..) => TermContent::Fun(ValueLens::term_fun_lens(self)),
                                 Term::FunPattern(..) => {
                                     TermContent::FunPattern(ValueLens::term_fun_pat_lens(self))
                                 }
-                                Term::Let(..) => {
-                                    TermContent::Let(ValueLens::term_let_lens(self))
-                                }
+                                Term::Let(..) => TermContent::Let(ValueLens::term_let_lens(self)),
                                 Term::LetPattern(..) => {
                                     TermContent::LetPattern(ValueLens::term_let_pat_lens(self))
                                 }
-                                Term::App(..) => {
-                                    TermContent::App(ValueLens::term_app_lens(self))
-                                }
-                                Term::Var(..) => {
-                                    TermContent::Var(ValueLens::term_var_lens(self))
-                                }
+                                Term::App(..) => TermContent::App(ValueLens::term_app_lens(self)),
+                                Term::Var(..) => TermContent::Var(ValueLens::term_var_lens(self)),
                                 Term::RecRecord(..) => {
                                     TermContent::RecRecord(ValueLens::term_rec_record_lens(self))
                                 }
@@ -832,15 +820,9 @@ impl NickelValue {
                                 Term::Match(_) => {
                                     TermContent::Match(ValueLens::term_match_lens(self))
                                 }
-                                Term::Op1(..) => {
-                                    TermContent::Op1(ValueLens::term_op1_lens(self))
-                                }
-                                Term::Op2(..) => {
-                                    TermContent::Op2(ValueLens::term_op2_lens(self))
-                                }
-                                Term::OpN(..) => {
-                                    TermContent::OpN(ValueLens::term_opn_lens(self))
-                                }
+                                Term::Op1(..) => TermContent::Op1(ValueLens::term_op1_lens(self)),
+                                Term::Op2(..) => TermContent::Op2(ValueLens::term_op2_lens(self)),
+                                Term::OpN(..) => TermContent::OpN(ValueLens::term_opn_lens(self)),
                                 Term::Sealed(..) => {
                                     TermContent::Sealed(ValueLens::term_sealed_lens(self))
                                 }
@@ -850,15 +832,15 @@ impl NickelValue {
                                 Term::Import(_) => {
                                     TermContent::Import(ValueLens::term_import_lens(self))
                                 }
-                                Term::ResolvedImport(_) => {
-                                    TermContent::ResolvedImport(ValueLens::term_resolved_import_lens(self))
-                                }
+                                Term::ResolvedImport(_) => TermContent::ResolvedImport(
+                                    ValueLens::term_resolved_import_lens(self),
+                                ),
                                 Term::ParseError(_) => {
                                     TermContent::ParseError(ValueLens::term_parse_error_lens(self))
                                 }
-                                Term::RuntimeError(_) => {
-                                    TermContent::RuntimeError(ValueLens::term_runtime_error_lens(self))
-                                }
+                                Term::RuntimeError(_) => TermContent::RuntimeError(
+                                    ValueLens::term_runtime_error_lens(self),
+                                ),
                             })
                         }
                         BodyTag::Label => ValueContent::Label(ValueLens::body_lens(self)),
@@ -887,19 +869,26 @@ impl NickelValue {
     pub fn content_make_mut(&mut self) -> ValueContentRefMut<'_> {
         // Safety: `value.tag()` must be `Pointer` and `value.body_tag()` must be equal to `T::Tag`
         unsafe fn make_mut<T: ValueBlockBody + Clone>(value: &mut NickelValue) -> &mut T {
-            let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
-            let header = ValueBlockRc::header_from_raw(as_ptr);
+            unsafe {
+                // Safety: if `value.tag()` is `Pointer`, `value.data` is a non-null pointer (precondition)
 
-            if header.ref_count() != 1 {
-                let unique = ValueBlockRc::encode(
-                    ValueBlockRc::decode_from_raw_unchecked::<T>(as_ptr).clone(),
-                    header.pos_idx,
-                );
-                as_ptr = unique.0;
-                *value = unique.into();
+                let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
+                // Safety: if `value.tag()` is `Pointer`, `value.data` is a non-null pointer (precondition)
+                let header = ValueBlockRc::header_from_raw(as_ptr);
+
+                if header.ref_count() != 1 {
+                    let unique = ValueBlockRc::encode(
+                        // Safety: `value.body_tag()` is `T::Tag` (precondition)
+                        ValueBlockRc::decode_from_raw_unchecked::<T>(as_ptr).clone(),
+                        header.pos_idx,
+                    );
+                    as_ptr = unique.0;
+                    *value = unique.into();
+                }
+
+                // Safety: we've made sure `value` is unique
+                ValueBlockRc::decode_mut_from_raw_unchecked::<T>(as_ptr)
             }
-
-            ValueBlockRc::decode_mut_from_raw_unchecked::<T>(as_ptr)
         }
 
         match self.tag() {
@@ -1009,6 +998,7 @@ impl NickelValue {
                 BodyTag::Type => Some("Type"),
                 BodyTag::Thunk | BodyTag::Term => None,
             },
+            // Safety: `self.tag()` is `ValueTag::Inline`
             ValueTag::Inline => unsafe { self.as_inline_unchecked().type_of() },
         }
     }
@@ -1104,11 +1094,14 @@ impl NickelValue {
         match self.tag() {
             ValueTag::Pointer => self.data == other.data,
             // Safety: the tag is checked to be `Inline`
-            ValueTag::Inline => unsafe {
-                // Using `as_inline_unchecked` instead of `self.data` directly sidesteps the
-                // platform-specific differences
-                self.as_inline_unchecked() == other.as_inline_unchecked()
-            },
+            ValueTag::Inline => {
+                other.is_inline()
+                    && unsafe {
+                        // Using `as_inline_unchecked` instead of `self.data` directly sidesteps the
+                        // platform-specific differences
+                        self.as_inline_unchecked() == other.as_inline_unchecked()
+                    }
+            }
         }
     }
 
@@ -1156,7 +1149,7 @@ impl NickelValue {
                 let block: ValueBlockRc = self.try_into().unwrap();
                 let unique = block.make_unique();
                 // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
-                // mutable access (ownership) of the block.
+                // access (ownership) of the block.
                 unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
                 Ok(unique.into())
             }
@@ -1226,15 +1219,15 @@ impl Clone for NickelValue {
                 // Safety: if `self.tag()` is `Pointer`, `self.0` must be a valid non-null pointer
                 // to a value block.
                 //
-                // We need to prevent this value block to be dropped as this would decrement the
-                // refcount, nullifying our increment.
+                // We need to prevent this value block from being dropped as this would decrement
+                // the refcount, nullifying our increment.
                 let block_ptr =
                     ManuallyDrop::new(ValueBlockRc::from_raw_unchecked(self.data as *mut u8));
                 block_ptr.incr_ref_count();
             }
         }
 
-        // Safety: we incremented the ref count above
+        // Safety: we incremented the ref count above, if the inner value is a block.
         unsafe { NickelValue::raw_copy(self) }
     }
 }
@@ -1763,9 +1756,11 @@ impl ValueBlockRc {
     ///
     /// # Safety
     ///
-    /// Same conditions as for [ValueBlockRc::from_raw], plus `ptr` must not be null.
+    /// Same conditions as for [ValueBlockRc::from_raw].
     pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
-        ValueBlockRc(NonNull::new_unchecked(ptr))
+        // Safety: if the pointer is coming from a call to `into_raw` (precondition), it can't be
+        // nulll (invariant of `ValueBlockRc`)
+        unsafe { ValueBlockRc(NonNull::new_unchecked(ptr)) }
     }
 
     /// Converts a pointer to a value block to a raw pointer. See [Self::from_raw].
@@ -1799,7 +1794,8 @@ impl ValueBlockRc {
     ///
     /// - `ptr` must be a valid pointer into a value block.
     unsafe fn header_from_raw(ptr: NonNull<u8>) -> ValueBlockHeader {
-        ptr.cast::<ValueBlockHeader>().as_ref().clone()
+        // Safety: the safety precondition of this function
+        unsafe { ptr.cast::<ValueBlockHeader>().as_ref().clone() }
     }
 
     /// Returns the tag in the header of a value block pointed to by `ptr`.
@@ -1808,7 +1804,8 @@ impl ValueBlockRc {
     ///
     /// - `ptr` must be a valid pointer into a value block.
     unsafe fn tag_from_raw(ptr: NonNull<u8>) -> BodyTag {
-        ptr.cast::<ValueBlockHeader>().as_ref().tag
+        // Safety: the safety precondition of this function
+        unsafe { ptr.cast::<ValueBlockHeader>().as_ref().tag }
     }
 
     /// Returns a mutable pointer to the header of this value block. [Self::header_mut] returns a
@@ -1821,8 +1818,8 @@ impl ValueBlockRc {
     /// Increments the reference count of this value block.
     fn incr_ref_count(&self) {
         // Safety: we never hand over mutable references into a value block unless there is an
-        // active mutable borrow to `self` and the reference is 1-counted, but this excluded here
-        // (since we borrow `self` immutably).
+        // active mutable borrow to `self` and the reference is 1-counted, but this is excluded
+        // here since we borrow `self` immutably.
         unsafe { (*self.header_mut()).incr_ref_count() }
     }
 
@@ -1830,7 +1827,7 @@ impl ValueBlockRc {
     fn decr_ref_count(&self) {
         // Safety: we never hand over mutable references into a value block unless there is an
         // active mutable borrow to `self` and the reference is 1-counted, but this excluded here
-        // (since we borrow `self` immutably).
+        // since we borrow `self` immutably.
         unsafe { (*self.header_mut()).decr_ref_count() }
     }
 
@@ -1859,8 +1856,8 @@ impl ValueBlockRc {
     /// operate on a raw pointer to a value block.
     ///
     /// `ptr` isn't wrapped in a [ValueBlockRc] or a [NickelValue], so it won't de-allocate the
-    /// block when it goes out of scope. It's responsibility of the caller to wrap this pointer in
-    /// a a block or a value, e.g. by using [Self::from_raw], to avoid leaks.
+    /// block when it goes out of scope. It is the responsibility of the caller to wrap this
+    /// pointer in a a block or a value, e.g. by using [Self::from_raw], to avoid leaks.
     ///
     /// # Safety
     ///
@@ -1875,21 +1872,25 @@ impl ValueBlockRc {
     pub unsafe fn make_mut_from_raw_unchecked<'a, T: ValueBlockBody + Clone>(
         ptr: &mut NonNull<u8>,
     ) -> &'a mut T {
-        let header = Self::header_from_raw(*ptr);
+        unsafe {
+            // Safety: `ptr` is a valid non-null pointer to a value block (precondition)
+            let header = Self::header_from_raw(*ptr);
 
-        if header.ref_count() == 1 {
-            // Safety: we know that the value block is unique, so we can safely decode the content
-            // without any risk of aliasing.
-            unsafe { Self::decode_mut_from_raw_unchecked::<T>(*ptr) }
-        } else {
-            let unique = ManuallyDrop::new(ValueBlockRc::encode(
-                Self::decode_from_raw_unchecked::<T>(*ptr).clone(),
-                header.pos_idx,
-            ));
-            *ptr = unique.0;
-            // Safety: we just made a unique block, so we can safely decode the content without any
-            // risk of aliasing.
-            unsafe { Self::decode_mut_from_raw_unchecked::<T>(*ptr) }
+            if header.ref_count() == 1 {
+                // Safety: we know that the value block is unique, so we can safely decode the content
+                // without any risk of aliasing.
+                Self::decode_mut_from_raw_unchecked::<T>(*ptr)
+            } else {
+                // Safety: `ptr` is a valid pointer to a block with a `T` inside (precondition)
+                let unique = ManuallyDrop::new(ValueBlockRc::encode(
+                    Self::decode_from_raw_unchecked::<T>(*ptr).clone(),
+                    header.pos_idx,
+                ));
+                *ptr = unique.0;
+                // Safety: we just made a unique block, so we can safely decode the content without any
+                // risk of aliasing.
+                Self::decode_mut_from_raw_unchecked::<T>(*ptr)
+            }
         }
     }
 
@@ -1905,6 +1906,7 @@ impl ValueBlockRc {
         } else {
             let unique = ValueBlockRc::encode(self.decode::<T>().clone(), self.pos_idx());
             *self = unique;
+            // Safety: `self.tag()` is `T::TAG`
             unsafe { Ok(self.decode_mut_unchecked::<T>()) }
         }
     }
@@ -2002,7 +2004,7 @@ impl ValueBlockRc {
         );
 
         // Safety: align is the max of existing valid alignments, so it's a power of 2. The assert
-        // above ensures that the nearest multiple of the alignment after size is less than
+        // above ensures that the nearest multiple of the alignment after `size` is less than
         // `isize::MAX`.
         unsafe { Layout::from_size_align_unchecked(size, Self::block_align::<T>()) }
     }
@@ -2010,6 +2012,7 @@ impl ValueBlockRc {
     /// Allocates a new value block with the given value `T` as content.
     fn encode<T: ValueBlockBody>(value: T, pos_idx: PosIdx) -> Self {
         unsafe {
+            // Safety: the layout of a block verifies `size > 0`
             let start = alloc(Self::block_layout::<T>());
 
             if start.is_null() {
@@ -2019,9 +2022,11 @@ impl ValueBlockRc {
             let header_ptr = start as *mut ValueBlockHeader;
             header_ptr.write(ValueBlockHeader::new(T::TAG, pos_idx));
 
+            // Safety: layout computations are correct (hopefully)
             let body_ptr = start.add(Self::body_offset::<T>()) as *mut T;
             body_ptr.write(value);
 
+            // Safety: we abort if `start.is_null()` above, so `start` is not null
             Self(NonNull::new_unchecked(start))
         }
     }
@@ -2029,6 +2034,7 @@ impl ValueBlockRc {
     /// Tries to decode this value block as a reference to a value of type `T`. Returns `None` if
     /// the tag of this value block is not `T::TAG`.
     fn try_decode<T: ValueBlockBody>(&self) -> Option<&T> {
+        // Safety: we decode only if `self.tag()` is `T::TAG`
         (self.tag() == T::TAG).then(|| unsafe { self.decode_unchecked() })
     }
 
@@ -2046,7 +2052,8 @@ impl ValueBlockRc {
     /// The content of this value block must have been encoded from a value of type `T`, that is
     /// `self.tag() == T::TAG`.
     unsafe fn decode_unchecked<T: ValueBlockBody>(&self) -> &T {
-        Self::decode_from_raw_unchecked(self.0)
+        // Safety: preconditions
+        unsafe { Self::decode_from_raw_unchecked(self.0) }
     }
 
     /// Mutable variant of [Self::decode_unchecked] (or unsafe variant of [Self::get_mut]).
@@ -2059,7 +2066,8 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive. This is typically the case if the reference
     ///   count of the value block is 1.
     unsafe fn decode_mut_unchecked<T: ValueBlockBody>(&mut self) -> &mut T {
-        Self::decode_mut_from_raw_unchecked(self.0)
+        // Safety: preconditions
+        unsafe { Self::decode_mut_from_raw_unchecked(self.0) }
     }
 
     /// Given a pointer into a value block, blindly tries to decode the content to a `T` bypassing all safety checks.
@@ -2071,7 +2079,8 @@ impl ValueBlockRc {
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
     unsafe fn decode_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a T {
-        ptr.add(Self::body_offset::<T>()).cast::<T>().as_ref()
+        // Safety: preconditions
+        unsafe { ptr.add(Self::body_offset::<T>()).cast::<T>().as_ref() }
     }
 
     /// Mutable variant of [Self::decode_from_raw_unchecked].
@@ -2085,7 +2094,8 @@ impl ValueBlockRc {
     ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
     ///   the reference count of the value block is `1`.
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> &'a mut T {
-        ptr.add(Self::body_offset::<T>()).cast::<T>().as_mut()
+        // Safety: preconditions
+        unsafe { ptr.add(Self::body_offset::<T>()).cast::<T>().as_mut() }
     }
 
     /// Given a pointer into a value block, tries to decode the content to a `T`. Returns `None` if
@@ -2100,7 +2110,7 @@ impl ValueBlockRc {
     unsafe fn try_decode_from_raw<'a, T: ValueBlockBody>(ptr: NonNull<u8>) -> Option<&'a T> {
         // Safety: we've checked that the tag matched `T`. The rest of the safety conditions are
         // the pre-conditions of the current function `try_decode`.
-        (Self::tag_from_raw(ptr) == T::TAG).then(|| Self::decode_from_raw_unchecked(ptr))
+        unsafe { (Self::tag_from_raw(ptr) == T::TAG).then(|| Self::decode_from_raw_unchecked(ptr)) }
     }
 }
 
