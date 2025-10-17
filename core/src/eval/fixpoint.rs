@@ -55,6 +55,10 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 let idx = if let Some(ThunkBody(idx)) = value.as_thunk() {
                     idx.clone()
                 } else {
+                    if !value.is_constant() {
+                        eprintln!("/!\\ Unclosurized field {id} with value {value}");
+                        eprintln!("Body tag: {:?}", value.body_tag());
+                    }
                     // If we are in this branch, `value` must be a constant after closurization
                     // (the evaluation of a recursive record starts by closurizing all fields
                     // and contracts). Constants don't need an environment, which is why it is
@@ -160,5 +164,7 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     //
     // Include expressions are transformed to normal fields the very first time they are seen. They
     // aren't reconstructed, so the result of a merge never has any include expressions.
-    Term::RecRecord(record_data, Vec::new(), Vec::new(), None)
+    //
+    // The fields are already closurized.
+    Term::RecRecord(record_data, Vec::new(), Vec::new(), None, true)
 }

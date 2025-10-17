@@ -9,11 +9,11 @@ use std::{convert::Infallible, rc::Rc};
 use super::Wildcards;
 
 use crate::{
-    bytecode::value::{lens::TermContent, NickelValue, ValueContent},
+    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
     label::Label,
     term::{
-        record::{Field, FieldMetadata, RecordData},
         LabeledType, Term, TypeAnnotation,
+        record::{Field, FieldMetadata, RecordData},
     },
     traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
@@ -39,7 +39,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                 )
             } else {
                 if let TermContent::RecRecord(record_lens) = term_lens {
-                    let (record_data, includes, dyn_fields, deps) = record_lens.take();
+                    let (record_data, includes, dyn_fields, deps, closurized) = record_lens.take();
 
                     let record_data = record_data.subst_wildcards(wildcards);
                     let dyn_fields = dyn_fields
@@ -48,7 +48,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                         .collect();
 
                     NickelValue::term(
-                        Term::RecRecord(record_data, includes, dyn_fields, deps),
+                        Term::RecRecord(record_data, includes, dyn_fields, deps, closurized),
                         pos_idx,
                     )
                 } else {

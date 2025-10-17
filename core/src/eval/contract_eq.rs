@@ -248,8 +248,8 @@ fn contract_eq_bounded(
                             .unwrap_or(false)
                 }
                 (
-                    Term::RecRecord(r1, includes1, dyn_fields1, _),
-                    Term::RecRecord(r2, includes2, dyn_fields2, _),
+                    Term::RecRecord(r1, includes1, dyn_fields1, _, _),
+                    Term::RecRecord(r2, includes2, dyn_fields2, _, _),
                 ) =>
                 // We only compare records whose field structure is statically known (i.e. without dynamic
                 // fields) and without include expressions, which are a bit tricky to consider.
@@ -355,12 +355,12 @@ fn contract_eq_bounded(
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
         (
-            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _))),
+            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _, _))),
             ValueContentRef::Record(RecordBody(r2)),
         )
         | (
             ValueContentRef::Record(RecordBody(r1)),
-            ValueContentRef::Term(TermBody(Term::RecRecord(r2, includes, dyn_fields, _))),
+            ValueContentRef::Term(TermBody(Term::RecRecord(r2, includes, dyn_fields, _, _))),
         ) => {
             dyn_fields.is_empty()
                 && includes.is_empty()

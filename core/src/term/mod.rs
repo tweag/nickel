@@ -134,6 +134,7 @@ pub enum Term {
         Vec<Include>,              /* fields defined through `include` expressions */
         Vec<(NickelValue, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
+        bool, /* is it closurized */
     ),
 
     /// A container value (array or record) that has yet to be closurized. This will closurize each
@@ -1956,7 +1957,7 @@ impl Traverse<NickelValue> for Term {
                 let inner = inner.traverse(f, order)?;
                 Term::Sealed(key, inner, label)
             }
-            Term::RecRecord(record, includes, dyn_fields, deps) => {
+            Term::RecRecord(record, includes, dyn_fields, deps, closurized) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
                 let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
@@ -1979,6 +1980,7 @@ impl Traverse<NickelValue> for Term {
                     includes,
                     dyn_fields_res?,
                     deps,
+                    closurized
                 )
             }
             Term::StrChunks(chunks) => {
@@ -2050,7 +2052,7 @@ impl Traverse<NickelValue> for Term {
             Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
-            Term::RecRecord(data, _, dyn_data, _) => data
+            Term::RecRecord(data, _, dyn_data, _, _) => data
                 .fields
                 .values()
                 .find_map(|field| field.traverse_ref(f, state))

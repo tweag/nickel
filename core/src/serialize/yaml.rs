@@ -532,7 +532,7 @@ pub fn load_yaml_value(
 
                 Ok(match value.content() {
                     ValueContent::Term(TermContent::RecRecord(lens)) => {
-                        let (record, _, _, _) = lens.take();
+                        let (record, _, _, _, _) = lens.take();
                         // unwrap(): will go away soon
                         NickelValue::record(record, pos_idx).unwrap()
                     }

@@ -1088,7 +1088,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             }
             .group(),
             Term::Var(id) => allocator.as_string(id),
-            Term::RecRecord(record_data, includes, dyn_fields, _) => {
+            Term::RecRecord(record_data, includes, dyn_fields, _, _) => {
                 allocator.record(record_data, includes, dyn_fields)
             }
             Term::Match(data) => docs![

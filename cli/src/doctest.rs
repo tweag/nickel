@@ -4,24 +4,26 @@
 
 use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
-use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
+use comrak::{Arena, ComrakOptions, arena_tree::NodeEdge, nodes::AstNode};
 use nickel_lang_core::{
-    bytecode::value::{NickelValue, ValueContentRef, RecordBody, TermBody, ValueContent, lens::TermContent},
+    bytecode::value::{
+        NickelValue, RecordBody, TermBody, ValueContent, ValueContentRef, lens::TermContent,
+    },
     cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
     error::{
-        report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
+        report::{ColorOpt, report_as_str, report_to_stdout},
     },
     eval::{
-        cache::{lazy::CBNCache, CacheImpl},
         Closure, Environment,
+        cache::{CacheImpl, lazy::CBNCache},
     },
     identifier::{Ident, LocIdent},
     label::Label,
     mk_app, mk_fun,
-    program::Program,
     position::PosTable,
-    term::{make, record::RecordData, LabeledType, Term, TypeAnnotation},
+    program::Program,
+    term::{LabeledType, Term, TypeAnnotation, make, record::RecordData},
     traverse::{Traverse as _, TraverseOrder},
     typ::{Type, TypeF},
     typecheck::TypecheckMode,
@@ -169,7 +171,8 @@ fn run_tests(
     color: ColorOpt,
 ) {
     match spine.content_ref() {
-        ValueContentRef::Record(RecordBody(data)) | ValueContentRef::Term(TermBody(Term::RecRecord(data, ..))) => {
+        ValueContentRef::Record(RecordBody(data))
+        | ValueContentRef::Term(TermBody(Term::RecRecord(data, ..))) => {
             for (id, field) in &data.fields {
                 if let Some(entry) = registry.tests.get(&id.ident()) {
                     let Some(val) = field.value.as_ref() else {
@@ -299,7 +302,9 @@ impl TestCommand {
         program.typecheck(TypecheckMode::Walk)?;
         program.compile()?;
         program
-            .custom_transform(0, |cache, pos_table, rt| doctest_transform(pos_table, cache, &mut registry, rt))
+            .custom_transform(0, |cache, pos_table, rt| {
+                doctest_transform(pos_table, cache, &mut registry, rt)
+            })
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
         Ok((program.eval_closurized_record_spine()?, registry))
     }
@@ -484,7 +489,10 @@ fn doctest_transform(
         // some places (e.g. compiled match expressions) assume that they have
         // Records.
         let value = if let Some((includes, dyn_fields)) = rec_stuff {
-            NickelValue::term(Term::RecRecord(record_data, includes, dyn_fields, None), pos)
+            NickelValue::term(
+                Term::RecRecord(record_data, includes, dyn_fields, None, false),
+                pos,
+            )
         } else {
             // unwrap(): will go away soon
             NickelValue::record(record_data, pos).unwrap()
@@ -498,12 +506,10 @@ fn doctest_transform(
 
         let value = match value.content() {
             ValueContent::Term(TermContent::RecRecord(lens)) => {
-                let (record_data, includes, dyn_fields, _deps) = lens.take();
+                let (record_data, includes, dyn_fields, _deps, _closurized) = lens.take();
                 record_with_doctests(record_data, Some((includes, dyn_fields)), pos_idx)?
             }
-            ValueContent::Record(lens) => {
-                record_with_doctests(lens.take().0, None, pos_idx)?
-            }
+            ValueContent::Record(lens) => record_with_doctests(lens.take().0, None, pos_idx)?,
             lens => lens.restore(),
         };
 

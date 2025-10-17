@@ -943,6 +943,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     includes,
                     dyn_fields,
                     deps,
+                    closurized
                 ))) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
@@ -952,7 +953,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // if we add a new indirection. This should ideally be encoded in the Rust
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
-                    let (mut static_part, dyn_fields) = if false {
+                    let (mut static_part, dyn_fields) = if !closurized {
                         let includes_as_terms: Result<Vec<_>, _> = includes
                             .iter()
                             .map(|incl| -> Result<_, EvalErrorData> {
@@ -1613,7 +1614,7 @@ pub fn subst<C: Cache>(
                 // Currently, we downright ignore `include` expressions. However, one could argue that
                 // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
                 TermContent::RecRecord(lens) => {
-                    let (record, includes, dyn_fields, deps) = lens.take();
+                    let (record, includes, dyn_fields, deps, closurized) = lens.take();
                     let record = record
                         .map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
@@ -1627,7 +1628,7 @@ pub fn subst<C: Cache>(
                         })
                         .collect();
 
-                    NickelValue::term(Term::RecRecord(record, includes, dyn_fields, deps), pos_idx)
+                    NickelValue::term(Term::RecRecord(record, includes, dyn_fields, deps, closurized), pos_idx)
                 }
                 TermContent::StrChunks(lens) => {
                     let chunks = lens.take()

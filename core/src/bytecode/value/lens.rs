@@ -157,6 +157,7 @@ pub enum TermContent {
             Vec<Include>,
             Vec<(NickelValue, Field)>,
             Option<RecordDeps>,
+            bool,
         )>,
     ),
     Closurize(ValueLens<NickelValue>),
@@ -512,6 +513,7 @@ impl
         Vec<Include>,
         Vec<(NickelValue, Field)>,
         Option<RecordDeps>,
+        bool
     )>
 {
     /// Creates a new lens extracting [crate::term::Term::RecRecord].
@@ -535,11 +537,12 @@ impl
         Vec<Include>,
         Vec<(NickelValue, Field)>,
         Option<RecordDeps>,
+        bool,
     ) {
         let term = ValueLens::<TermBody>::body_extractor(value);
 
-        if let Term::RecRecord(data, includes, fields, deps) = term.0 {
-            (data, includes, fields, deps)
+        if let Term::RecRecord(data, includes, fields, deps, bool) = term.0 {
+            (data, includes, fields, deps, bool)
         } else {
             unreachable!()
         }

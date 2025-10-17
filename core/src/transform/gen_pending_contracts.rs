@@ -60,7 +60,10 @@ pub fn with_pending_contracts(
     })
 }
 
-pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> Result<NickelValue, UnboundTypeVariableError> {
+pub fn transform_one(
+    pos_table: &mut PosTable,
+    value: NickelValue,
+) -> Result<NickelValue, UnboundTypeVariableError> {
     fn attach_to_fields(
         pos_table: &mut PosTable,
         fields: IndexMap<LocIdent, Field>,
@@ -97,7 +100,7 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> Result<Nic
         }
         ValueContent::Term(lens) => match lens {
             TermContent::RecRecord(lens) => {
-                let (record_data, includes, dyn_fields, deps) = lens.take();
+                let (record_data, includes, dyn_fields, deps, closurized) = lens.take();
 
                 let RecordData {
                     fields,
@@ -108,7 +111,9 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> Result<Nic
                 let fields = attach_to_fields(pos_table, fields)?;
                 let dyn_fields = dyn_fields
                     .into_iter()
-                    .map(|(id_term, field)| Ok((id_term, with_pending_contracts(pos_table, field)?)))
+                    .map(|(id_term, field)| {
+                        Ok((id_term, with_pending_contracts(pos_table, field)?))
+                    })
                     .collect::<Result<_, _>>()?;
 
                 NickelValue::term(
@@ -121,6 +126,7 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> Result<Nic
                         includes,
                         dyn_fields,
                         deps,
+                        closurized,
                     ),
                     pos_idx,
                 )
