@@ -21,6 +21,7 @@ use crate::{
     typ::Type,
 };
 use nickel_lang_vector::Slice;
+use malachite::base::num::conversion::traits::ToSci as _;
 use std::{
     alloc::{Layout, alloc, dealloc},
     cmp::max,
@@ -1071,17 +1072,12 @@ impl NickelValue {
     /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
     /// or returns `None` if the value isn't primitive.
     pub fn to_nickel_string(&self) -> Option<NickelString> {
-        if let Some(value) = self.as_inline() {
-            value.to_nickel_string()
-        } else {
-            self.as_value_body::<EnumVariantBody>()
-                .and_then(|enum_var| {
-                    if enum_var.arg.is_none() {
-                        Some(enum_var.tag.into())
-                    } else {
-                        None
-                    }
-                })
+        match self.content_ref() {
+            ValueContentRef::Inline(inline) => inline.to_nickel_string(),
+            ValueContentRef::String(s) => Some(s.0.clone()),
+            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => Some((*tag).into()),
+            ValueContentRef::Number(n) => Some(format!("{}", n.0.to_sci()).into()),
+            _ => None,
         }
     }
 
