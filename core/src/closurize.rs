@@ -13,11 +13,11 @@
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::{Array, ArrayBody, NickelValue, ValueContentRef},
-    eval::{cache::Cache, Closure, Environment},
+    bytecode::value::{Array, ArrayBody, NickelValue, TermBody, ValueContentRef},
+    eval::{Closure, Environment, cache::Cache},
     term::{
-        record::{Field, FieldDeps, RecordData, RecordDeps},
         BindingType, RuntimeContract, Term,
+        record::{Field, FieldDeps, RecordData, RecordDeps},
     },
 };
 
@@ -71,8 +71,9 @@ impl Closurize for NickelValue {
         // field with the indices recursively referring to the other fields of the record. `eval`
         // assumes that a recursive record field is either a constant or a `Term::Closure` whose
         // cache elements *immediately* contain the original unevaluated expression (both
-        // properties are true after the share normal form transformation and maintained when
-        // reverting elements before merging recursive records).
+        // properties are true after the first evaluation of a value through
+        // `Term::Closurize(value)` and maintained when reverting elements before merging recursive
+        // records).
         //
         // To maintain this invariant, `closurize` must NOT introduce an indirection through a
         // additional closure, such as transforming:
@@ -105,30 +106,21 @@ impl Closurize for NickelValue {
             {
                 thunk.0.clone()
             }
-            ValueContentRef::Term(term) => {
-                match term.0 {
-                    // We should always find a generated variable in the environment, but this method is
-                    // not fallible, so we just wrap it in a new closure which will
-                    // give an unbound identifier error if it's ever evaluated.
-                    Term::Var(id) if id.is_generated() => {
-                        env.get(&id.ident()).cloned().unwrap_or_else(|| {
-                            debug_assert!(false, "missing generated variable {id} in environment");
-                            cache.add(
-                                Closure {
-                                    value: NickelValue::term(Term::Var(id), pos_idx),
-                                    env,
-                                },
-                                btype,
-                            )
-                        })
-                    }
-                    _ => todo!(),
-                }
+            ValueContentRef::Term(TermBody(Term::Var(id))) if id.is_generated() => {
+                let id = *id;
+                // Albeit we should always find a generated variable in the environment,
+                // `env.get` is technically fallible, while this method is not. We thus wrap a
+                // potential error in a new closure which will propagate the  unbound
+                // identifier error upon evaluation.
+                env.get(&id.ident()).cloned().unwrap_or_else(move || {
+                    debug_assert!(false, "missing generated variable {id} in environment");
+                    cache.add(Closure { value: self, env }, btype)
+                })
             }
             content => {
-                // It's suspicious to wrap a closure with existing dependencies in a new closure
-                // with set dependencies, although I'm not sure it would actually break anything.
-                // We panic in debug mode to catch this case.
+                // It's suspicious to wrap a closure with existing dependencies in a new closure,
+                // although I'm not sure it would actually break anything. We panic in debug mode
+                // to catch this case.
                 debug_assert!(
                     !matches!((content, &btype), (ValueContentRef::Thunk(body), BindingType::Revertible(_)) if !body.0.deps().is_empty()),
                     "wrapping a closure with non-empty deps in a new closure with different deps"
