@@ -802,25 +802,63 @@ impl NickelValue {
                                 Term::Value(_) => {
                                     TermContent::Value(ValueLens::term_value_lens(self))
                                 }
-                                Term::StrChunks(_) => todo!(),
-                                Term::Fun(..) => todo!(),
-                                Term::FunPattern(..) => todo!(),
-                                Term::Let(..) => todo!(),
-                                Term::LetPattern(..) => todo!(),
-                                Term::App(..) => todo!(),
-                                Term::Var(..) => todo!(),
-                                Term::RecRecord(..) => todo!(),
-                                Term::Closurize(_) => todo!(),
-                                Term::Match(_) => todo!(),
-                                Term::Op1(..) => todo!(),
-                                Term::Op2(..) => todo!(),
-                                Term::OpN(..) => todo!(),
-                                Term::Sealed(..) => todo!(),
-                                Term::Annotated(..) => todo!(),
-                                Term::Import(_) => todo!(),
-                                Term::ResolvedImport(_) => todo!(),
-                                Term::ParseError(_) => todo!(),
-                                Term::RuntimeError(_) => todo!(),
+                                Term::StrChunks(_) => {
+                                    TermContent::StrChunks(ValueLens::term_str_chunks_lens(self))
+                                }
+                                Term::Fun(..) => {
+                                    TermContent::Fun(ValueLens::term_fun_lens(self))
+                                }
+                                Term::FunPattern(..) => {
+                                    TermContent::FunPattern(ValueLens::term_fun_pat_lens(self))
+                                }
+                                Term::Let(..) => {
+                                    TermContent::Let(ValueLens::term_let_lens(self))
+                                }
+                                Term::LetPattern(..) => {
+                                    TermContent::LetPattern(ValueLens::term_let_pat_lens(self))
+                                }
+                                Term::App(..) => {
+                                    TermContent::App(ValueLens::term_app_lens(self))
+                                }
+                                Term::Var(..) => {
+                                    TermContent::Var(ValueLens::term_var_lens(self))
+                                }
+                                Term::RecRecord(..) => {
+                                    TermContent::RecRecord(ValueLens::term_rec_record_lens(self))
+                                }
+                                Term::Closurize(_) => {
+                                    TermContent::Closurize(ValueLens::term_closurize_lens(self))
+                                }
+                                Term::Match(_) => {
+                                    TermContent::Match(ValueLens::term_match_lens(self))
+                                }
+                                Term::Op1(..) => {
+                                    TermContent::Op1(ValueLens::term_op1_lens(self))
+                                }
+                                Term::Op2(..) => {
+                                    TermContent::Op2(ValueLens::term_op2_lens(self))
+                                }
+                                Term::OpN(..) => {
+                                    TermContent::OpN(ValueLens::term_opn_lens(self))
+                                }
+                                Term::Sealed(..) => {
+                                    TermContent::Sealed(ValueLens::term_sealed_lens(self))
+                                }
+                                Term::Annotated(..) => {
+                                    TermContent::Annotated(ValueLens::term_annotated_lens(self))
+                                }
+                                Term::Import(_) => {
+                                    TermContent::Import(ValueLens::term_import_lens(self))
+                                }
+                                Term::ResolvedImport(_) => {
+                                    TermContent::ResolvedImport(ValueLens::term_resolved_import_lens(self))
+                                }
+                                Term::ParseError(_) => {
+                                    TermContent::ParseError(ValueLens::term_parse_error_lens(self))
+                                }
+                                Term::RuntimeError(_) => {
+                                    TermContent::RuntimeError(ValueLens::term_runtime_error_lens(self))
+                                }
                             })
                         }
                         BodyTag::Label => ValueContent::Label(ValueLens::body_lens(self)),
