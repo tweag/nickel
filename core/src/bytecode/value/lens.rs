@@ -4,6 +4,8 @@ use super::{
     InlineValue, NickelValue, RefCount, TermBody, ValueBlockBody, ValueBlockHeader, ValueBlockRc,
 };
 
+use std::rc::Rc;
+
 use crate::{
     error::{EvalErrorData, ParseError},
     files::FileId,
@@ -20,7 +22,8 @@ use crate::{
 use smallvec::SmallVec;
 
 use std::{
-    alloc::{alloc, dealloc},
+    alloc::dealloc,
+    mem::ManuallyDrop,
     ptr::{self, NonNull},
 };
 
@@ -86,7 +89,17 @@ impl<T: ValueBlockBody + Clone> ValueLens<T> {
             let ptr_content = ptr.add(ValueBlockRc::body_offset::<T>()).cast::<T>();
 
             if ref_count == RefCount::ONE {
+                // Since we "move" the original content, we don't want to run the destructor (if
+                // `T` owns e.g. a `HashMap`, it would otherwise be de-allocated when `value` goes
+                // out of scope, and we would return a dangling value).
+                let _ = ManuallyDrop::new(value);
+
+                // Safety: the content of a NickelValue with `T::TAG` should always be valid for
+                // `T`
                 let content = ptr::read(ptr_content.as_ptr());
+
+                // While we don't want the destructor to run, we do want to clean up the original
+                // allocation.
                 dealloc(ptr.as_ptr(), T::TAG.block_layout());
                 content
             } else {
