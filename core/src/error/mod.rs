@@ -38,7 +38,7 @@ use crate::{
     },
     position::{PosIdx, PosTable, RawSpan, TermPos},
     repl,
-    serialize::{ExportFormat, NickelPointer},
+    serialize::{ExportFormat, NickelPointer, NickelPointerElem},
     term::{Number, pattern::Pattern, record::FieldMetadata},
     typ::{TypeF, VarKindDiscriminant},
 };
@@ -123,6 +123,7 @@ pub struct EvalCtxt {
     pub call_stack: CallStack,
 }
 
+/// An error occurring during evaluation with additional [context][EvalCtxt].
 #[derive(Debug, PartialEq, Clone)]
 pub struct EvalError {
     pub ctxt: EvalCtxt,
@@ -217,7 +218,7 @@ pub enum EvalErrorData {
     /// An element in the evaluation Cache was entered during its own update.
     InfiniteRecursion(CallStack, PosIdx),
     /// A serialization error occurred during a call to the builtin `serialize`.
-    SerializationError(ExportError),
+    SerializationError(PointedExportErrorData),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
         String, /* format */
@@ -764,15 +765,49 @@ pub enum ImportError {
     NoPackageMap { pos: TermPos },
 }
 
+/// An error occurring during serialization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExportError {
     /// The position table, mapping position indices to spans.
     pub pos_table: PosTable,
+    /// The cause of the error.
+    pub data: PointedExportErrorData,
+}
+
+/// The type of an error occurring during serialization, together with  a path to the field that
+/// contains a non-serializable value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointedExportErrorData {
     /// The path to the field that contains a non-serializable value. This might be empty if the
     /// error occurred before entering any record.
     pub path: NickelPointer,
     /// The cause of the error.
-    pub data: ExportErrorData,
+    pub error: ExportErrorData,
+}
+
+impl PointedExportErrorData {
+    /// Pushes a [NickelPointerElem] to the end of the path of this export error.
+    pub fn with_elem(mut self, elem: NickelPointerElem) -> PointedExportErrorData {
+        self.path.0.push(elem);
+        self
+    }
+
+    /// Attaches a position table to this error, producing a [ExportError].
+    pub fn with_pos_table(self, pos_table: PosTable) -> ExportError {
+        ExportError {
+            data: self,
+            pos_table,
+        }
+    }
+}
+
+impl From<ExportErrorData> for PointedExportErrorData {
+    fn from(error: ExportErrorData) -> Self {
+        PointedExportErrorData {
+            error,
+            path: NickelPointer::new(),
+        }
+    }
 }
 
 /// The type of error occurring during serialization.
@@ -794,15 +829,15 @@ pub enum ExportErrorData {
     Other(String),
 }
 
-impl From<ExportErrorData> for ExportError {
-    fn from(data: ExportErrorData) -> ExportError {
-        ExportError {
-            pos_table: todo!(),
-            path: NickelPointer::new(),
-            data,
-        }
-    }
-}
+// impl From<ExportErrorData> for ExportError {
+//     fn from(data: ExportErrorData) -> ExportError {
+//         ExportError {
+//             pos_table: todo!(),
+//             path: NickelPointer::new(),
+//             data,
+//         }
+//     }
+// }
 
 /// A general I/O error, occurring when reading a source file or writing an export.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -869,8 +904,8 @@ impl From<std::io::Error> for IOError {
     }
 }
 
-impl From<ExportError> for EvalErrorData {
-    fn from(error: ExportError) -> EvalErrorData {
+impl From<PointedExportErrorData> for EvalErrorData {
+    fn from(error: PointedExportErrorData) -> EvalErrorData {
         EvalErrorData::SerializationError(error)
     }
 }
@@ -1580,7 +1615,9 @@ impl IntoDiagnostics for EvalError {
                         .with_notes(vec![String::from(INTERNAL_ERROR_MSG)]),
                 ]
             }
-            EvalErrorData::SerializationError(err) => err.into_diagnostics(files),
+            EvalErrorData::SerializationError(err) => {
+                err.with_pos_table(pos_table).into_diagnostics(files)
+            }
             EvalErrorData::DeserializationError(format, msg, span_opt) => {
                 let labels = pos_table
                     .get(span_opt)
@@ -2138,7 +2175,7 @@ is None but last_arrow_elem is Some"
         let contract_notes = head_contract_diagnostic
             .map(|diag| diag.notes)
             .unwrap_or_default();
-        let path_label = report_ty_path(pos_table,files,  &label);
+        let path_label = report_ty_path(pos_table, files, &label);
 
         let labels = build_diagnostic_labels(pos_table, evaluated_arg, &label, path_label, files);
 
@@ -3039,15 +3076,15 @@ impl IntoDiagnostics for ImportError {
 
 impl IntoDiagnostics for ExportError {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
-        let mut notes = if !self.path.0.is_empty() {
-            vec![format!("When exporting field `{}`", self.path)]
+        let mut notes = if !self.data.path.0.is_empty() {
+            vec![format!("When exporting field `{}`", self.data.path)]
         } else {
             vec![]
         };
 
         let pos_table = self.pos_table;
 
-        match self.data {
+        match self.data.error {
             ExportErrorData::NotAString(rt) => vec![
                 Diagnostic::error()
                     .with_message(format!(

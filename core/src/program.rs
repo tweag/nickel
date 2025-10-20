@@ -28,7 +28,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{
-        Error, EvalError, EvalErrorData, IOError, ParseError, ParseErrors, Reporter,
+        Error, EvalError, EvalErrorData, ExportError, IOError, ParseError, ParseErrors, Reporter,
         warning::Warning,
     },
     eval::{Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
@@ -1123,7 +1123,10 @@ impl<EC: EvalCache> Program<EC> {
 
         let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
-            ExportErrorData::NoDocumentation(term.clone()).into(),
+            ExportError {
+                pos_table: self.vm_ctxt.pos_table.clone(),
+                data: ExportErrorData::NoDocumentation(term.clone()).into(),
+            },
         ))
     }
 
@@ -1168,13 +1171,19 @@ impl<EC: EvalCache> Program<EC> {
     pub fn files(&self) -> Files {
         self.vm_ctxt.import_resolver.files().clone()
     }
+
+    /// Returns a reference to the position table.
+    pub fn pos_table(&self) -> &PosTable {
+        &self.vm_ctxt.pos_table
+    }
 }
 
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
         bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef},
-        error::{Error, ExportErrorData, IOError},
+        error::{Error, ExportError, ExportErrorData, IOError},
+        position::PosTable,
         term::Term,
     };
 
@@ -1267,8 +1276,12 @@ mod doc {
         }
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
-            serde_json::to_writer(out, self)
-                .map_err(|e| Error::ExportError(ExportErrorData::Other(e.to_string()).into()))
+            serde_json::to_writer(out, self).map_err(|e| {
+                Error::ExportError(ExportError {
+                    data: ExportErrorData::Other(e.to_string()).into(),
+                    pos_table: PosTable::new(),
+                })
+            })
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
@@ -1478,10 +1491,7 @@ mod doc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        error::NullReporter,
-        eval::cache::CacheImpl,
-    };
+    use crate::{error::NullReporter, eval::cache::CacheImpl};
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
@@ -1517,10 +1527,7 @@ mod tests {
 
     #[test]
     fn evaluation_full() {
-        use crate::{
-            mk_array, mk_record,
-            term::make as mk_term,
-        };
+        use crate::{mk_array, mk_record, term::make as mk_term};
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
 

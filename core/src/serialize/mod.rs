@@ -4,7 +4,7 @@ use crate::{
         ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody, TermBody,
         ValueContentRef,
     },
-    error::{ExportError, ExportErrorData},
+    error::{ExportError, ExportErrorData, PointedExportErrorData},
     identifier::{Ident, LocIdent},
     metrics,
     term::{IndexMap, Number, Term, TypeAnnotation, record::RecordData},
@@ -417,19 +417,13 @@ impl fmt::Display for NickelPointer {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
-pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportError> {
+pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), PointedExportErrorData> {
     // The max and min value that we accept to serialize as a number. Because Nickel uses arbitrary
     // precision rationals, we could actually support a wider range of numbers, but we expect that
     // implementations consuming the resulting JSON (or similar formats) won't necessary be able to
     // handle values that don't fit in a 64 bits float.
     static NUMBER_MIN: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MIN).unwrap());
     static NUMBER_MAX: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MAX).unwrap());
-
-    // Push a NickelPoinerElem to the end of the path of an ExportError
-    fn with_elem(mut err: ExportError, elem: NickelPointerElem) -> ExportError {
-        err.path.0.push(elem);
-        err
-    }
 
     // We need to build a field path locating a potential export error. One way would be to pass a
     // context storing the current path to recursive calls of `validate`. However, representing
@@ -449,7 +443,10 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportE
     // `do_validate` is the method doing the actual validation. The only reason this code is put in
     // a separate subfunction is that since we reconstruct the path bottom-up, it needs to be
     // reversed before finally returning from validate.
-    fn do_validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportError> {
+    fn do_validate(
+        format: ExportFormat,
+        value: &NickelValue,
+    ) -> Result<(), PointedExportErrorData> {
         match value.content_ref() {
             // TOML doesn't support null values
             ValueContentRef::Inline(InlineValue::Null)
@@ -490,7 +487,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportE
                     });
 
                     do_validate(format, value)
-                        .map_err(|err| with_elem(err, NickelPointerElem::Field(id)))
+                        .map_err(|err| err.with_elem(NickelPointerElem::Field(id)))
                 })?;
                 Ok(())
             }
@@ -501,7 +498,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportE
                     .enumerate()
                     .try_for_each(|(index, val)| {
                         do_validate(format, val)
-                            .map_err(|err| with_elem(err, NickelPointerElem::Index(index)))
+                            .map_err(|err| err.with_elem(NickelPointerElem::Index(index)))
                     })?;
                 Ok(())
             }
@@ -527,7 +524,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), ExportE
     } else {
         let mut result = do_validate(format, value);
 
-        if let Err(ExportError { path, .. }) = &mut result {
+        if let Err(PointedExportErrorData { path, .. }) = &mut result {
             path.0.reverse();
         }
 
@@ -539,7 +536,7 @@ pub fn to_writer_metadata<W, T>(
     mut writer: W,
     format: MetadataExportFormat,
     item: &T,
-) -> Result<(), ExportError>
+) -> Result<(), PointedExportErrorData>
 where
     W: io::Write,
     T: ?Sized + Serialize,
@@ -567,7 +564,7 @@ pub fn to_writer<W>(
     mut writer: W,
     format: ExportFormat,
     value: &NickelValue,
-) -> Result<(), ExportError>
+) -> Result<(), PointedExportErrorData>
 where
     W: io::Write,
 {
@@ -604,7 +601,7 @@ where
     Ok(())
 }
 
-pub fn to_string(format: ExportFormat, rt: &NickelValue) -> Result<String, ExportError> {
+pub fn to_string(format: ExportFormat, rt: &NickelValue) -> Result<String, PointedExportErrorData> {
     let mut buffer: Vec<u8> = Vec::new();
     to_writer(&mut buffer, format, rt)?;
 

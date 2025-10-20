@@ -25,7 +25,7 @@ use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::Rou
 use nickel_lang_core::{
     bytecode::value::{self, NickelValue},
     deserialize::RustDeserializationError as DeserializationError,
-    error::{IntoDiagnostics, NullReporter, report::DiagnosticsWrapper},
+    error::{IntoDiagnostics, NullReporter, report::DiagnosticsWrapper, PointedExportErrorData},
     eval::{Closure, Environment, cache::CacheImpl},
     files::Files,
     identifier::{Ident, LocIdent},
@@ -367,9 +367,9 @@ pub enum MergePriority<'a> {
 }
 
 impl Expr {
-    fn export(&self, format: ExportFormat) -> Result<String, Error> {
+    fn export(&self, format: ExportFormat) -> Result<String, PointedExportErrorData> {
         validate(format, &self.value)?;
-        Ok(to_string(format, &self.value)?)
+        to_string(format, &self.value)
     }
 
     /// Convert this expression to JSON.
@@ -377,7 +377,7 @@ impl Expr {
     /// This is fallible because enum variants have no canonical conversion to
     /// JSON: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_json(&self) -> Result<String, Error> {
+    pub fn to_json(&self) -> Result<String, PointedExportErrorData> {
         self.export(ExportFormat::Json)
     }
 
@@ -386,7 +386,7 @@ impl Expr {
     /// This is fallible because enum variants have no canonical conversion to
     /// YAML: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_yaml(&self) -> Result<String, Error> {
+    pub fn to_yaml(&self) -> Result<String, PointedExportErrorData> {
         self.export(ExportFormat::Yaml)
     }
 
@@ -395,7 +395,7 @@ impl Expr {
     /// This is fallible because enum variants have no canonical conversion to
     /// TOML: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_toml(&self) -> Result<String, Error> {
+    pub fn to_toml(&self) -> Result<String, PointedExportErrorData> {
         self.export(ExportFormat::Toml)
     }
 

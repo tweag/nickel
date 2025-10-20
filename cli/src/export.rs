@@ -34,17 +34,20 @@ impl ExportCommand {
         // exporters already append a trailing newline by default.
         let trailing_newline = self.format == ExportFormat::Json;
 
-        serialize::validate(self.format, &rt)?;
+        serialize::validate(self.format, &rt)
+            .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
 
         if let Some(file) = &self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
-            serialize::to_writer(&mut file, self.format, &rt)?;
+            serialize::to_writer(&mut file, self.format, &rt)
+                .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
 
             if trailing_newline {
                 writeln!(file).map_err(IOError::from)?;
             }
         } else {
-            serialize::to_writer(std::io::stdout(), self.format, &rt)?;
+            serialize::to_writer(std::io::stdout(), self.format, &rt)
+                .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
 
             if trailing_newline {
                 println!();
