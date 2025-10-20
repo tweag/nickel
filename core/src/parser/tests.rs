@@ -69,7 +69,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
     // record.
 
     if let ValueContent::Record(lens) = result.content() {
-        NickelValue::term_posless(RecRecord(lens.take().0, Vec::new(), Vec::new(), None))
+        NickelValue::term_posless(RecRecord(lens.take().0, Vec::new(), Vec::new(), None, false))
     } else {
         unreachable!(
             "record was built using Record::builder, expected a record term, got something else"
@@ -269,6 +269,7 @@ fn record_terms() {
             Vec::new(),
             Vec::new(),
             None,
+            false,
         )
         .into()
     );
@@ -293,6 +294,7 @@ fn record_terms() {
                 ))
             )],
             None,
+            false,
         )
         .into()
     );
@@ -310,6 +312,7 @@ fn record_terms() {
             Vec::new(),
             Vec::new(),
             None,
+            false,
         )
         .into()
     );
