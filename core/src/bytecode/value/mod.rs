@@ -54,9 +54,57 @@ pub struct NickelValue {
     inline_pos_idx: InlinePosIdx,
 }
 
+// PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
+// Most of the instances aren't really meaningful to use outside of very simple cases, and you
+// should avoid comparing terms directly.
 impl PartialEq for NickelValue {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        match (self.content_ref(), other.content_ref()) {
+            (ValueContentRef::Inline(inline_value1), ValueContentRef::Inline(inline_value2)) => {
+                inline_value1 == inline_value2
+            }
+            (ValueContentRef::Number(number_body1), ValueContentRef::Number(number_body2)) => {
+                number_body1 == number_body2
+            }
+            (ValueContentRef::Array(array_body1), ValueContentRef::Array(array_body2)) => {
+                array_body1 == array_body2
+            }
+            (ValueContentRef::Record(record_body1), ValueContentRef::Record(record_body2)) => {
+                record_body1 == record_body2
+            }
+            (ValueContentRef::String(string_body1), ValueContentRef::String(string_body2)) => {
+                string_body1 == string_body2
+            }
+            (ValueContentRef::Thunk(thunk_body1), ValueContentRef::Thunk(thunk_body2)) => {
+                thunk_body1 == thunk_body2
+            }
+            (ValueContentRef::Term(term_body1), ValueContentRef::Term(term_body2)) => {
+                term_body1 == term_body2
+            }
+            (ValueContentRef::Label(label_body1), ValueContentRef::Label(label_body2)) => {
+                label_body1 == label_body2
+            }
+            (
+                ValueContentRef::EnumVariant(enum_variant_body1),
+                ValueContentRef::EnumVariant(enum_variant_body2),
+            ) => enum_variant_body1 == enum_variant_body2,
+            (
+                ValueContentRef::ForeignId(foreign_id_body1),
+                ValueContentRef::ForeignId(foreign_id_body2),
+            ) => foreign_id_body1 == foreign_id_body2,
+            (
+                ValueContentRef::SealingKey(sealing_key_body1),
+                ValueContentRef::SealingKey(sealing_key_body2),
+            ) => sealing_key_body1 == sealing_key_body2,
+            (
+                ValueContentRef::CustomContract(custom_contract_body1),
+                ValueContentRef::CustomContract(custom_contract_body2),
+            ) => custom_contract_body1 == custom_contract_body2,
+            (ValueContentRef::Type(type_body1), ValueContentRef::Type(type_body2)) => {
+                type_body1 == type_body2
+            }
+            _ => false,
+        }
     }
 }
 
@@ -1619,13 +1667,13 @@ pub trait ValueBlockBody {
     const TAG: BodyTag;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NumberBody(pub Number);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StringBody(pub NickelString);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArrayBody {
     pub array: Array,
     /// Arrays implement lazy contract application for performance reasons: contracts appiled to
@@ -1634,19 +1682,30 @@ pub struct ArrayBody {
     pub pending_contracts: Vec<RuntimeContract>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecordBody(pub RecordData);
 
 #[derive(Clone, Debug)]
 pub struct ThunkBody(pub CacheIndex);
 
-#[derive(Clone, Debug)]
+impl PartialEq for ThunkBody {
+    fn eq(&self, other: &Self) -> bool {
+        // We don't compare closure, because we can't, without the evaluation cache at hand. It's
+        // ok even if the cache index are the same: we implement PartialEq, so we can have `x !=
+        // x`. In practice, this case shouldn't even be triggered, because tests usually compare
+        // simple terms without closures in it (or terms where closures have been substituted for
+        // their value).
+        false
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TermBody(pub Term);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LabelBody(pub Label);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnumVariantBody {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
@@ -1655,13 +1714,13 @@ pub struct EnumVariantBody {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ForeignIdBody(pub ForeignIdPayload);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CustomContractBody(pub NickelValue);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SealingKeyBody(pub SealingKey);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeBody {
     /// The static type.
     pub typ: Type,
