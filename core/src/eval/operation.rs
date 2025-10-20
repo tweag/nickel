@@ -2013,7 +2013,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 fst_pos,
                             );
 
-                            todo!("internals::naked_to_custom().into()")
+                            internals::naked_to_custom().into()
                         }
                     }
                     ValueContentRef::CustomContract(ctr) => Closure {
@@ -2031,7 +2031,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             fst_pos,
                         );
 
-                        todo!("internals::record_contract().into()")
+                        internals::record_contract().into()
                     }
                     _ => return mk_type_error!("Contract", 1, value1),
                 };
