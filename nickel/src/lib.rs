@@ -23,9 +23,9 @@ use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use nickel_lang_core::{
-    bytecode::value::{self, NickelValue},
+    bytecode::value::{self, ArrayBody, Container, NickelValue, RecordBody},
     deserialize::RustDeserializationError as DeserializationError,
-    error::{IntoDiagnostics, NullReporter, report::DiagnosticsWrapper, PointedExportErrorData},
+    error::{IntoDiagnostics, NullReporter, PointedExportErrorData, report::DiagnosticsWrapper},
     eval::{Closure, Environment, cache::CacheImpl},
     files::Files,
     identifier::{Ident, LocIdent},
@@ -36,6 +36,25 @@ use nickel_lang_core::{
         record::{Field, RecordData},
     },
 };
+
+/// Both [Array] and [Record] are borrowing from an underlying allocation. However,
+/// [nickel_lang_core::bytecode::value::NickelValue] inline empty containers, meaning that
+/// sometimes, we don't actually have an allocation to borrow from.
+///
+/// Instead, we store a [`Container<&OtherRepr>`][nickel_lang_core::bytecode::value::Container],
+/// which is isomorphic to `Option`. The C API relies on the fact that those representations are
+/// all pointer-sized. This is the case today in practice, thanks to the niche optimization, and
+/// there's really no good reason for it to change. Still, `sizeof<Option<&Data>> == pointer_size`
+/// isn't an official stability guarantee.
+///
+/// The following is a cursed way to ensure that our [Array] and [Record] wrappers are indeed
+/// pointer-sized at compile time, without needing to pull a dependency like
+/// [static_assertions][https://crates.io/crates/static_assertions]. Courtesy of
+/// [matklad][https://users.rust-lang.org/t/ensure-that-struct-t-has-size-n-at-compile-time/61108/4].
+const _ENSURE_ARRAY_CONTAINER_POINTER_SIZED: () =
+    [(); 1][(std::mem::size_of::<Array<'_>>() == std::mem::size_of::<usize>()) as usize ^ 1];
+const _ENSURE_RECORD_CONTAINER_POINTER_SIZED: () =
+    [(); 1][(std::mem::size_of::<Record<'_>>() == std::mem::size_of::<usize>()) as usize ^ 1];
 
 /// Available export formats for error diagnostics.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
@@ -319,12 +338,12 @@ pub struct Expr {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Record<'a> {
-    data: &'a RecordData,
+    data: Container<&'a RecordBody>,
 }
 
 /// An iterator over names and values in a [`Record`].
 pub struct RecordIter<'a> {
-    inner: indexmap::map::Iter<'a, LocIdent, Field>,
+    inner: Option<indexmap::map::Iter<'a, LocIdent, Field>>,
 }
 
 /// A Nickel array.
@@ -332,12 +351,12 @@ pub struct RecordIter<'a> {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Array<'a> {
-    array: &'a value::Array,
+    array: Container<&'a ArrayBody>,
 }
 
 /// An iterator over elements in an [`Array`].
 pub struct ArrayIter<'a> {
-    inner: <&'a value::Array as IntoIterator>::IntoIter,
+    inner: Option<<&'a value::Array as IntoIterator>::IntoIter>,
 }
 
 /// A Nickel number.
@@ -481,9 +500,7 @@ impl Expr {
     /// The returned record handle can be used to access the
     /// record's elements.
     pub fn as_record(&self) -> Option<Record<'_>> {
-        self.value
-            .as_record()
-            .map(|record| Record { data: &record.0 })
+        self.value.as_record().map(|record| Record { data: record })
     }
 
     /// If this expression is an array, return a handle to it.
@@ -491,9 +508,7 @@ impl Expr {
     /// The returned array handle can be used to access the
     /// array's elements.
     pub fn as_array(&self) -> Option<Array<'_>> {
-        self.value.as_array().map(|array| Array {
-            array: &array.array,
-        })
+        self.value.as_array().map(|array| Array { array })
     }
 
     /// Is this expression an array?
@@ -539,19 +554,18 @@ impl Expr {
 impl Record<'_> {
     /// Returns the number of key/value pairs in this record.
     pub fn len(&self) -> usize {
-        self.data.fields.len()
+        self.data.len()
     }
 
     /// Is this record empty?
     pub fn is_empty(&self) -> bool {
-        self.data.fields.is_empty()
+        self.data.into_opt().map_or(true, |data| data.0.is_empty())
     }
 
     /// If this field name is present in the record, return the field value.
     pub fn value_by_name(&self, key: &str) -> Option<Expr> {
         self.data
-            .fields
-            .get(&Ident::new(key))
+            .get_field(Ident::new(key).into())
             .and_then(|fld| fld.value.as_ref())
             .map(|rt| Expr { value: rt.clone() })
     }
@@ -562,11 +576,13 @@ impl Record<'_> {
     /// (i.e. the `Option<Expr>` returned here will never be `None`). However,
     /// shallowly evaluated records may have fields with no value.
     pub fn key_value_by_index(&self, idx: usize) -> Option<(&str, Option<Expr>)> {
-        self.data.fields.get_index(idx).map(|(key, fld)| {
-            (
-                key.label(),
-                fld.value.as_ref().map(|rt| Expr { value: rt.clone() }),
-            )
+        self.data.into_opt().and_then(|data| {
+            data.0.fields.get_index(idx).map(|(key, fld)| {
+                (
+                    key.label(),
+                    fld.value.as_ref().map(|rt| Expr { value: rt.clone() }),
+                )
+            })
         })
     }
 
@@ -582,7 +598,7 @@ impl<'a> IntoIterator for Record<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         RecordIter {
-            inner: self.data.fields.iter(),
+            inner: self.data.into_opt().map(|data| data.0.fields.iter()),
         }
     }
 }
@@ -591,7 +607,7 @@ impl<'a> Iterator for RecordIter<'a> {
     type Item = (&'a str, Option<Expr>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|(k, v)| {
+        self.inner.as_mut()?.next().map(|(k, v)| {
             (
                 k.label(),
                 v.value.as_ref().map(|rt| Expr { value: rt.clone() }),
@@ -608,12 +624,17 @@ impl Array<'_> {
 
     /// Is this array empty?
     pub fn is_empty(&self) -> bool {
-        self.array.is_empty()
+        self.array
+            .into_opt()
+            .map_or(true, |array| array.array.is_empty())
     }
 
     /// Returns the element at the requested index, if the index is in-bounds.
     pub fn get(&self, idx: usize) -> Option<Expr> {
-        self.array.get(idx).map(|rt| Expr { value: rt.clone() })
+        self.array
+            .into_opt()
+            .and_then(|data| data.array.get(idx))
+            .map(|rt| Expr { value: rt.clone() })
     }
 
     /// Returns an iterator over the elements of this array.
@@ -628,7 +649,7 @@ impl<'a> IntoIterator for Array<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         ArrayIter {
-            inner: self.array.into_iter(),
+            inner: self.array.into_opt().map(|data| (&data.array).into_iter()),
         }
     }
 }
@@ -637,7 +658,10 @@ impl<'a> Iterator for ArrayIter<'a> {
     type Item = Expr;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|rt| Expr { value: rt.clone() })
+        self.inner
+            .as_mut()?
+            .next()
+            .map(|rt| Expr { value: rt.clone() })
     }
 }
 

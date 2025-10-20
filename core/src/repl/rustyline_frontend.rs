@@ -66,10 +66,10 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
                 let cmd = line.chars().skip(1).collect::<String>().parse::<Command>();
                 let result = match cmd {
                     Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.content_ref() {
-                        ValueContentRef::Record(RecordBody(record)) => {
+                        ValueContentRef::Record(container) => {
                             println!(
                                 "Loaded {} symbol(s) in the environment.",
-                                record.fields.len()
+                                container.len()
                             )
                         }
                         ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..))) => {

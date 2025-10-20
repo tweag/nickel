@@ -77,12 +77,14 @@ pub fn transform_one(
     let pos_idx = value.pos_idx();
 
     Ok(match value.content() {
+        ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),
         ValueContent::Record(lens) => {
+            // unwrap(): we treated the inline empty record case above.
             let RecordData {
                 fields,
                 attrs,
                 sealed_tail,
-            } = lens.take().0;
+            } = lens.take().into_opt().unwrap().0;
 
             let fields = attach_to_fields(pos_table, fields)?;
 

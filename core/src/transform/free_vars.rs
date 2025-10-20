@@ -4,12 +4,12 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    bytecode::value::{NickelValue, ValueContentRefMut},
+    bytecode::value::{Container, NickelValue, ValueContentRefMut},
     identifier::Ident,
     term::pattern::*,
     term::{
-        record::{Field, FieldDeps, Include, RecordDeps},
         IndexMap, MatchBranch, StrChunk, Term, TypeAnnotation,
+        record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -30,18 +30,21 @@ pub trait CollectFreeVars {
 impl CollectFreeVars for NickelValue {
     fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
         match self.content_make_mut() {
-            ValueContentRefMut::Inline(_)
+            ValueContentRefMut::Null(_)
+            | ValueContentRefMut::Bool(_)
+            | ValueContentRefMut::Array(Container::Empty)
+            | ValueContentRefMut::Record(Container::Empty)
             | ValueContentRefMut::Number(_)
             | ValueContentRefMut::String(_)
             | ValueContentRefMut::ForeignId(_)
             | ValueContentRefMut::SealingKey(_)
             | ValueContentRefMut::Label(_) => (),
-            ValueContentRefMut::Array(body) => {
+            ValueContentRefMut::Array(Container::Alloc(body)) => {
                 for t in body.array.iter_mut() {
                     t.collect_free_vars(free_vars);
                 }
             }
-            ValueContentRefMut::Record(body) => {
+            ValueContentRefMut::Record(Container::Alloc(body)) => {
                 for t in body.0.fields.values_mut() {
                     t.collect_free_vars(free_vars);
                 }

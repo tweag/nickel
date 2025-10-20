@@ -1,7 +1,8 @@
 //! Lenses are a way to lazily and conditionally extract owned data from a Nickel value.
 
 use super::{
-    InlineValue, NickelValue, RefCount, TermBody, ValueBlockBody, ValueBlockHeader, ValueBlockRc,
+    Container, InlineValue, NickelValue, RefCount, TermBody, ValueBlockBody, ValueBlockHeader,
+    ValueBlockRc,
 };
 
 use std::rc::Rc;
@@ -63,6 +64,30 @@ impl<T> ValueLens<T> {
     }
 }
 
+impl<T: ValueBlockBody + Clone> ValueLens<Container<T>> {
+    /// Create a new lens extracting either an inlined empty container or an allocated container
+    /// body from a value.
+    ///
+    /// # Safety
+    ///
+    /// `value` must be either be an inlined empty container (matching `T`) or a value block with
+    /// tag `T::TAG`.
+    pub(super) unsafe fn container_lens(value: NickelValue) -> Self {
+        ValueLens {
+            value,
+            lens: |v| {
+                // The precondition ensures that if `v` is inline, it is the corresponding empty
+                // container.
+                if v.is_inline() {
+                    Container::Empty
+                } else {
+                    Container::Alloc(ValueLens::<T>::body_extractor(v))
+                }
+            },
+        }
+    }
+}
+
 impl<T: ValueBlockBody + Clone> ValueLens<T> {
     /// Create a new lens extracting a body of type `T` from a value.
     ///
@@ -109,24 +134,43 @@ impl<T: ValueBlockBody + Clone> ValueLens<T> {
     }
 }
 
-impl ValueLens<InlineValue> {
-    /// Creates a new lens extracting an inline value from a value.
+impl ValueLens<()> {
+    /// Creates a new lens extracting a null from a value.
+    pub(super) fn null_lens(value: NickelValue) -> Self {
+        Self {
+            value,
+            lens: |_| (),
+        }
+    }
+}
+
+impl ValueLens<bool> {
+    /// Creates a new lens extracting a bool from a value.
     ///
     /// # Safety
     ///
-    /// `value.tag()` must be [super::ValueTag::Inline].
-    pub(super) unsafe fn inline_lens(value: NickelValue) -> Self {
+    /// `value.tag()` must be [super::ValueTag::Inline]
+    ///
+    /// # Panic
+    ///
+    /// Extraction through [ValueLens::take] will panics if the inline value is neither
+    /// [super::InlineValue::True] nor [super::InlineValue::False].
+    pub(super) unsafe fn bool_lens(value: NickelValue) -> Self {
         Self {
             value,
-            lens: Self::inline_extractor,
+            lens: Self::bool_extractor,
         }
     }
 
-    /// Extractor for an inline value.
-    fn inline_extractor(value: NickelValue) -> InlineValue {
+    /// Extractor for a bool value.
+    fn bool_extractor(value: NickelValue) -> bool {
         // Safety: we maintain the invariant throughout this module that if `T = InlineValue`, then
         // `self.value` must be an inline value.
-        unsafe { value.as_inline_unchecked() }
+        match unsafe { value.as_inline_unchecked() } {
+            InlineValue::True => true,
+            InlineValue::False => false,
+            _ => panic!("unexpected non-boolean inline value in the extractor of ValueLens<bool>"),
+        }
     }
 }
 
@@ -513,7 +557,7 @@ impl
         Vec<Include>,
         Vec<(NickelValue, Field)>,
         Option<RecordDeps>,
-        bool
+        bool,
     )>
 {
     /// Creates a new lens extracting [crate::term::Term::RecRecord].

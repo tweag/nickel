@@ -13,7 +13,7 @@
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::{Array, ArrayBody, NickelValue, TermBody, ValueContentRef},
+    bytecode::value::{Array, ArrayBody, NickelValue, TermBody, ValueContentRef, Container},
     eval::{Closure, Environment, cache::Cache},
     term::{
         BindingType, RuntimeContract, Term,
@@ -260,7 +260,10 @@ pub fn should_share(value: &NickelValue) -> bool {
             | Term::Match(_) => false,
             _ => true,
         },
-        ValueContentRef::Inline(_)
+        ValueContentRef::Null
+        | ValueContentRef::Bool(_)
+        | ValueContentRef::Array(Container::Empty)
+        | ValueContentRef::Record(Container::Empty)
         | ValueContentRef::Number(_)
         | ValueContentRef::String(_)
         | ValueContentRef::Label(_)
