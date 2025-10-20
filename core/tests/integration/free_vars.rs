@@ -43,7 +43,7 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
 
     match value.content() {
         ValueContent::Term(TermContent::RecRecord(lens)) => {
-            let (_data, _includes, dyns, deps) = lens.take();
+            let (_data, _includes, dyns, deps, _closurized) = lens.take();
             let deps = deps.unwrap();
             dyns.len() == deps.dyn_fields.len() && dyn_free_vars_subset(&deps.dyn_fields, expected)
         }
@@ -59,7 +59,7 @@ fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) 
 
     match value.content() {
         ValueContent::Term(TermContent::RecRecord(lens)) => {
-            let (record, includes, _dyns, deps) = lens.take();
+            let (record, includes, _dyns, deps, _closurized) = lens.take();
             let deps = deps.unwrap();
 
             stat_free_vars_subset(&deps.stat_fields, &mut expected)
