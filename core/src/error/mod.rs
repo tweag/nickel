@@ -829,16 +829,6 @@ pub enum ExportErrorData {
     Other(String),
 }
 
-// impl From<ExportErrorData> for ExportError {
-//     fn from(data: ExportErrorData) -> ExportError {
-//         ExportError {
-//             pos_table: todo!(),
-//             path: NickelPointer::new(),
-//             data,
-//         }
-//     }
-// }
-
 /// A general I/O error, occurring when reading a source file or writing an export.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IOError(pub String);
