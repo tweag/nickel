@@ -87,6 +87,8 @@ pub trait Repl {
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
     fn cache_mut(&mut self) -> &mut CacheHub;
+    /// Required for error reporting on the frontend.
+    fn pos_table(&self) -> &PosTable;
 }
 
 /// Standard implementation of the REPL backend.
@@ -298,6 +300,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
     fn cache_mut(&mut self) -> &mut CacheHub {
         &mut self.vm_ctxt.import_resolver
+    }
+
+    fn pos_table(&self) -> &PosTable {
+        &self.vm_ctxt.pos_table
     }
 }
 

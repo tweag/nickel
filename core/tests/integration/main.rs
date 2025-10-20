@@ -4,7 +4,7 @@ use nickel_lang_core::{
     bytecode::value::NickelValue,
     error::{
         Error, EvalError, EvalErrorData, ExportError, ExportErrorData, ImportError, NullReporter,
-        ParseError, TypecheckErrorData,
+        ParseError, PointedExportErrorData, TypecheckErrorData,
     },
     typecheck::TypecheckMode,
 };
@@ -331,8 +331,8 @@ impl PartialEq<Error> for ErrorExpectation {
                 SerializeNumberOutOfRange,
                 Error::EvalError(EvalError {
                     error:
-                        EvalErrorData::SerializationError(ExportError {
-                            data: ExportErrorData::NumberOutOfRange { .. },
+                        EvalErrorData::SerializationError(PointedExportErrorData {
+                            error: ExportErrorData::NumberOutOfRange { .. },
                             ..
                         }),
                     ctxt: _,

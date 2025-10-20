@@ -1,8 +1,10 @@
 //! Simple, UI-agnostic interface to the REPL. Take string inputs and return string outputs.
 //! The output may contain ANSI escape codes.
 use super::{command::Command, *};
-use crate::error::Error;
-use crate::{serialize, serialize::ExportFormat};
+use crate::{
+    error::Error,
+    serialize::{self, ExportFormat},
+};
 use std::io::Cursor;
 
 /// Add a failure mode to usual errors for features that are not supported by all REPLs (for
@@ -103,7 +105,7 @@ pub fn serialize<R: Repl>(
         .and_then(|eval_res| match eval_res {
             EvalResult::Evaluated(t) => serialize::to_string(format, &t)
                 .map(InputResult::Success)
-                .map_err(Error::from),
+                .map_err(|error| error.with_pos_table(repl.pos_table().clone()).into()),
             EvalResult::Bound(_) => Ok(InputResult::Success(String::new())),
         })
         .map_err(InputError::from)

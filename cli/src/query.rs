@@ -1,10 +1,11 @@
 use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
-    bytecode::value::{TermBody, ValueContentRef, RecordBody},
+    bytecode::value::{RecordBody, TermBody, ValueContentRef},
     error::{Error, IOError, Reporter as _},
     eval::cache::lazy::CBNCache,
     identifier::{Ident, LocIdent},
+    position::PosTable,
     pretty::PrettyPrintCap,
     program::Program,
     repl::query_print,
@@ -80,7 +81,12 @@ impl From<Field> for QueryResult {
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..))) if !record.fields.is_empty() => {
+                ValueContentRef::Term(TermBody(Term::RecRecord(
+                    record,
+                    includes,
+                    dyn_fields,
+                    ..,
+                ))) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
                     fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                     fields.sort();
@@ -89,7 +95,8 @@ impl From<Field> for QueryResult {
                     Some(fields)
                 }
                 // Empty record has empty sub_fields
-                ValueContentRef::Record(..) | ValueContentRef::Term(TermBody(Term::RecRecord(..))) => Some(Vec::new()),
+                ValueContentRef::Record(..)
+                | ValueContentRef::Term(TermBody(Term::RecRecord(..))) => Some(Vec::new()),
                 // Non-record has no concept of sub-field
                 _ => None,
             }
@@ -130,7 +137,12 @@ impl QueryCommand {
         }
     }
 
-    fn export<T>(&self, res: T, format: MetadataExportFormat) -> Result<(), Error>
+    fn export<T>(
+        &self,
+        pos_table: &PosTable,
+        res: T,
+        format: MetadataExportFormat,
+    ) -> Result<(), Error>
     where
         T: Serialize,
     {
@@ -142,13 +154,15 @@ impl QueryCommand {
 
         if let Some(file) = &self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
-            serialize::to_writer_metadata(&mut file, format, &res)?;
+            serialize::to_writer_metadata(&mut file, format, &res)
+                .map_err(|error| error.with_pos_table(pos_table.clone()))?;
 
             if trailing_newline {
                 writeln!(file).map_err(IOError::from)?;
             }
         } else {
-            serialize::to_writer_metadata(std::io::stdout(), format, &res)?;
+            serialize::to_writer_metadata(std::io::stdout(), format, &res)
+                .map_err(|error| error.with_pos_table(pos_table.clone()))?;
 
             if trailing_newline {
                 println!();
@@ -196,7 +210,7 @@ impl QueryCommand {
                 let _ = &program
                     .query()
                     .map(QueryResult::from)
-                    .map(|res| self.export(res, format))?;
+                    .map(|res| self.export(program.pos_table(), res, format))?;
             }
         }
         Ok(())

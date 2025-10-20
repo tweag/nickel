@@ -3,8 +3,8 @@ use std::io::Cursor;
 
 use nickel_lang_core::{
     error::{
-        report::{report_as_str, ColorOpt},
         Error, NullReporter,
+        report::{ColorOpt, report_as_str},
     },
     eval::cache::{Cache, CacheImpl},
     program::Program,
@@ -51,11 +51,20 @@ pub fn run(expr: String, import_paths: Option<Vec<OsString>>) -> PyResult<String
         .eval_full()
         .map_err(|error| error_to_exception(error, &mut program))?;
 
-    serialize::validate(serialize::ExportFormat::Json, &term)
-        .map_err(|error| error_to_exception(error, &mut program))?;
+    serialize::validate(serialize::ExportFormat::Json, &term).map_err(|error| {
+        error_to_exception(
+            error.with_pos_table(program.pos_table().clone()),
+            &mut program,
+        )
+    })?;
 
-    let json_string = serialize::to_string(serialize::ExportFormat::Json, &term)
-        .map_err(|error| error_to_exception(error, &mut program))?;
+    let json_string =
+        serialize::to_string(serialize::ExportFormat::Json, &term).map_err(|error| {
+            error_to_exception(
+                error.with_pos_table(program.pos_table().clone()),
+                &mut program,
+            )
+        })?;
 
     Ok(json_string)
 }
