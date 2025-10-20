@@ -1029,28 +1029,20 @@ impl NickelValue {
     /// other sub-expression: null, a boolean, a number, a string, a label, an enum tag, an empty
     /// container (array or record), a sealing key or a foreign id.
     pub fn is_constant(&self) -> bool {
-        let Some(body_tag) = self.body_tag() else {
-            // All inline values are constants
-            return true;
-        };
-
-        match body_tag {
-            BodyTag::Number
-            | BodyTag::Label
-            | BodyTag::ForeignId
-            | BodyTag::SealingKey
-            | BodyTag::String => true,
-            BodyTag::EnumVariant => self
-                .as_value_body::<EnumVariantBody>()
-                .unwrap()
-                .arg
-                .is_none(),
-            BodyTag::Array
-            | BodyTag::Record
-            | BodyTag::Thunk
-            | BodyTag::Term
-            | BodyTag::CustomContract
-            | BodyTag::Type => false,
+        match self.content_ref() {
+            ValueContentRef::Inline(_)
+            | ValueContentRef::Number(_)
+            | ValueContentRef::Label(_)
+            | ValueContentRef::ForeignId(_)
+            | ValueContentRef::SealingKey(_)
+            | ValueContentRef::String(_) => true,
+            ValueContentRef::EnumVariant(enum_variant_body) => enum_variant_body.arg.is_none(),
+            ValueContentRef::Array(_)
+            | ValueContentRef::Record(_)
+            | ValueContentRef::Thunk(_)
+            | ValueContentRef::Term(_)
+            | ValueContentRef::CustomContract(_)
+            | ValueContentRef::Type(_) => false,
         }
     }
 
