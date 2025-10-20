@@ -246,15 +246,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::Typeof => {
-                let result = type_tag(&value);
-                Ok(NickelValue::enum_variant(LocIdent::from(result), None, pos_op_inh).into())
+                Ok(NickelValue::enum_variant(type_tag(&value), None, pos_op_inh).into())
             }
             UnaryOp::Cast => {
-                let result = type_tag(&value);
-                Ok(
-                    NickelValue::enum_variant(LocIdent::from(result), Some(value), pos_op_inh)
-                        .into(),
-                )
+                Ok(NickelValue::enum_variant(type_tag(&value), Some(value), pos_op_inh).into())
             }
             UnaryOp::BoolAnd =>
             // The syntax should not allow partially applied boolean operators.
@@ -2759,7 +2754,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_err_fst();
                 }
 
-                let Some(StringBody(s)) = value1.as_string() else {
+                let Some(StringBody(s)) = value2.as_string() else {
                     return mk_type_error!("String", 2, value2);
                 };
 
