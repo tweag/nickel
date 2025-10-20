@@ -1462,6 +1462,8 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         // not exactly the same thing).
                         NickelValue::term(term, pos_table.push_block(arg.pos.fuse(body_pos)))
                     })
+                //unwrap(): will go away soon
+                .try_with_pos_idx(pos_table.push_block(ast.pos)).unwrap()
             }
             Node::Let {
                 bindings,
