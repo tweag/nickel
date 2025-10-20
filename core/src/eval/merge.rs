@@ -532,7 +532,8 @@ impl Saturate for NickelValue {
                 .try_with_pos_idx(self.pos_idx())
                 .unwrap())
         } else {
-            debug_assert!(self.is_constant());
+            // It's possible for constants, or arbitrary deserialized data since the introduction
+            // of the compact value representation (`NickelValue`), to not be closurized.
             Ok(self)
         }
     }
@@ -593,9 +594,8 @@ impl RevertClosurize for NickelValue {
         if let Some(ThunkBody(idx)) = self.as_thunk() {
             NickelValue::thunk(cache.revert(idx), self.pos_idx())
         } else {
-            // Otherwise, if it is not a closure after the share normal form transformations, it
-            // should be a constant and we don't need to revert anything
-            debug_assert!(self.is_constant());
+            // It's possible for constants, or arbitrary deserialized data since the introduction
+            // of the compact value representation (`NickelValue`), to not be closurized.
             self
         }
     }
