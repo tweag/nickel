@@ -93,19 +93,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let result = match (v1.content(), v2.content()) {
             // Merge is idempotent on basic terms
-            (ValueContent::Inline(lens1), ValueContent::Inline(lens2)) => {
-                match (lens1.take(), lens2.take()) {
-                    (inline1, inline2) if inline1 == inline2 => Ok(NickelValue::inline(
-                        inline1,
-                        pos_op.to_inherited_inline(&mut self.context.pos_table),
-                    )),
-                    (inline1, inline2) => Err(EvalErrorData::MergeIncompatibleArgs {
-                        // unwrap(): will go away soon, anyway
-                        left_arg: NickelValue::inline(inline1, pos1.try_into().unwrap()),
-                        right_arg: NickelValue::inline(inline2, pos2.try_into().unwrap()),
-                        merge_label: mode.into(),
-                    }),
-                }
+            (ValueContent::Null(_), ValueContent::Null(_)) => Ok(NickelValue::null()
+                .with_inline_pos_idx(pos_op.to_inherited_inline(&mut self.context.pos_table))),
+            (ValueContent::Bool(lens1), ValueContent::Bool(lens2))
+                // phys_eq allows comparison in the guard without consuming both lenses, which we
+                // need for the result
+                if lens1.peek().phys_eq(lens2.peek()) =>
+            {
+                Ok(NickelValue::bool_value(
+                    lens1.take(),
+                    pos_op.to_inherited_inline(&mut self.context.pos_table),
+                ))
             }
             (ValueContent::Number(lens1), ValueContent::Number(lens2)) => {
                 let n1 = lens1.take().0;
@@ -261,11 +259,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
                 .with_pos_idx(&mut self.context.pos_table, pos_op))
             }
+            // The empty record is the neutral element for merging. We treat this case specifically
+            // for performance reasons: to avoid allocation, recomputation of fixpoint, etc.
+            (ValueContent::Record(lens), ValueContent::Record(empty))
+            | (ValueContent::Record(empty), ValueContent::Record(lens))
+                if empty.peek().is_empty_record() =>
+            {
+                Ok(lens
+                    .restore()
+                    .with_pos_idx(&mut self.context.pos_table, pos_op))
+            }
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
             (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
-                let r1 = lens1.take().0;
-                let r2 = lens2.take().0;
+                let r1 = lens1.take().unwrap_or_alloc().0;
+                let r2 = lens2.take().unwrap_or_alloc().0;
 
                 // While it wouldn't be impossible to merge records with sealed tails,
                 // working out how to do so in a "sane" way that preserves parametricity

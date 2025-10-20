@@ -69,7 +69,13 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
     // record.
 
     if let ValueContent::Record(lens) = result.content() {
-        NickelValue::term_posless(RecRecord(lens.take().0, Vec::new(), Vec::new(), None, false))
+        NickelValue::term_posless(RecRecord(
+            lens.take().unwrap_or_alloc().0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            false,
+        ))
     } else {
         unreachable!(
             "record was built using Record::builder, expected a record term, got something else"
@@ -138,7 +144,12 @@ fn plus() {
         parse_without_pos("(true + false) + 4"),
         Op2(
             BinaryOp::Plus,
-            Op2(BinaryOp::Plus, NickelValue::bool_true(), NickelValue::bool_false()).into(),
+            Op2(
+                BinaryOp::Plus,
+                NickelValue::bool_true(),
+                NickelValue::bool_false()
+            )
+            .into(),
             mk_term::integer(4),
         )
         .into()
@@ -167,7 +178,11 @@ fn ite() {
 fn applications() {
     assert_eq!(
         parse_without_pos("1 true 2"),
-        mk_app!(mk_term::integer(1), NickelValue::bool_true(), mk_term::integer(2))
+        mk_app!(
+            mk_term::integer(1),
+            NickelValue::bool_true(),
+            mk_term::integer(2)
+        )
     );
 
     assert_eq!(
@@ -219,7 +234,11 @@ fn enum_terms() {
             "'if",
             NickelValue::enum_tag_posless("if"),
         ),
-        ("empty string tag", "'\"\"", NickelValue::enum_tag_posless("")),
+        (
+            "empty string tag",
+            "'\"\"",
+            NickelValue::enum_tag_posless(""),
+        ),
         (
             "string tag with non-ident chars",
             "'\"foo:bar\"",

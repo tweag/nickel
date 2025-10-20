@@ -56,8 +56,10 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                 }
             }
         }
+        ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),
         ValueContent::Record(record_lens) => {
-            let record_data = record_lens.take().0;
+            // unwrap(): we treated the inline empty record case above
+            let record_data = record_lens.take().into_opt().unwrap().0;
 
             // unwrap(): substituting wildcards doesn't change the structure of the record, so if
             // it was empty, `pos_idx` must be an inline position index. It if wasn't empty, the

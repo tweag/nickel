@@ -419,12 +419,9 @@ fn foreign_id() {
 
     let evaled = eval_no_import(t.clone()).unwrap();
     // Terms that include foreign ids can be manipulated normally, and the ids are passed through.
-    let Some(RecordBody(data)) = evaled.as_record() else {
-        panic!();
-    };
+    let container = &evaled.as_record().unwrap();
 
-    let b = LocIdent::from(Ident::new("b"));
-    let field = data.fields.get(&b).unwrap();
+    let field = container.get_field("b".into()).unwrap();
     assert_matches!(field.value.as_ref().unwrap().as_foreign_id().unwrap().0, 42);
 
     // Foreign ids cannot be compared for equality.

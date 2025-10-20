@@ -9,7 +9,10 @@ use serde::de::{
 };
 
 use crate::{
-    bytecode::value::{Array, InlineValue, NickelValue, ValueContent, ValueContentRef},
+    bytecode::value::{
+        Array, ArrayBody, Container, InlineValue, NickelValue, RecordBody, ValueContent,
+        ValueContentRef,
+    },
     error::{self, NullReporter},
     eval::cache::CacheImpl,
     identifier::LocIdent,
@@ -153,17 +156,8 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::Inline(lens) => match lens.take() {
-                InlineValue::Null => visitor.visit_unit(),
-                InlineValue::True => visitor.visit_bool(true),
-                InlineValue::False => visitor.visit_bool(false),
-                InlineValue::EmptyArray => {
-                    visitor.visit_seq(ArrayDeserializer::new(Array::default()))
-                }
-                InlineValue::EmptyRecord => {
-                    visitor.visit_map(RecordDeserializer::new(IndexMap::new()))
-                }
-            },
+            ValueContent::Null(_) => visitor.visit_unit(),
+            ValueContent::Bool(lens) => visitor.visit_bool(lens.take()),
             ValueContent::Number(lens) => {
                 visitor.visit_f64(f64::rounding_from(lens.take().0, RoundingMode::Nearest).0)
             }
@@ -176,8 +170,8 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
                     value: body.arg,
                 })
             }
-            ValueContent::Record(lens) => visit_record(lens.take().0.fields, visitor),
-            ValueContent::Array(lens) => visit_array(lens.take().array, visitor),
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
             lens => Err(RustDeserializationError::UnimplementedType {
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
@@ -226,7 +220,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
                 (body.tag.into_label(), body.arg)
             }
             ValueContent::Record(lens) => {
-                let record = lens.take().0;
+                let record = lens.take().unwrap_or_alloc().0;
 
                 let mut iter = record.fields.into_iter();
                 let (tag, arg) = match iter.next() {
@@ -339,7 +333,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
     {
         match self.content() {
             ValueContent::String(lens) => visitor.visit_string(lens.take().0.into_inner()),
-            ValueContent::Array(lens) => visit_array(lens.take().array, visitor),
+            ValueContent::Array(lens) => visit_array(lens.take().unwrap_or_alloc().array, visitor),
             lens => {
                 let value = lens.restore();
 
@@ -383,7 +377,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::Array(lens) => visit_array(lens.take().array, visitor),
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
             lens => Err(RustDeserializationError::InvalidType {
                 expected: "Array".to_string(),
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
@@ -418,7 +412,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::Record(lens) => visit_record(lens.take().0.fields, visitor),
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
             lens => Err(RustDeserializationError::InvalidType {
                 expected: "Record".to_string(),
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
@@ -437,8 +431,8 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::Array(lens) => visit_array(lens.take().array, visitor),
-            ValueContent::Record(lens) => visit_record(lens.take().0.fields, visitor),
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
             lens => {
                 let value = lens.restore();
 
@@ -498,6 +492,16 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
             _ => None,
         }
     }
+}
+
+fn visit_array_container<'de, V>(
+    container: Container<ArrayBody>,
+    visitor: V,
+) -> Result<V::Value, RustDeserializationError>
+where
+    V: Visitor<'de>,
+{
+    visit_array(container.unwrap_or_alloc().array, visitor)
 }
 
 fn visit_array<'de, V>(array: Array, visitor: V) -> Result<V::Value, RustDeserializationError>
@@ -571,6 +575,16 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     }
 }
 
+fn visit_record_container<'de, V>(
+    container: Container<RecordBody>,
+    visitor: V,
+) -> Result<V::Value, RustDeserializationError>
+where
+    V: Visitor<'de>,
+{
+    visit_record(container.unwrap_or_alloc().0.fields, visitor)
+}
+
 fn visit_record<'de, V>(
     record: IndexMap<LocIdent, Field>,
     visitor: V,
@@ -619,7 +633,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
     {
         match self.value.map(|v| v.content()) {
             Some(ValueContent::Array(lens)) => {
-                let v = lens.take().array;
+                let v = lens.take().unwrap_or_alloc().array;
 
                 if v.is_empty() {
                     visitor.visit_unit()
@@ -644,7 +658,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         V: Visitor<'de>,
     {
         match self.value.map(|v| v.content()) {
-            Some(ValueContent::Record(lens)) => visit_record(lens.take().0.fields, visitor),
+            Some(ValueContent::Record(lens)) => visit_record_container(lens.take(), visitor),
             Some(lens) => Err(RustDeserializationError::InvalidType {
                 expected: "Array variant".to_string(),
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
@@ -713,8 +727,8 @@ mod tests {
 
     use nickel_lang_utils::{
         nickel_lang_core::{
-            bytecode::value::NickelValue,
-            deserialize::RustDeserializationError, error::NullReporter,
+            bytecode::value::NickelValue, deserialize::RustDeserializationError,
+            error::NullReporter,
         },
         test_program::TestProgram,
     };

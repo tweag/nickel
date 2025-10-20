@@ -1,8 +1,8 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     bytecode::value::{
-        ArrayBody, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody, TermBody,
-        ValueContentRef,
+        ArrayBody, Container, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody,
+        TermBody, ValueContentRef,
     },
     error::{ExportError, ExportErrorData, PointedExportErrorData},
     identifier::{Ident, LocIdent},
@@ -190,17 +190,8 @@ impl Serialize for NickelValue {
         S: Serializer,
     {
         match self.content_ref() {
-            ValueContentRef::Inline(InlineValue::Null) => serializer.serialize_none(),
-            ValueContentRef::Inline(InlineValue::True) => serializer.serialize_bool(true),
-            ValueContentRef::Inline(InlineValue::False) => serializer.serialize_bool(false),
-            ValueContentRef::Inline(InlineValue::EmptyArray) => {
-                let seq_ser = serializer.serialize_seq(Some(0))?;
-                seq_ser.end()
-            }
-            ValueContentRef::Inline(InlineValue::EmptyRecord) => {
-                let map_ser = serializer.serialize_map(Some(0))?;
-                map_ser.end()
-            }
+            ValueContentRef::Null => serializer.serialize_none(),
+            ValueContentRef::Bool(b) => serializer.serialize_bool(b),
             ValueContentRef::Number(NumberBody(n)) => serialize_num(n, serializer),
             ValueContentRef::String(s) => serializer.serialize_str(&s.0),
             ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => {
@@ -211,8 +202,18 @@ impl Serialize for NickelValue {
                     "cannot serialize enum variant `'{tag}` with non-empty argument"
                 )))
             }
-            ValueContentRef::Record(RecordBody(record)) => serialize_record(record, serializer),
-            ValueContentRef::Array(ArrayBody { array, .. }) => {
+            ValueContentRef::Record(Container::Empty) => {
+                let map_ser = serializer.serialize_map(Some(0))?;
+                map_ser.end()
+            }
+            ValueContentRef::Record(Container::Alloc(RecordBody(record))) => {
+                serialize_record(record, serializer)
+            }
+            ValueContentRef::Array(Container::Empty) => {
+                let seq_ser = serializer.serialize_seq(Some(0))?;
+                seq_ser.end()
+            }
+            ValueContentRef::Array(Container::Alloc(ArrayBody { array, .. })) => {
                 let mut seq_ser = serializer.serialize_seq(Some(array.len()))?;
                 for elt in array.iter() {
                     seq_ser.serialize_element(elt)?
@@ -449,16 +450,18 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
     ) -> Result<(), PointedExportErrorData> {
         match value.content_ref() {
             // TOML doesn't support null values
-            ValueContentRef::Inline(InlineValue::Null)
+            ValueContentRef::Null
                 if format == ExportFormat::Json || format == ExportFormat::Yaml =>
             {
                 Ok(())
             }
-            ValueContentRef::Inline(InlineValue::Null) => {
+            ValueContentRef::Null => {
                 Err(ExportErrorData::UnsupportedNull(format, value.clone()).into())
             }
-            ValueContentRef::Inline(_) => Ok(()),
-            ValueContentRef::String(_) => Ok(()),
+            ValueContentRef::Bool(_)
+            | ValueContentRef::Record(Container::Empty)
+            | ValueContentRef::Array(Container::Empty)
+            | ValueContentRef::String(_) => Ok(()),
             ValueContentRef::EnumVariant(EnumVariantBody { arg: None, .. }) => Ok(()),
             ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(_), .. }) => {
                 Err(ExportErrorData::NonSerializable(value.clone()).into())
@@ -474,7 +477,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                     .into())
                 }
             }
-            ValueContentRef::Record(RecordBody(record)) => {
+            ValueContentRef::Record(Container::Alloc(RecordBody(record))) => {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
@@ -491,7 +494,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                 })?;
                 Ok(())
             }
-            ValueContentRef::Array(array_body) => {
+            ValueContentRef::Array(Container::Alloc(array_body)) => {
                 array_body
                     .array
                     .iter()
@@ -747,6 +750,7 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
+    #[track_caller]
     fn eval(s: &str) -> NickelValue {
         let src = Cursor::new(s);
         let mut prog = Program::<CacheImpl>::new_from_source(

@@ -14,7 +14,8 @@ use crate::{
     label::Label,
     position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
     term::{
-        ForeignIdPayload, Number, RuntimeContract, SealingKey, Term, record::RecordData,
+        ForeignIdPayload, Number, RecordOpKind, RuntimeContract, SealingKey, Term,
+        record::{Field, RecordData},
         string::NickelString,
     },
     traverse::{Traverse as _, TraverseOrder},
@@ -60,9 +61,9 @@ pub struct NickelValue {
 impl PartialEq for NickelValue {
     fn eq(&self, other: &Self) -> bool {
         match (self.content_ref(), other.content_ref()) {
-            (ValueContentRef::Inline(inline_value1), ValueContentRef::Inline(inline_value2)) => {
-                inline_value1 == inline_value2
-            }
+            (ValueContentRef::Null, ValueContentRef::Null) => true,
+            (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => b1 == b2,
+
             (ValueContentRef::Number(number_body1), ValueContentRef::Number(number_body2)) => {
                 number_body1 == number_body2
             }
@@ -431,7 +432,9 @@ impl NickelValue {
     /// isn't a valid inline value index, that is if `value.is_empty()` and
     /// `InlinePosIdx::try_from(pos_idx)` is `Err`.
     pub fn record(value: RecordData, pos_idx: PosIdx) -> Option<Self> {
-        if value.is_empty() {
+        // We need to exclude empty open records here, because we would otherwise lose this bit of
+        // information: an inline empty record is assumed to be closed.
+        if value.is_empty() && !value.attrs.open {
             Some(Self::inline(
                 InlineValue::EmptyRecord,
                 pos_idx.try_into().ok()?,
@@ -609,14 +612,22 @@ impl NickelValue {
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
     /// with tag array, or `None` otherwise.
-    pub fn as_array(&self) -> Option<&ArrayBody> {
-        self.as_value_body()
+    pub fn as_array(&self) -> Option<Container<&ArrayBody>> {
+        if self.is_empty_array() {
+            Some(Container::Empty)
+        } else {
+            self.as_value_body().map(Container::Alloc)
+        }
     }
 
     /// Returns a reference to the inner record stored in this value if `self` is a value block
     /// with tag record, or `None` otherwise.
-    pub fn as_record(&self) -> Option<&RecordBody> {
-        self.as_value_body()
+    pub fn as_record(&self) -> Option<Container<&RecordBody>> {
+        if self.is_empty_record() {
+            Some(Container::Empty)
+        } else {
+            self.as_value_body().map(Container::Alloc)
+        }
     }
 
     /// Returns a reference to the inner thunk stored in this value if `self` is a value block with
@@ -715,12 +726,12 @@ impl NickelValue {
                     BodyTag::Number => {
                         ValueContentRef::Number(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
-                    BodyTag::Array => {
-                        ValueContentRef::Array(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
-                    }
-                    BodyTag::Record => {
-                        ValueContentRef::Record(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
-                    }
+                    BodyTag::Array => ValueContentRef::Array(Container::Alloc(
+                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                    )),
+                    BodyTag::Record => ValueContentRef::Record(Container::Alloc(
+                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                    )),
                     BodyTag::String => {
                         ValueContentRef::String(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
@@ -750,8 +761,16 @@ impl NickelValue {
                     }
                 }
             },
-            // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => unsafe { ValueContentRef::Inline(self.as_inline_unchecked()) },
+            ValueTag::Inline => {
+                // Safety: `self.tag()` is `ValueTag::Inline`
+                match unsafe { self.as_inline_unchecked() } {
+                    InlineValue::EmptyArray => ValueContentRef::Array(Container::Empty),
+                    InlineValue::EmptyRecord => ValueContentRef::Record(Container::Empty),
+                    InlineValue::Null => ValueContentRef::Null,
+                    InlineValue::True => ValueContentRef::Bool(true),
+                    InlineValue::False => ValueContentRef::Bool(false),
+                }
+            }
         }
     }
 
@@ -779,12 +798,12 @@ impl NickelValue {
                     BodyTag::Number => ValueContentRefMut::Number(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
                     ),
-                    BodyTag::Array => ValueContentRefMut::Array(
+                    BodyTag::Array => ValueContentRefMut::Array(Container::Alloc(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
-                    ),
-                    BodyTag::Record => ValueContentRefMut::Record(
+                    )),
+                    BodyTag::Record => ValueContentRefMut::Record(Container::Alloc(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
-                    ),
+                    )),
                     BodyTag::String => ValueContentRefMut::String(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
                     ),
@@ -814,8 +833,16 @@ impl NickelValue {
                     ),
                 })
             },
-            // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => Some(ValueContentRefMut::Inline(self)),
+            ValueTag::Inline => {
+                // Safety: `self.tag()` is `ValueTag::Inline`
+                Some(match unsafe { self.as_inline_unchecked() } {
+                    InlineValue::EmptyArray => ValueContentRefMut::Array(Container::Empty),
+                    InlineValue::EmptyRecord => ValueContentRefMut::Record(Container::Empty),
+                    InlineValue::Null => ValueContentRefMut::Null(self),
+                    InlineValue::True => ValueContentRefMut::Bool(self),
+                    InlineValue::False => ValueContentRefMut::Bool(self),
+                })
+            }
         }
     }
 
@@ -836,8 +863,8 @@ impl NickelValue {
                 unsafe {
                     match header.tag {
                         BodyTag::Number => ValueContent::Number(ValueLens::body_lens(self)),
-                        BodyTag::Array => ValueContent::Array(ValueLens::body_lens(self)),
-                        BodyTag::Record => ValueContent::Record(ValueLens::body_lens(self)),
+                        BodyTag::Array => ValueContent::Array(ValueLens::container_lens(self)),
+                        BodyTag::Record => ValueContent::Record(ValueLens::container_lens(self)),
                         BodyTag::String => ValueContent::String(ValueLens::body_lens(self)),
                         BodyTag::Thunk => ValueContent::Thunk(ValueLens::body_lens(self)),
                         BodyTag::Term => {
@@ -905,8 +932,28 @@ impl NickelValue {
                     }
                 }
             }
-            // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => ValueContent::Inline(unsafe { ValueLens::inline_lens(self) }),
+            ValueTag::Inline => {
+                // Safety:
+                //
+                // as_inline_unchecked: `self.tag()` is `ValueTag::Inline`
+                //
+                // ValueLens::xxx_lens: in each branch, the type of the inline value matches the
+                // type of the lens built with `body_lens`.
+                unsafe {
+                    match unsafe { self.as_inline_unchecked() } {
+                        InlineValue::Null => ValueContent::Null(ValueLens::null_lens(self)),
+                        InlineValue::True | InlineValue::False => {
+                            ValueContent::Bool(ValueLens::bool_lens(self))
+                        }
+                        InlineValue::EmptyArray => {
+                            ValueContent::Array(ValueLens::container_lens(self))
+                        }
+                        InlineValue::EmptyRecord => {
+                            ValueContent::Record(ValueLens::container_lens(self))
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -949,8 +996,8 @@ impl NickelValue {
 
                 match tag {
                     BodyTag::Number => ValueContentRefMut::Number(make_mut(self)),
-                    BodyTag::Array => ValueContentRefMut::Array(make_mut(self)),
-                    BodyTag::Record => ValueContentRefMut::Record(make_mut(self)),
+                    BodyTag::Array => ValueContentRefMut::Array(Container::Alloc(make_mut(self))),
+                    BodyTag::Record => ValueContentRefMut::Record(Container::Alloc(make_mut(self))),
                     BodyTag::String => ValueContentRefMut::String(make_mut(self)),
                     BodyTag::Thunk => ValueContentRefMut::Thunk(make_mut(self)),
                     BodyTag::Term => ValueContentRefMut::Term(make_mut(self)),
@@ -962,8 +1009,15 @@ impl NickelValue {
                     BodyTag::Type => ValueContentRefMut::Type(make_mut(self)),
                 }
             },
-            // Safety: `self.tag()` is `ValueTag::Inline`
-            ValueTag::Inline => ValueContentRefMut::Inline(self),
+            ValueTag::Inline => {
+                // Safety: `self.tag()` is `ValueTag::Inline`
+                match unsafe { self.as_inline_unchecked() } {
+                    InlineValue::Null => ValueContentRefMut::Null(self),
+                    InlineValue::True | InlineValue::False => ValueContentRefMut::Bool(self),
+                    InlineValue::EmptyArray => ValueContentRefMut::Array(Container::Empty),
+                    InlineValue::EmptyRecord => ValueContentRefMut::Record(Container::Empty),
+                }
+            }
         }
     }
 
@@ -1027,12 +1081,8 @@ impl NickelValue {
     /// for records, `Array` for arrays, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<&'static str> {
         match self.content_ref() {
-            ValueContentRef::Inline(inline) => match inline {
-                InlineValue::True | InlineValue::False => Some("Bool"),
-                InlineValue::Null => Some("Other"),
-                InlineValue::EmptyArray => Some("Array"),
-                InlineValue::EmptyRecord => Some("Record"),
-            },
+            ValueContentRef::Null => Some("Other"),
+            ValueContentRef::Bool(_) => Some("Bool"),
             ValueContentRef::Number(_) => Some("Number"),
             ValueContentRef::Array(_) => Some("Array"),
             ValueContentRef::Record(_) => Some("Record"),
@@ -1078,7 +1128,10 @@ impl NickelValue {
     /// container (array or record), a sealing key or a foreign id.
     pub fn is_constant(&self) -> bool {
         match self.content_ref() {
-            ValueContentRef::Inline(_)
+            ValueContentRef::Null
+            | ValueContentRef::Bool(_)
+            | ValueContentRef::Array(Container::Empty)
+            | ValueContentRef::Record(Container::Empty)
             | ValueContentRef::Number(_)
             | ValueContentRef::Label(_)
             | ValueContentRef::ForeignId(_)
@@ -1132,7 +1185,8 @@ impl NickelValue {
     /// or returns `None` if the value isn't primitive.
     pub fn to_nickel_string(&self) -> Option<NickelString> {
         match self.content_ref() {
-            ValueContentRef::Inline(inline) => inline.to_nickel_string(),
+            ValueContentRef::Null => Some("null".into()),
+            ValueContentRef::Bool(b) => Some(b.to_string().into()),
             ValueContentRef::String(s) => Some(s.0.clone()),
             ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => Some((*tag).into()),
             ValueContentRef::Number(n) => Some(format!("{}", n.0.to_sci()).into()),
@@ -1424,30 +1478,6 @@ pub enum InlineValue {
     EmptyRecord = tag_inline(4),
 }
 
-impl InlineValue {
-    /// Return the class of an expression in WHNF. See
-    /// [NickelValue::type_of].
-    pub fn type_of(&self) -> Option<&'static str> {
-        match self {
-            InlineValue::Null => Some("Null"),
-            InlineValue::False | InlineValue::True => Some("Bool"),
-            InlineValue::EmptyArray => Some("Array"),
-            InlineValue::EmptyRecord => Some("Record"),
-        }
-    }
-
-    /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
-    /// or returns `None` if the term isn't a primitive value.
-    pub fn to_nickel_string(&self) -> Option<NickelString> {
-        match self {
-            InlineValue::Null => Some("null".into()),
-            InlineValue::True => Some("true".into()),
-            InlineValue::False => Some("false".into()),
-            InlineValue::EmptyArray | InlineValue::EmptyRecord => None,
-        }
-    }
-}
-
 /// The discriminating tag for the different kinds of data that can be store in a value block.
 ///////////
 // CAUTION
@@ -1673,7 +1703,7 @@ pub struct NumberBody(pub Number);
 #[derive(Clone, Debug, PartialEq)]
 pub struct StringBody(pub NickelString);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct ArrayBody {
     pub array: Array,
     /// Arrays implement lazy contract application for performance reasons: contracts appiled to
@@ -1682,7 +1712,7 @@ pub struct ArrayBody {
     pub pending_contracts: Vec<RuntimeContract>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct RecordBody(pub RecordData);
 
 #[derive(Clone, Debug)]
@@ -2246,19 +2276,103 @@ impl Clone for ValueBlockRc {
     }
 }
 
+/// Empty containers are inlined, but this should be an implementation detail as much as possible.
+/// This generic handler is providing a uniform interface to a container, that can either be
+/// inlined as empty, or allocated (note that an allocated container can still be empty!).
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub enum Container<C> {
+    /// An empty, inlined value.
+    Empty,
+    /// An allocated container. **Note that an allocated container can still be empty as a container**:
+    /// for example, an open record `{..}` needs to be allocated to store the open attribute, but
+    /// will have an empty underlying map.
+    Alloc(C),
+}
+
+impl<C> Container<C> {
+    /// Converts this container to an optional. Returns `None` if `self` is [Container::Empty], and
+    /// `Some` otherwise.
+    pub fn into_opt(self) -> Option<C> {
+        match self {
+            Container::Empty => None,
+            Container::Alloc(c) => Some(c),
+        }
+    }
+
+    /// Unwrap the underlying allocation, or panics if `self` is [Self::Empty].
+    pub fn unwrap_alloc(self) -> C {
+        self.into_opt().unwrap()
+    }
+}
+
+impl<C: Default> Container<C> {
+    /// Unwrap the underlying container, or allocate a new empty one (via [Default]) if `self` is
+    /// [Container::Empty].
+    pub fn unwrap_or_alloc(self) -> C {
+        self.into_opt().unwrap_or_default()
+    }
+}
+
+impl Container<&RecordBody> {
+    /// Retrieves a field from [crate::term::record::RecordData::fields], or returns `None` if `self`
+    /// is [Self::Empty].
+    pub fn get_field(&self, id: LocIdent) -> Option<&Field> {
+        self.into_opt().and_then(|record| record.0.fields.get(&id))
+    }
+
+    /// Returns a vector of all the fields' names of this record sorted alphabetically. Returns an
+    /// empty vector if `self` is [Self::Empty].
+    pub fn field_names(&self, op_kind: RecordOpKind) -> Vec<LocIdent> {
+        self.into_opt()
+            .map(|record| record.0.field_names(op_kind))
+            .unwrap_or_default()
+    }
+
+    /// Returns the length of the underlying record.
+    pub fn len(&self) -> usize {
+        self.into_opt().map_or(0, |record| record.0.fields.len())
+    }
+}
+
+impl Container<&ArrayBody> {
+    /// Iterates over the elements of the array.
+    pub fn iter(&self) -> impl Iterator<Item = &NickelValue> {
+        self.into_opt()
+            .into_iter()
+            .map(|array_body| array_body.array.iter())
+            .flatten()
+    }
+
+    /// Iterates over the pending contracts.
+    pub fn iter_pending_contracts(&self) -> impl Iterator<Item = &RuntimeContract> {
+        self.into_opt()
+            .into_iter()
+            .map(|array_body| array_body.pending_contracts.iter())
+            .flatten()
+    }
+
+    /// Returns the length of the underlying array.
+    pub fn len(&self) -> usize {
+        self.into_opt()
+            .map_or(0, |array_body| array_body.array.len())
+    }
+}
+
 /// An enum representation of a decoded Nickel value. This is useful to match on a general value in
 /// a typed way.
 ///
-/// Note that we only ever store references to the content of a value block here, or full inline
+/// Note that we only ever store references to the content of a value block here, or 1-word inline
 /// values, so this enum is compact and doesn't defeat the purpose of the whole value encoding
 /// (beside the fact that [ValueContentRef] is only materialized temporarily by helpers and not a
-/// standard value representation).
+/// standard value representation). This is still true for `Container<ref>` values, thanks to the
+/// niche optimizatio of rustc: [Self] is 16 bytes wide.
 #[derive(Clone, Copy, Debug)]
 pub enum ValueContentRef<'a> {
-    Inline(InlineValue),
+    Null,
+    Bool(bool),
     Number(&'a NumberBody),
-    Array(&'a ArrayBody),
-    Record(&'a RecordBody),
+    Array(Container<&'a ArrayBody>),
+    Record(Container<&'a RecordBody>),
     String(&'a StringBody),
     Thunk(&'a ThunkBody),
     Term(&'a TermBody),
@@ -2278,11 +2392,15 @@ pub enum ValueContentRefMut<'a> {
     /// to an [InlineValue].
     ///
     /// A mutable reference is mostly useful for value blocks anyway. For inline values, we just
-    /// return the original value back, which can be overridden directly with a new inline value.
-    Inline(&'a mut NickelValue),
+    /// return the original value back. It can be overridden directly with a new inline value.
+    ///
+    /// Note that the empty array case and the empty record case are handled by the [Container]
+    /// part in [Self::Array] and [Self::Record]. They won't appear as [ValueContent::InlineValue].
+    Null(&'a mut NickelValue),
+    Bool(&'a mut NickelValue),
     Number(&'a mut NumberBody),
-    Array(&'a mut ArrayBody),
-    Record(&'a mut RecordBody),
+    Array(Container<&'a mut ArrayBody>),
+    Record(Container<&'a mut RecordBody>),
     String(&'a mut StringBody),
     Thunk(&'a mut ThunkBody),
     Term(&'a mut TermBody),
@@ -2305,11 +2423,14 @@ pub enum ValueContentRefMut<'a> {
 /// lazy handle, which can either be unwrapped further - consuming the original value irreversibly
 /// and producing an owned version of the body - or reverted back to the original value.
 pub enum ValueContent {
-    /// In the case of an inline value, it's useless to
-    Inline(lens::ValueLens<InlineValue>),
+    /// It can seem useless to carry a lens here, since there's no real data to take out. However,
+    /// it's important to keep the ability to restore a [Self] value to the original [NickelValue],
+    /// which is precisely the role of the lens.
+    Null(lens::ValueLens<()>),
+    Bool(lens::ValueLens<bool>),
     Number(lens::ValueLens<NumberBody>),
-    Array(lens::ValueLens<ArrayBody>),
-    Record(lens::ValueLens<RecordBody>),
+    Array(lens::ValueLens<Container<ArrayBody>>),
+    Record(lens::ValueLens<Container<RecordBody>>),
     String(lens::ValueLens<StringBody>),
     Thunk(lens::ValueLens<ThunkBody>),
     Term(lens::TermContent),
@@ -2325,7 +2446,8 @@ impl ValueContent {
     /// Do not access the content and restore the original value unchanged.
     pub fn restore(self) -> NickelValue {
         match self {
-            ValueContent::Inline(lens) => lens.restore(),
+            ValueContent::Null(lens) => lens.restore(),
+            ValueContent::Bool(lens) => lens.restore(),
             ValueContent::Number(lens) => lens.restore(),
             ValueContent::Array(lens) => lens.restore(),
             ValueContent::Record(lens) => lens.restore(),
@@ -2541,19 +2663,20 @@ mod tests {
         let mut record = NickelValue::record_posless(record_data);
         let mut array = NickelValue::array_posless(array_data, Vec::new());
 
-        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
-        assert_eq!(array.as_array().unwrap().array.len(), 1);
+        assert_eq!(record.as_record().unwrap().unwrap_alloc().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().unwrap_alloc().array.len(), 1);
 
-        if let Some(ValueContentRefMut::Record(record_body)) = record.content_mut() {
-            record_body
-                .0
+        if let Some(ValueContentRefMut::Record(Container::Alloc(RecordBody(record)))) =
+            record.content_mut()
+        {
+            record
                 .fields
                 .insert(LocIdent::from("world"), Default::default());
         } else {
             panic!("Expected RecordBody");
         }
 
-        if let Some(ValueContentRefMut::Array(array_body)) = array.content_mut() {
+        if let Some(ValueContentRefMut::Array(Container::Alloc(array_body))) = array.content_mut() {
             array_body.array.push(NickelValue::null());
         } else {
             panic!("Expected ArrayBody");
@@ -2562,8 +2685,8 @@ mod tests {
         let array_copy = array.clone();
         let record_copy = record.clone();
 
-        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
-        assert_eq!(array_copy.as_array().unwrap().array.len(), 2);
+        assert_eq!(record_copy.as_record().unwrap().len(), 2);
+        assert_eq!(array_copy.as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -2580,19 +2703,20 @@ mod tests {
         let mut array = NickelValue::array_posless(array_data, Vec::new());
         let array_copy = array.clone();
 
-        assert_eq!(record.as_record().unwrap().0.fields.len(), 1);
-        assert_eq!(array.as_array().unwrap().array.len(), 1);
+        assert_eq!(record.as_record().unwrap().unwrap_alloc().0.fields.len(), 1);
+        assert_eq!(array.as_array().unwrap().unwrap_alloc().array.len(), 1);
 
-        if let ValueContentRefMut::Record(record_body) = record.content_make_mut() {
-            record_body
-                .0
+        if let ValueContentRefMut::Record(Container::Alloc(RecordBody(record))) =
+            record.content_make_mut()
+        {
+            record
                 .fields
                 .insert(LocIdent::from("world"), Default::default());
         } else {
             panic!("Expected RecordBody");
         }
 
-        if let ValueContentRefMut::Array(array_body) = array.content_make_mut() {
+        if let ValueContentRefMut::Array(Container::Alloc(array_body)) = array.content_make_mut() {
             array_body.array.push(NickelValue::null());
         } else {
             panic!("Expected ArrayBody");
@@ -2600,11 +2724,11 @@ mod tests {
 
         let record_copy = record.clone();
 
-        assert_eq!(record.as_record().unwrap().0.fields.len(), 2);
-        assert_eq!(record_copy.as_record().unwrap().0.fields.len(), 2);
-        assert_eq!(array.as_array().unwrap().array.len(), 2);
+        assert_eq!(record.as_record().unwrap().len(), 2);
+        assert_eq!(record_copy.as_record().unwrap().len(), 2);
+        assert_eq!(array.as_array().unwrap().len(), 2);
         // The copy was made before the call to `content_make_mut`, so it must have been preserved.
-        assert_eq!(array_copy.as_array().unwrap().array.len(), 1);
+        assert_eq!(array_copy.as_array().unwrap().len(), 1);
     }
 
     #[test]

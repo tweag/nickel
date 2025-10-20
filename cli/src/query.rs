@@ -1,7 +1,7 @@
 use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
-    bytecode::value::{RecordBody, TermBody, ValueContentRef},
+    bytecode::value::{RecordBody, TermBody, ValueContentRef, Container},
     error::{Error, IOError, Reporter as _},
     eval::cache::lazy::CBNCache,
     identifier::{Ident, LocIdent},
@@ -76,7 +76,7 @@ impl From<Field> for QueryResult {
     fn from(field: Field) -> Self {
         let sub_fields = field.value.as_ref().and_then(|val| {
             match val.content_ref() {
-                ValueContentRef::Record(RecordBody(record)) if !record.fields.is_empty() => {
+                ValueContentRef::Record(Container::Alloc(RecordBody(record))) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().collect();
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())

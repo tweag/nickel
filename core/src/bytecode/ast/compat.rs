@@ -7,8 +7,9 @@
 use super::{primop::PrimOp, *};
 use crate::{
     bytecode::value::{
-        ArrayBody, CustomContractBody, EnumVariantBody, InlineValue, NickelValue, NumberBody,
-        RecordBody, StringBody, TermBody, TypeBody, ValueContentRef, ValueContentRefMut,
+        ArrayBody, Container, CustomContractBody, EnumVariantBody, InlineValue, NickelValue,
+        NumberBody, RecordBody, StringBody, TermBody, TypeBody, ValueContentRef,
+        ValueContentRefMut,
     },
     combine::Combine,
     label,
@@ -576,29 +577,19 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
     }
 }
 
-impl<'ast> FromMainline<'ast, InlineValue> for Node<'ast> {
-    fn from_mainline(alloc: &'ast AstAlloc, _pos_table: &PosTable, mainline: &InlineValue) -> Self {
-        match mainline {
-            InlineValue::Null => Node::Null,
-            InlineValue::True => Node::Bool(true),
-            InlineValue::False => Node::Bool(false),
-            InlineValue::EmptyArray => Node::Array(&[]),
-            InlineValue::EmptyRecord => alloc.record(Record::empty()),
-        }
-    }
-}
-
 impl<'ast> FromMainline<'ast, NickelValue> for Ast<'ast> {
     fn from_mainline(alloc: &'ast AstAlloc, pos_table: &PosTable, rterm: &NickelValue) -> Self {
         let node = match rterm.content_ref() {
-            ValueContentRef::Inline(inline) => inline.to_ast(alloc, pos_table),
+            ValueContentRef::Null => Node::Null,
+            ValueContentRef::Bool(b) => Node::Bool(b),
             ValueContentRef::Number(NumberBody(n)) => alloc.number(n.clone()),
+            ValueContentRef::Array(Container::Empty) => Node::Array(&[]),
             // We ignore pending contracts here. Conversion between ASTs should happen before
             // runtime, when `pending_contracts` is empty.
-            ValueContentRef::Array(ArrayBody {
+            ValueContentRef::Array(Container::Alloc(ArrayBody {
                 array,
                 pending_contracts: _,
-            }) => {
+            })) => {
                 // We should probably make array's iterator an ExactSizeIterator. But for now, we
                 // don't care about the translation's performance so it's simpler to just collect
                 // them in a vec locally.
@@ -608,7 +599,8 @@ impl<'ast> FromMainline<'ast, NickelValue> for Ast<'ast> {
                     .collect::<Vec<_>>();
                 alloc.array(elts)
             }
-            ValueContentRef::Record(RecordBody(data)) => {
+            ValueContentRef::Record(Container::Empty) => alloc.record(Record::empty()),
+            ValueContentRef::Record(Container::Alloc(RecordBody(data))) => {
                 let field_defs = alloc.alloc_many(data.fields.iter().map(|(id, field)| {
                     let pos = field
                         .value
@@ -1079,13 +1071,16 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                     let mut fields = IndexMap::new();
                     fields.insert(*id, acc);
                     // unwrap(): will go away soon
-                    term::record::Field::from(NickelValue::record(
-                        term::record::RecordData {
-                            fields,
-                            ..Default::default()
-                        },
-                        pos_table.push_block(pos),
-                    ).unwrap())
+                    term::record::Field::from(
+                        NickelValue::record(
+                            term::record::RecordData {
+                                fields,
+                                ..Default::default()
+                            },
+                            pos_table.push_block(pos),
+                        )
+                        .unwrap(),
+                    )
                 }
                 FieldPathElem::Expr(expr) => {
                     let pos = expr.pos;
@@ -1099,13 +1094,16 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         let mut fields = IndexMap::new();
                         fields.insert(id, acc);
 
-                        term::record::Field::from(NickelValue::record(
-                            term::record::RecordData {
-                                fields,
-                                ..Default::default()
-                            },
-                            pos_table.push_block(pos),
-                        ).unwrap())
+                        term::record::Field::from(
+                            NickelValue::record(
+                                term::record::RecordData {
+                                    fields,
+                                    ..Default::default()
+                                },
+                                pos_table.push_block(pos),
+                            )
+                            .unwrap(),
+                        )
                     } else {
                         // The record we create isn't recursive, because it is only comprised of
                         // one dynamic field. It's just simpler to use the infrastructure of
@@ -1462,8 +1460,9 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         // not exactly the same thing).
                         NickelValue::term(term, pos_table.push_block(arg.pos.fuse(body_pos)))
                     })
-                //unwrap(): will go away soon
-                .try_with_pos_idx(pos_table.push_block(ast.pos)).unwrap()
+                    //unwrap(): will go away soon
+                    .try_with_pos_idx(pos_table.push_block(ast.pos))
+                    .unwrap()
             }
             Node::Let {
                 bindings,
@@ -1799,8 +1798,8 @@ fn merge_fields(
     fn merge_values(id_span: RawSpan, v1: NickelValue, v2: NickelValue) -> NickelValue {
         match (v1.content(), v2.content()) {
             (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
-                let rd1 = lens1.take().0;
-                let rd2 = lens2.take().0;
+                let rd1 = lens1.take().unwrap_or_alloc().0;
+                let rd2 = lens2.take().unwrap_or_alloc().0;
 
                 let split::SplitResult {
                     left,

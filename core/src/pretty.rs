@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::{
-    bytecode::value::{InlineValue, NickelValue, NumberBody, TermBody, ValueContentRef},
+    bytecode::value::{Container, InlineValue, NickelValue, NumberBody, TermBody, ValueContentRef},
     cache::InputFormat,
     identifier::{Ident, LocIdent},
     parser::lexer::KEYWORDS,
@@ -929,15 +929,10 @@ impl<'a> Pretty<'a, Allocator> for &OrPattern {
 impl<'a> Pretty<'a, Allocator> for &NickelValue {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         match self.content_ref() {
-            ValueContentRef::Inline(inline_value) => match inline_value {
-                InlineValue::Null => allocator.text("null"),
-                InlineValue::True => allocator.text("true"),
-                InlineValue::False => allocator.text("false"),
-                InlineValue::EmptyArray => allocator.text("[]"),
-                InlineValue::EmptyRecord => allocator.text("{}"),
-            },
-            ValueContentRef::Number(n) => allocator.as_string(format!("{}", n.0.to_sci())),
-            ValueContentRef::Array(array) =>
+            ValueContentRef::Null => allocator.text("null"),
+            ValueContentRef::Bool(b) => allocator.as_string(b),
+            ValueContentRef::Number(n) => allocator.as_string(n.0.to_sci()),
+            ValueContentRef::Array(container) =>
             // NOTE: the Array attributes are ignored here. They contain only
             // information that has no surface syntax.
             {
@@ -945,7 +940,7 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
                     allocator,
                     allocator.line(),
                     allocator.intersperse(
-                        array.array.iter().map(|val| val.pretty(allocator)),
+                        container.iter().map(|val| val.pretty(allocator)),
                         allocator.text(",").append(allocator.line()),
                     ),
                 ]
@@ -954,7 +949,10 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
                 .brackets()
                 .group()
             }
-            ValueContentRef::Record(record) => allocator.record(&record.0, &[], &[]),
+            ValueContentRef::Record(Container::Empty) => allocator.text("{}"),
+            ValueContentRef::Record(Container::Alloc(record)) => {
+                allocator.record(&record.0, &[], &[])
+            }
             ValueContentRef::String(s) => allocator.escaped_string(&s.0).double_quotes(),
             ValueContentRef::Thunk(thunk) => allocator.text(format!("%<closure@{:p}>", thunk.0)),
             ValueContentRef::Term(term) => term.0.pretty(allocator),

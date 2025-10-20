@@ -12,8 +12,8 @@ use string::NickelString;
 
 use crate::{
     bytecode::value::{
-        self, Array, ArrayBody, CustomContractBody, EnumVariantBody, NickelValue, RecordBody,
-        TermBody, TypeBody, ValueContent, ValueContentRef, lens::TermContent,
+        self, Array, ArrayBody, Container, CustomContractBody, EnumVariantBody, NickelValue,
+        RecordBody, TermBody, TypeBody, ValueContent, ValueContentRef, lens::TermContent,
     },
     cache::InputFormat,
     combine::Combine,
@@ -134,7 +134,7 @@ pub enum Term {
         Vec<Include>,              /* fields defined through `include` expressions */
         Vec<(NickelValue, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
-        bool, /* is it closurized */
+        bool,               /* is it closurized */
     ),
 
     /// A container value (array or record) that has yet to be closurized. This will closurize each
@@ -1980,7 +1980,7 @@ impl Traverse<NickelValue> for Term {
                     includes,
                     dyn_fields_res?,
                     deps,
-                    closurized
+                    closurized,
                 )
             }
             Term::StrChunks(chunks) => {
@@ -2096,20 +2096,25 @@ impl Traverse<NickelValue> for NickelValue {
         let pos_idx = value.pos_idx();
 
         let result = match value.content() {
-            lens @ (ValueContent::Inline(_)
+            lens @ (ValueContent::Null(_)
+            | ValueContent::Bool(_)
             | ValueContent::Number(_)
             | ValueContent::String(_)
             | ValueContent::Label(_)
             | ValueContent::Thunk(_)
             | ValueContent::SealingKey(_)
             | ValueContent::ForeignId(_)) => lens.restore(),
+            ValueContent::Array(lens) if lens.peek().is_empty_array() => lens.restore(),
+            ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),
             ValueContent::Term(lens) => {
                 let term = lens.take();
                 let term = term.traverse(f, order)?;
                 NickelValue::term(term, pos_idx)
             }
             ValueContent::Record(lens) => {
-                let record = lens.take().0;
+                //unwrap(): we already treated the empty case above, so if we end up here, the
+                //container must be non-empty, and `into_opt()` must return `Some`.
+                let record = lens.take().into_opt().unwrap().0;
 
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
@@ -2126,10 +2131,12 @@ impl Traverse<NickelValue> for NickelValue {
                 .unwrap()
             }
             ValueContent::Array(lens) => {
+                //unwrap(): we already treated the empty case above, so if we end up here, the
+                //container must be non-empty, and `into_opt()` must return `Some`.
                 let ArrayBody {
                     array,
                     pending_contracts,
-                } = lens.take();
+                } = lens.take().into_opt().unwrap();
 
                 let array = array
                     .into_iter()
@@ -2183,7 +2190,10 @@ impl Traverse<NickelValue> for NickelValue {
         let scope = child_scope.as_ref().unwrap_or(scope);
 
         match self.content_ref() {
-            ValueContentRef::Inline(_)
+            ValueContentRef::Null
+            | ValueContentRef::Bool(_)
+            | ValueContentRef::Array(Container::Empty)
+            | ValueContentRef::Record(Container::Empty)
             | ValueContentRef::Number(_)
             | ValueContentRef::String(_)
             | ValueContentRef::Label(_)
@@ -2193,7 +2203,7 @@ impl Traverse<NickelValue> for NickelValue {
             | ValueContentRef::ForeignId(_) => None,
             ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(v), .. })
             | ValueContentRef::CustomContract(CustomContractBody(v)) => v.traverse_ref(f, scope),
-            ValueContentRef::Array(array_data) => array_data
+            ValueContentRef::Array(Container::Alloc(array_data)) => array_data
                 .array
                 .iter()
                 .find_map(|t| t.traverse_ref(f, scope)),
@@ -2201,7 +2211,7 @@ impl Traverse<NickelValue> for NickelValue {
                 typ.traverse_ref(f, scope)?;
                 contract.traverse_ref(f, scope)
             }
-            ValueContentRef::Record(RecordBody(data)) => data
+            ValueContentRef::Record(Container::Alloc(RecordBody(data))) => data
                 .fields
                 .values()
                 .find_map(|field| field.traverse_ref(f, scope)),

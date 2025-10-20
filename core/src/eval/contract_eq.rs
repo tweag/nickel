@@ -42,7 +42,9 @@
 use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
-    bytecode::value::{EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef},
+    bytecode::value::{
+        Container, EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef,
+    },
     identifier::LocIdent,
     term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
     typ::{
@@ -126,7 +128,8 @@ fn contract_eq_bounded(
     }
 
     match (t1.content_ref(), t2.content_ref()) {
-        (ValueContentRef::Inline(inl1), ValueContentRef::Inline(inl2)) => inl1 == inl2,
+        (ValueContentRef::Null, ValueContentRef::Null) => true,
+        (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => true,
         (ValueContentRef::EnumVariant(enum1), ValueContentRef::EnumVariant(enum2)) => {
             match (enum1, enum2) {
                 (
@@ -153,7 +156,13 @@ fn contract_eq_bounded(
             }
         }
         (ValueContentRef::SealingKey(s1), ValueContentRef::SealingKey(s2)) => s1 == s2,
-        (ValueContentRef::Record(r1), ValueContentRef::Record(r2)) => {
+        (ValueContentRef::Record(Container::Empty), ValueContentRef::Record(Container::Empty)) => {
+            true
+        }
+        (
+            ValueContentRef::Record(Container::Alloc(r1)),
+            ValueContentRef::Record(Container::Alloc(r2)),
+        ) => {
             map_eq(
                 contract_eq_fields,
                 state,
@@ -163,7 +172,13 @@ fn contract_eq_bounded(
                 env2,
             ) && r1.0.attrs.open == r2.0.attrs.open
         }
-        (ValueContentRef::Array(arr_data1), ValueContentRef::Array(arr_data2)) => {
+        (ValueContentRef::Array(Container::Empty), ValueContentRef::Array(Container::Empty)) => {
+            true
+        }
+        (
+            ValueContentRef::Array(Container::Alloc(arr_data1)),
+            ValueContentRef::Array(Container::Alloc(arr_data2)),
+        ) => {
             arr_data1.array.len() == arr_data2.array.len()
                 && arr_data1
                     .array
@@ -355,11 +370,26 @@ fn contract_eq_bounded(
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
         (
-            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _, _))),
-            ValueContentRef::Record(RecordBody(r2)),
+            ValueContentRef::Term(TermBody(Term::RecRecord(r, includes, dyn_fields, _, _))),
+            ValueContentRef::Record(Container::Empty),
         )
         | (
-            ValueContentRef::Record(RecordBody(r1)),
+            ValueContentRef::Record(Container::Empty),
+            ValueContentRef::Term(TermBody(Term::RecRecord(r, includes, dyn_fields, _, _))),
+        ) => {
+            dyn_fields.is_empty()
+                && includes.is_empty()
+                && r.fields.is_empty()
+                // An open record is always properly allocated (not inlined), even if empty. So
+                // `Container::Empty` implies closed.
+                && !r.attrs.open
+        }
+        (
+            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _, _))),
+            ValueContentRef::Record(Container::Alloc(RecordBody(r2))),
+        )
+        | (
+            ValueContentRef::Record(Container::Alloc(RecordBody(r1))),
             ValueContentRef::Term(TermBody(Term::RecRecord(r2, includes, dyn_fields, _, _))),
         ) => {
             dyn_fields.is_empty()

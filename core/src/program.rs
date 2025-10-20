@@ -23,7 +23,7 @@
 use crate::{
     bytecode::{
         ast::{AstAlloc, compat::ToMainline},
-        value::{NickelValue, ValueContent},
+        value::{Container, NickelValue, RecordBody, ValueContent},
     },
     cache::*,
     closurize::Closurize as _,
@@ -1060,7 +1060,12 @@ impl<EC: EvalCache> Program<EC> {
 
             match evaled.value.content() {
                 ValueContent::Record(lens) => {
-                    let data = lens.take().0;
+                    let Container::Alloc(RecordBody(data)) = lens.take() else {
+                        //unwrap(): will go away
+                        return Ok(NickelValue::empty_record()
+                            .try_with_pos_idx(pos_idx)
+                            .unwrap());
+                    };
 
                     let fields = data
                         .fields
@@ -1175,7 +1180,7 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef},
+        bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef, Container},
         error::{Error, ExportError, ExportErrorData, IOError},
         position::PosTable,
         term::Term,
@@ -1223,7 +1228,10 @@ mod doc {
     impl ExtractedDocumentation {
         pub fn extract_from_term(value: &NickelValue) -> Option<Self> {
             match value.content_ref() {
-                ValueContentRef::Record(RecordBody(record))
+                ValueContentRef::Record(Container::Empty) => Some(Self {
+                    fields: HashMap::new(),
+                }),
+                ValueContentRef::Record(Container::Alloc(RecordBody(record)))
                 | ValueContentRef::Term(TermBody(Term::RecRecord(record, ..))) => {
                     let fields = record
                         .fields

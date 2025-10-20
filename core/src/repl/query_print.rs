@@ -2,7 +2,7 @@
 use serde::Serialize;
 
 use crate::{
-    bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef},
+    bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef, Container},
     identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
     term::{
@@ -214,7 +214,7 @@ fn render_query_result<R: QueryPrinter>(
         writeln!(out)?;
 
         match value.content_ref() {
-            ValueContentRef::Record(RecordBody(record)) if !record.fields.is_empty() => {
+            ValueContentRef::Record(Container::Alloc(RecordBody(record))) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter().map(LocIdent::ident))

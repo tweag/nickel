@@ -2,7 +2,7 @@
 //! customize mode of the command-line.
 use super::*;
 
-use nickel_lang_core::bytecode::value::{NickelValue, RecordBody};
+use nickel_lang_core::bytecode::value::{Container, NickelValue, RecordBody};
 
 /// The interface of a configuration (a Nickel program) which represents all nested field paths
 /// that are accessible from the root term together with their associated metadata.
@@ -78,11 +78,12 @@ trait ExtractInterface {
 
 impl ExtractInterface for NickelValue {
     fn extract_interface(&self) -> Option<ValueInterface> {
-        if let Some(RecordBody(record)) = self.as_record() {
-            Some(ValueInterface::from(record))
-        } else {
-            None
-        }
+        self.as_record().map(|container| match container {
+            Container::Empty => ValueInterface {
+                fields: HashMap::new(),
+            },
+            Container::Alloc(RecordBody(record)) => record.into(),
+        })
     }
 }
 

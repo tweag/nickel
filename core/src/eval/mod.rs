@@ -75,8 +75,8 @@
 //! consider at some point.
 use crate::{
     bytecode::value::{
-        EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContent, ValueContentRef,
-        ValueContentRefMut, lens::TermContent,
+        Container, EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContent,
+        ValueContentRef, ValueContentRefMut, lens::TermContent,
     },
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{Closurize, closurize_rec_record},
@@ -462,13 +462,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             env = current_evaled.env;
 
             match current_evaled.value.content_ref() {
-                ValueContentRef::Record(RecordBody(record_data)) => {
-                    let Some(next_field) = record_data.fields.get(id).cloned() else {
+                ValueContentRef::Record(container) => {
+                    let Some(next_field) = container
+                        .into_opt()
+                        .and_then(|record| record.0.fields.get(id))
+                        .cloned()
+                    else {
                         let pos_op = self.context.pos_table.push_block(id.pos);
 
                         return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
-                            field_names: record_data.field_names(RecordOpKind::IgnoreEmptyOpt),
+                            field_names: container
+                                .into_opt()
+                                .map(|record| record.0.field_names(RecordOpKind::IgnoreEmptyOpt))
+                                .unwrap_or_default(),
                             operator: "extract_field".to_owned(),
                             pos_record: prev_pos_idx,
                             // TODO: we need to push back the position in the table, which isn't
@@ -886,9 +893,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
                     // should probably do a `content()` call at the top of the eval function.
                     let result = match value.clone().content() {
-                        lens @ ValueContent::Inline(_) => lens.restore(),
+                        ValueContent::Array(lens) if lens.peek().is_empty_array() => lens.restore(),
                         ValueContent::Array(lens) => {
-                            let array_body = lens.take();
+                            // unwrap(): we treated the empty array case above
+                            let array_body = lens.take().into_opt().unwrap();
 
                             // This *should* make it unnecessary to call closurize in [operation].
                             // See the comment on the `BinaryOp::ArrayConcat` match arm.
@@ -917,9 +925,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 pos_idx,
                             )
                         }
+                        ValueContent::Record(lens) if lens.peek().is_empty_record() => {
+                            lens.restore()
+                        }
                         ValueContent::Record(lens) => NickelValue::record_force_pos(
                             &mut self.context.pos_table,
-                            lens.take().0.closurize(&mut self.context.cache, env),
+                            // unwrap(): we treated the empty record case already
+                            lens.take()
+                                .into_opt()
+                                .unwrap()
+                                .0
+                                .closurize(&mut self.context.cache, env),
                             pos_idx,
                         ),
                         ValueContent::EnumVariant(lens) => {
@@ -943,7 +959,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     includes,
                     dyn_fields,
                     deps,
-                    closurized
+                    closurized,
                 ))) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
@@ -1246,7 +1262,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     this.reset();
                 }
                 Ok(val) => match val.content_ref() {
-                    ValueContentRef::Array(data) => {
+                    ValueContentRef::Array(Container::Alloc(data)) => {
                         for elt in data.array.iter() {
                             // After eval_closure, all the array elements  are
                             // closurized already, so we don't need to do any tracking
@@ -1259,7 +1275,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             inner(this, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                         }
                     }
-                    ValueContentRef::Record(RecordBody(data)) => {
+                    ValueContentRef::Record(Container::Alloc(RecordBody(data))) => {
                         for (id, field) in &data.fields {
                             if let Some(v) = &field.value {
                                 let value_with_ctr = RuntimeContract::apply_all(
@@ -1414,7 +1430,8 @@ pub fn env_add_record<C: Cache>(
     };
 
     let record = match value.content_ref() {
-        ValueContentRef::Record(RecordBody(record)) => record,
+        ValueContentRef::Record(Container::Empty) => return Ok(()),
+        ValueContentRef::Record(Container::Alloc(RecordBody(record))) => record,
         ValueContentRef::Term(TermBody(Term::RecRecord(record, ..))) => record,
         _ => return Err(EnvBuildError::NotARecord(closure.value)),
     };
@@ -1490,7 +1507,8 @@ pub fn subst<C: Cache>(
     let pos_idx = value.pos_idx();
 
     match value.content() {
-        lens @ (ValueContent::Inline(_)
+        lens @ (ValueContent::Null(_)
+        | ValueContent::Bool(_)
         | ValueContent::Number(_)
         | ValueContent::String(_)
         | ValueContent::CustomContract(_)
@@ -1506,17 +1524,22 @@ pub fn subst<C: Cache>(
             subst(pos_table, cache, closure.value, initial_env, &closure.env)
         }
         ValueContent::Record(lens) => {
-            let record = lens
-                .take()
-                .0
-                .map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
+            let Container::Alloc(RecordBody(record)) = lens.take() else {
+                //unwrap(): will go away soon
+                return NickelValue::empty_record().try_with_pos_idx(pos_idx).unwrap();
+            };
+
+            let record = record.map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
             //unwrap(): we didn't change the size of the record, so whether it was inline or not,
             //its position index should be of the according type
             NickelValue::record(record, pos_idx).unwrap()
         }
         ValueContent::Array(lens) => {
-            let array_data = lens.take();
+            let Container::Alloc(array_data) = lens.take() else {
+                //unwrap(): will go away soon
+                return NickelValue::empty_array().try_with_pos_idx(pos_idx).unwrap();
+            };
 
             let array = array_data.array.into_iter()
                 .into_iter()
