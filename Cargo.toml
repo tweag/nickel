@@ -142,3 +142,15 @@ opt-level = 3
 
 [profile.release]
 lto = "fat"
+
+
+# https://github.com/crate-ci/typos/blob/master/docs/reference.md
+[workspace.metadata.typos.default]
+extend-ignore-words-re = [
+    '^[a-zA-Z]{1,3}$' # ignore words up to length 3
+]
+
+[workspace.metadata.typos.default.extend-words]
+# closure shorthand
+clos = "clos"
+
