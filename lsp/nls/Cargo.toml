@@ -60,3 +60,13 @@ test-generator.workspace = true
 
 [features]
 nix-experimental = ["nickel-lang-core/nix-experimental"]
+
+[package.metadata.binstall]
+pkg-url = "{repo}/releases/download/{version}/nls-{target-arch}-{target-family}{binary-ext}"
+pkg-fmt = "bin"
+# https://github.com/cargo-bins/cargo-binstall/issues/2328 macos
+# https://github.com/cargo-bins/cargo-binstall/issues/2126 arm64 vs aarch64
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "{repo}/releases/download/{version}/nls-arm64-macos"
+[package.metadata.binstall.overrides.aarch64-unknown-linux-musl]
+pkg-url = "{repo}/releases/download/{version}/nls-arm64-linux"
