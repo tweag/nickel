@@ -929,7 +929,7 @@ impl<EC: EvalCache> Program<EC> {
     /// `eval_record_spine` will evaluate this into a record containing the
     /// field `bar`, and the value of that field will be a `Term::Array`
     /// containing a `Term::Var("foo")`. In contrast, `eval_closurized` will
-    /// still evaluate the term into a record contining `bar`, but the value of
+    /// still evaluate the term into a record containing `bar`, but the value of
     /// that field will be a `Term::Closure` containing that same `Term::Array`,
     /// together with an `Environment` defining the variable "foo". In
     /// particular, the closurized version is more useful if you intend to

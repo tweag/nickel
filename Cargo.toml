@@ -153,4 +153,5 @@ extend-ignore-words-re = [
 [workspace.metadata.typos.default.extend-words]
 # closure shorthand
 clos = "clos"
-
+# field shorthand
+fiel = "fiel"

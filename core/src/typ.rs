@@ -23,7 +23,7 @@
 //!
 //! A dictionary type `{ _ : Type }` represents a record whose fields all have the type `Type`. The
 //! count and the name of the fields aren't constrained. Dictionaries can be mapped over, extended,
-//! shrinked and accessed in a type-safe manner.
+//! shrunk and accessed in a type-safe manner.
 //!
 //! # Enum types
 //!

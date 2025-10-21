@@ -516,7 +516,7 @@ mod grapheme_cluster_preservation {
                                 &self.haystack[self.current_split_start..self.last_boundary];
                             // Now we move the cursor to after the match, to avoid needlessly
                             // traversing that part of the string again.
-                            // Note that in particular this means that if we seach for "aa" in
+                            // Note that in particular this means that if we search for "aa" in
                             // a string like "aaaa" we will get two matches: the first pair,
                             // and then the second.
                             let match_end = self.last_boundary + self.needle.len();

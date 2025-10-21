@@ -246,7 +246,7 @@ impl TestHarness {
     /// Get evaluation diagnostics for a specific file.
     pub fn get_eval_diagnostics(&mut self, uri: Url) {
         let doc = TextDocumentIdentifier { uri: uri.clone() };
-        // First, request an evalution.
+        // First, request an evaluation.
         self.request::<ExecuteCommand>(ExecuteCommandParams {
             command: "eval".to_owned(),
             arguments: vec![serde_json::to_value(&doc).unwrap()],

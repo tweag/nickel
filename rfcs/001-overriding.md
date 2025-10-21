@@ -706,7 +706,7 @@ let defaulted | default rec = neutralConf
 #   },
 # }
 # This is different from `neutralConf | default`! The latter version
-# would be overrided at once, as illustrated below.
+# would be overridden at once, as illustrated below.
 
 defaulted & {bar.baz = "shapoinkl"}
 # ^ Gives the expected:

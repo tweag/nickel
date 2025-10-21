@@ -705,7 +705,7 @@ Breaking changes
   CLI where arguments are field paths, the new customize mode CLI directly take
   assignments written in a Nickel-like syntax as positional arguments. For
   example, in 1.2, the command
-  `nickel eval -f confing.ncl -- \
+  `nickel eval -f config.ncl -- \
     --input.field1 '"Value"' --input.flag false \
     --override output.bar 0`
   now becomes
