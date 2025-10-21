@@ -27,13 +27,15 @@ use crate::{
     traverse::Traverse,
 };
 
-fn mk_pos(file_id: Option<FileId>, start: usize, end: usize) -> TermPos {
+fn mk_pos(file_id: Option<FileId>, start: usize, end: usize, char_index_map: &[usize]) -> TermPos {
+    let start_byte = char_index_map.get(start).copied().unwrap_or(start);
+    let end_byte = char_index_map.get(end).copied().unwrap_or(end);
     file_id
         .map(|src_id| {
             TermPos::Original(RawSpan {
                 src_id,
-                start: ByteIndex::from(start as u32),
-                end: ByteIndex::from(end as u32),
+                start: ByteIndex::from(start_byte as u32),
+                end: ByteIndex::from(end_byte as u32),
             })
         })
         .unwrap_or_default()
@@ -165,7 +167,13 @@ impl<'ast> AnchorMap<'ast> {
     }
 }
 
-struct YamlLoader<'ast> {
+/// Tracks the state needed for loading YAML from a stream of events and
+/// building an `Ast`.
+///
+/// This is designed mainly as an implementor of the
+/// `saphyr_parser::SpannedEventReceiver` trait. We adapt it for JSON by a
+/// little shim that translates `json_scanner` events to `saphyr_parser` events.
+struct Loader<'ast> {
     /// For error reporting, do we claim to be loading YAML or JSON?
     format_name: &'static str,
     alloc: &'ast AstAlloc,
@@ -182,7 +190,7 @@ struct YamlLoader<'ast> {
     doc_stack: Vec<(Node<'ast>, Option<NonZeroUsize>)>,
     /// All the docs that we've already finished loading.
     docs: Vec<Ast<'ast>>,
-    /// If the input came from a file, here is it's id.
+    /// If the input came from a file, here is its id.
     file_id: Option<FileId>,
     /// Saphyr errors early when it encounters a YAML parse error, but it
     /// doesn't provide a way for the loader to exit on error. We have a few
@@ -190,9 +198,20 @@ struct YamlLoader<'ast> {
     /// Nickel records only allow string keys). Because there's no way to
     /// early-exit, we keep track of those errors by stashing them here.
     err: Option<ParseError>,
+    /// Saphyr reports positions in char indices, so we need to convert
+    /// them back to bytes. Our little JSON shim, on the other hand, reports
+    /// positions in bytes directly.
+    ///
+    /// So, if this vector is non-empty then it's a mapping of char indices to
+    /// byte indices. If it's empty, no mapping will be applied (indices will
+    /// be assumed to already be bytes).
+    ///
+    /// (In fact, we always look up in this vec, but if the input is out-of-bounds
+    /// then we fall back to returning the input index.)
+    char_index_map: Vec<usize>,
 }
 
-impl<'ast> YamlLoader<'ast> {
+impl<'ast> Loader<'ast> {
     fn push_node(&mut self, node: Node<'ast>, anchor_id: Option<NonZeroUsize>) {
         if let Some((parent, _)) = self.doc_stack.last_mut() {
             match parent {
@@ -399,7 +418,7 @@ impl<'ast> YamlLoader<'ast> {
     }
 }
 
-impl<'input, 'ast> SpannedEventReceiver<'input> for YamlLoader<'ast> {
+impl<'input, 'ast> SpannedEventReceiver<'input> for Loader<'ast> {
     fn on_event(&mut self, ev: saphyr_parser::Event<'input>, span: saphyr_parser::Span) {
         // saphyr-parser doesn't provide a way for the loader to signal an
         // error. So we store an error in our internal state and just refuse to
@@ -409,7 +428,12 @@ impl<'input, 'ast> SpannedEventReceiver<'input> for YamlLoader<'ast> {
         }
 
         use saphyr_parser::Event::*;
-        let pos = mk_pos(self.file_id, span.start.index(), span.end.index());
+        let pos = mk_pos(
+            self.file_id,
+            span.start.index(),
+            span.end.index(),
+            &self.char_index_map,
+        );
         match ev {
             DocumentStart(_) | Nothing | StreamStart | StreamEnd => {}
             DocumentEnd => {
@@ -478,6 +502,18 @@ pub fn load_yaml<'ast>(
     load(alloc, s, file_id, "yaml")
 }
 
+fn json_scanner_error(file_id: Option<FileId>, e: json_scanner::ParseError) -> ParseError {
+    ParseError::ExternalFormatError(
+        "json".to_owned(),
+        e.kind.to_string(),
+        file_id.map(|src_id| RawSpan {
+            src_id,
+            start: ByteIndex(e.byte_offset as u32),
+            end: ByteIndex(e.byte_offset as u32 + 1),
+        }),
+    )
+}
+
 /// Parse a JSON string and convert it to an [`Ast`].
 ///
 /// If the location is provided, the `Ast` will have its positions filled out.
@@ -486,11 +522,58 @@ pub fn load_json<'ast>(
     s: &str,
     location: Option<(FileId, &Files)>,
 ) -> Result<Ast<'ast>, ParseError> {
-    // JSON is a subset of YAML (or at least, YAML 1.2, which is what saphyr implements).
-    // We can't *just* use saphyr to parse JSON because it would be overly permissive.
-    let _val: serde_json::Value =
-        serde_json::from_str(s).map_err(|err| ParseError::from_serde_json(err, location))?;
-    load(alloc, s, location.map(|x| x.0), "json")
+    let mut parser = json_scanner::Parser::new(s.as_bytes());
+    let file_id = location.map(|(id, _)| id);
+    let mut loader = Loader {
+        format_name: "json",
+        file_id,
+        alloc,
+        anchor_map: Default::default(),
+        doc_stack: Default::default(),
+        docs: Default::default(),
+        err: Default::default(),
+        char_index_map: Vec::new(),
+    };
+
+    while let Some(ev) = parser
+        .next_event()
+        .map_err(|e| json_scanner_error(file_id, e))?
+    {
+        let span = saphyr_parser::Span {
+            // We don't actually use the line/column, so set them to zero.
+            start: saphyr_parser::Marker::new(ev.start, 0, 0),
+            end: saphyr_parser::Marker::new(ev.end, 0, 0),
+        };
+        fn scalar(s: &str) -> saphyr_parser::Event {
+            saphyr_parser::Event::Scalar(s.into(), ScalarStyle::Plain, 0, None)
+        }
+
+        let saphyr_ev = match ev.event {
+            json_scanner::Event::BeginObject => saphyr_parser::Event::MappingStart(0, None),
+            json_scanner::Event::EndObject => saphyr_parser::Event::MappingEnd,
+            json_scanner::Event::BeginArray => saphyr_parser::Event::SequenceStart(0, None),
+            json_scanner::Event::EndArray => saphyr_parser::Event::SequenceEnd,
+            json_scanner::Event::Number(n) => scalar(n),
+            json_scanner::Event::String(s) => {
+                saphyr_parser::Event::Scalar(s, ScalarStyle::DoubleQuoted, 0, None)
+            }
+            json_scanner::Event::Boolean(true) => scalar("true"),
+            json_scanner::Event::Boolean(false) => scalar("false"),
+            json_scanner::Event::Null => scalar("null"),
+        };
+
+        loader.on_event(saphyr_ev, span);
+    }
+    loader.on_event(
+        saphyr_parser::Event::DocumentEnd,
+        saphyr_parser::Span::default(),
+    );
+
+    debug_assert!(loader.docs.len() <= 1);
+    Ok(loader.docs.pop().unwrap_or_else(|| Ast {
+        node: ast::Node::Null,
+        pos: mk_pos(file_id, 0, 0, &[]),
+    }))
 }
 
 fn load<'ast>(
@@ -499,7 +582,7 @@ fn load<'ast>(
     file_id: Option<FileId>,
     format_name: &'static str,
 ) -> Result<Ast<'ast>, ParseError> {
-    let mut loader = YamlLoader {
+    let mut loader = Loader {
         format_name,
         file_id,
         alloc,
@@ -507,6 +590,7 @@ fn load<'ast>(
         doc_stack: Default::default(),
         docs: Default::default(),
         err: Default::default(),
+        char_index_map: s.char_indices().map(|(byte_idx, _)| byte_idx).collect(),
     };
     let mut parser = Parser::new(BufferedInput::new(s.chars()));
     parser
@@ -520,14 +604,14 @@ fn load<'ast>(
     let main_term = if yaml.is_empty() {
         Ast {
             node: ast::Node::Null,
-            pos: mk_pos(file_id, 0, 0),
+            pos: mk_pos(file_id, 0, 0, &[]),
         }
     } else if yaml.len() == 1 {
         yaml.pop().unwrap()
     } else {
         Ast {
             node: alloc.array(yaml),
-            pos: mk_pos(file_id, 0, s.len()),
+            pos: mk_pos(file_id, 0, s.len(), &[]),
         }
     };
 

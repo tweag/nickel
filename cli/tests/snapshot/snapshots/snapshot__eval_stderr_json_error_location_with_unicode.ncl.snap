@@ -1,0 +1,14 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+  ┌─ [INPUTS_PATH]/errors/json_error_location_with_unicode.ncl:3:79
+  │
+3 │ (import "../../imports/map-with-unicode.json") | { "tiếng" : Number, "việt" : String }
+  │                                                                               ------ expected field type
+  │
+  ┌─ [IMPORTS_PATH]/map-with-unicode.json:3:11
+  │
+3 │   "việt": 2
+  │           - evaluated to this expression

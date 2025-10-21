@@ -2938,6 +2938,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "json_scanner"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe0a2dc336065c75719cffd3c6c929e0ec4ed85b92b8248a7bbd999acb0e419c"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "keccak"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3276,9 +3285,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.7.5"
+version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
 name = "memmap2"
@@ -3436,6 +3445,7 @@ dependencies = [
  "indexmap",
  "indoc",
  "js-sys",
+ "json_scanner",
  "lalrpop",
  "lalrpop-util",
  "logos",
