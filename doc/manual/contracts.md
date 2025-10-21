@@ -914,7 +914,7 @@ if you have trouble parsing the example.
 
 We first define `with_delayed_checks`, the delayed part, that maps a function
 over the record which substitutes each field for the same value but wrapped in a
-`Bool` contract. Thanks to lazyness, the record mapping won't happen until `'Ok
+`Bool` contract. Thanks to laziness, the record mapping won't happen until `'Ok
 with_delayed_checks` is returned *and* some code actually uses the value. Even
 then, because records (and record mapping) are lazy, *this doesn't actually
 execute the `Bool` contracts right away*. Each contract will only be run when
@@ -1066,7 +1066,7 @@ The reason is, once again, the presence of delayed contracts.
 
 Let `Foo` be the contract `std.contract.any_of [{ foo | String }, {foo |
 Number}]`. Like all built-in contracts and contract combinators, `any_of` is
-designed to preserve lazyness and delayed checks, so it can't evaluate the field
+designed to preserve laziness and delayed checks, so it can't evaluate the field
 `foo` to determine if it's a number or a string, as it's a delayed check of each
 built-in record contract. In particular, checking the value `{foo = 1+1}`
 against `Foo` will fail: `any_of` will run `{foo | String}`, whose immediate
@@ -1117,7 +1117,7 @@ optional }` - no need to resort to `any_of`.
 ### Customize the boolean behavior
 
 The limitations mentioned above are inherent to the lazy evaluation model of
-Nickel, and because we want the built-in contracts to preserve lazyness by
+Nickel, and because we want the built-in contracts to preserve laziness by
 default.
 
 However, if you hit this limitation, you can always decide to build a custom

@@ -345,7 +345,7 @@ pub enum PrimOp {
 
     /// Freezes a recursive record to make it a static dictionary. Apply all pending lazy contracts
     /// (and flush them), and remove all dependency information, so that the value of the fields is
-    /// fixed in time and subsequent overrides will only impact the overriden field.
+    /// fixed in time and subsequent overrides will only impact the overridden field.
     ///
     /// # Arguments
     ///
@@ -788,7 +788,7 @@ pub enum PrimOp {
 
     /// Seal a term with a sealing key (used by the implementation of polymorphic contracts).
     ///
-    /// # Argumens
+    /// # Arguments
     ///
     /// 1. The sealing key.
     /// 2. The term to seal.

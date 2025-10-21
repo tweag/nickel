@@ -232,7 +232,7 @@
           use?
 
           - If the folded function isn't associative (such as subtraction), then
-            each variant will give a different result. The choice is dictacted by
+            each variant will give a different result. The choice is dictated by
             which one you need. For example:
 
             ```nickel
@@ -250,7 +250,7 @@
             intermediate results resulting in less memory consumption and overall
             better performance (outside of pathological cases).
             `fold_left` also iterates from the start of the array, which
-            correponds to the usual behavior of loops and iterators in most
+            corresponds to the usual behavior of loops and iterators in most
             programming languages. There is one case where `fold_right` might be
             preferred, see the next point.
           - If the folded function is associative but _(left) short-circuiting_,
@@ -1460,7 +1460,7 @@
           error value.
 
           The setters (`with_XXX` functions) always operate on the current error
-          diagnostic, which is the last diagnotic on the stack. If the stack is
+          diagnostic, which is the last diagnostic on the stack. If the stack is
           empty, a fresh diagnostic is silently created when using a setter.
 
           The previous diagnostics on the stack are considered archived, and
@@ -1772,7 +1772,7 @@
 
           **Important** `any_of` is only an approximation of what you could
           expect from an `or` operation on contracts. Because `any_of` must
-          preserve the lazyness of contracts, it means that it has to
+          preserve the laziness of contracts, it means that it has to
           pick the right branch by relying only on the immediate part of each
           contract, and not on the delayed part.
 
@@ -4077,7 +4077,7 @@
 
         - The values of recursive fields are frozen at the current values, and
           the dependencies are forgotten. **This means that subsequent overrides
-          through merging will only affect the overriden fields, but will no
+          through merging will only affect the overridden fields, but will no
           longer update reverse dependencies**.
         - All lazy pending contracts accumulated through merging and annotations
           will be applied and flushed. **This means that the contracts of this
@@ -4851,7 +4851,7 @@
         Asserts that all the elements of an array are equal to true. Applies the
         `std.test.Assert` contract on each element of the given array.
 
-        Evalutes to `true` if all the elements of the array are equal to true,
+        Evaluates to `true` if all the elements of the array are equal to true,
         or fails with a contract error otherwise.
 
         # Example

@@ -1033,7 +1033,7 @@ struct TagsOnlyMatch {
 
 impl Compile for TagsOnlyMatch {
     fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
-        increment!("pattern_comile(tags_only_match)");
+        increment!("pattern_compile(tags_only_match)");
 
         // We simply use the corresponding specialized primop in that case.
         let match_op = mk_app!(

@@ -11,6 +11,6 @@ error: string closing delimiter has too many `%`
   │ the opening delimiter
   │
   = A special string must be opened and closed with the same number of `%` in the corresponding delimiters.
-  = Try removing the superflous `%` in the closing delimiter
+  = Try removing the superfluous `%` in the closing delimiter
 
 

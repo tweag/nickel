@@ -351,7 +351,7 @@ impl<'ast> Analysis<'ast> {
     }
 }
 
-/// Type to contain errors occuring when parsing file formats apart from
+/// Type to contain errors occurring when parsing file formats apart from
 /// Nickel during import resolution.
 pub(crate) struct AltFormatErrors {
     pub(crate) file_id: FileId,

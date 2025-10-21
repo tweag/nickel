@@ -276,7 +276,7 @@ impl<'ast> UniRecord<'ast> {
                             // there is another definition without annotation, in which case
                             // there's no need to replace it, or there is a `Defined` element,
                             // which means this is false positive that we can ignore. In both cases,
-                            // we don't have anytning more to do
+                            // we don't have anything more to do
                             Entry::Occupied(_) => None,
                             Entry::Vacant(vacant_entry) => {
                                 vacant_entry.insert(FieldState::Candidate((

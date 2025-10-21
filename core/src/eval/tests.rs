@@ -21,7 +21,7 @@ fn vm_ctxt() -> VmContext<DummyResolver, CacheImpl> {
     VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {})
 }
 
-/// Creates an non-unwinding machine with an empty initial environment from a VM contex.
+/// Creates an non-unwinding machine with an empty initial environment from a VM context.
 fn new_no_unwind_vm<R: ImportResolver, C: cache::Cache>(
     vm_ctxt: &mut VmContext<R, C>,
 ) -> NoUnwindVirtualMachine<'_, R, C> {

@@ -334,7 +334,7 @@ impl InlinePosIdx {
 /// which leaves plenty of available indices (`2^64 - 2^32 ~ 2.0e19`).
 ///
 /// On 32 bits archs (or less), we use only a single shared `u32` index for both inline values and
-/// value blocks. It doesn't make sense to accomodate more positions that the addressable memory
+/// value blocks. It doesn't make sense to accommodate more positions that the addressable memory
 /// anyway.
 ///
 /// [^reserved]: this is not entirely true, as a value block may re-use an existing index
@@ -421,7 +421,7 @@ impl PosTable {
     pub fn new() -> Self {
         // We always populate the first entry (of the inline table) with `TermPos::None`, so that
         // we can safely use the index `0` (`PosIdx::NONE` and `InlinePosIdx::NONE`) to mean
-        // unintialized position, without having to special case the undefined position.
+        // uninitialized position, without having to special case the undefined position.
         Self {
             inlines: vec![TermPos::None],
             blocks: Vec::new(),

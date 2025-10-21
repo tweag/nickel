@@ -120,7 +120,7 @@ let Assert = std.test.Assert in
   (
     # std.record.has_field/std.record.fields have a dictionary contract `{_ : T}`
     # attached, which currently uses `std.record.map` under the hood, which will
-    # throw an error for `opt` missing a defnition. They
+    # throw an error for `opt` missing a definition. They
     # probably shouldn't, but for the time being, we bypass them using the
     # lowlevel primop. Uncomment the 3 following line once #XXX is closed
     # (https://github.com/tweag/nickel/issues/892)

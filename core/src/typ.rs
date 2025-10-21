@@ -974,7 +974,7 @@ impl Subcontract for Type {
             }
             TypeF::Enum(ref erows) => erows.subcontract(vars, pol, sy)?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
-            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
+            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialized to the constant-time
             // `dict_dyn`.
             TypeF::Dict {
                 ref type_fields,

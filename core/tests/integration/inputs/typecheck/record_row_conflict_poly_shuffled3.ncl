@@ -8,7 +8,7 @@
 # row = 'a'
 
 # Regression test for issue #1393 (https://github.com/tweag/nickel/issues/1393).
-# Ensure that row constraints are properly checked, indepedently of the order of
+# Ensure that row constraints are properly checked, independently of the order of
 # row declarations.
 let f
   | forall r. {; r } -> { a : Number, b : Number; r }

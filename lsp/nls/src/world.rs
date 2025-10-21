@@ -46,7 +46,7 @@ pub struct World {
     pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    /// A map of all live file anlyses.
+    /// A map of all live file analyses.
     pub analysis_reg: AnalysisRegistry,
     /// A map of import dependencies and reverse import dependencies between Nickel source files.
     pub(crate) import_data: ImportData,
@@ -996,7 +996,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                         self.reg.init_term_env.clone(),
                         self.reg.init_type_ctxt.clone(),
                     );
-                    // Since `new_imports` owns the packed anlysis, we need to push the analysis here
+                    // Since `new_imports` owns the packed analysis, we need to push the analysis here
                     // first and then re-borrow it from `new_imports`.
                     self.new_imports.push(AnalysisTarget::Nickel(analysis));
                     if let AnalysisTarget::Nickel(a) = self.new_imports.last().unwrap() {

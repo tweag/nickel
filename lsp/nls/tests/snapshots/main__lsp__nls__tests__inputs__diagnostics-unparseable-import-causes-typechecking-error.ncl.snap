@@ -1,5 +1,0 @@
----
-source: lsp/nls/tests/main.rs
-expression: output
----
-[6:8-6:32: "import of /unparseable.ncl failed: This import could not be resolved because its content could not be parsed as Nickel.", 6:8-6:32: "imported here", 7:3-7:4: "incompatible types\nExpected an expression of type `Array Number`\nFound an expression of type `Dyn`\nThese types are not compatible", 7:3-7:4: "this expression"]

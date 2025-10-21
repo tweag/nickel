@@ -6,7 +6,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use super::{array::Array, CompiledRegex, Number, Term};
 use crate::identifier::{Ident, LocIdent};
 
-/// A Nickel string is really just a Rust `String`, overlayed with some
+/// A Nickel string is really just a Rust `String`, overlaid with some
 /// methods implementing custom logic (in particular, functions which
 /// avoid ever breaking up Unicode extended grapheme clusters.)
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -167,7 +167,7 @@ impl NickelString {
         }
     }
 
-    /// Returns a new `NclString` replacing every occurence of `from` with `to`.
+    /// Returns a new `NclString` replacing every occurrence of `from` with `to`.
     ///
     /// This method has time complexity `O(self.len() * from.len())`.
     pub fn replace(&self, from: &str, to: &str) -> NickelString {
@@ -261,7 +261,7 @@ impl NickelString {
         Term::Bool(regex::find_iter(self, regex).next().is_some())
     }
 
-    /// Returns a new string in which every occurence of `regex` in `self` is
+    /// Returns a new string in which every occurrence of `regex` in `self` is
     /// replaced by `replacement`.
     ///
     /// Note that this function will not replace matches that begin or end
@@ -493,11 +493,11 @@ mod grapheme_cluster_preservation {
                     .expect(unwrap_explanation);
                 match nxt {
                     Some(next_boundary) => {
-                        // To check whether a match has occured, we'll first check whether
+                        // To check whether a match has occurred, we'll first check whether
                         // the slice of `haystack` starting at the `last_boundary` begins
                         // with `needle`. If it does, we *also* need to check that this
                         // instance of `needle` doesn't end in the middle of a cluster.
-                        // This is to avoid the situtaion where we have a string like
+                        // This is to avoid the situation where we have a string like
                         // `"a🧑‍🤝‍🧑"` and we get a match by searching for `"a🧑"`.
                         let does_match_intersect_cluster = || {
                             let mut tmp_cursor = self.cursor.clone();
@@ -560,7 +560,7 @@ mod grapheme_cluster_preservation {
         use regex::Regex;
         use unicode_segmentation::GraphemeCursor;
 
-        /// An iterator which finds occurences of a given `Regex` pattern in
+        /// An iterator which finds occurrences of a given `Regex` pattern in
         /// some source `str`, while filtering out any matches which either
         /// begin or end in the middle of a Unicode extended grapheme cluster.
         pub fn find_iter<'a>(
