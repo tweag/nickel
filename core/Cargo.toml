@@ -45,6 +45,7 @@ codespan.workspace = true
 codespan-reporting.workspace = true
 colorchoice.workspace = true
 cxx = { workspace = true, optional = true }
+json_scanner.workspace = true
 logos.workspace = true
 nickel-lang-vector.workspace = true
 ouroboros.workspace = true

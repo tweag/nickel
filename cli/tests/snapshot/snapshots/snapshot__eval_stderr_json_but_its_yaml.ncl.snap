@@ -2,11 +2,11 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: json parse error: expected ident at line 1 column 2
-  ┌─ [IMPORTS_PATH]/map.yaml:1:2
+error: json parse error: expected `false`
+  ┌─ [IMPORTS_PATH]/map.yaml:1:1
   │
 1 │ foo: 1
-  │  ^
+  │ ^
   │
   ┌─ [INPUTS_PATH]/errors/json_but_its_yaml.ncl:3:1
   │
