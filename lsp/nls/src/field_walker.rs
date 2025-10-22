@@ -720,6 +720,7 @@ impl<'ast> FieldResolver<'ast> {
             }
         }
 
+        // unwraps: the stdlib should have these things defined.
         let std = world.analysis_reg.stdlib_analysis().ast();
         let any_of = at_path(std, &[Ident::new("contract"), Ident::new("any_of")]).unwrap();
         let all_of = at_path(std, &[Ident::new("contract"), Ident::new("all_of")]).unwrap();
@@ -1006,7 +1007,7 @@ impl<'ast> FieldResolver<'ast> {
                     .iter()
                     .any(|&a| a == self.any_of || a == self.all_of || a == self.sequence)
                 {
-                    // `all_of` and `any_of` expect a single arg, and that arg
+                    // `all_of`, `any_of` and `Sequence` expect a single arg, and that arg
                     // should be an array (but it might not be a literal array, so
                     // we try to resolve it first).
                     // TODO: can try let chains after edition 2024
