@@ -544,6 +544,10 @@ impl<'ast> Def<'ast> {
         }
     }
 
+    /// Provides access to the values behind this def.
+    ///
+    /// Note that this doesn't take the path into account, and so you probably don't
+    /// want to use this unless you also look at [`Def::path`].
     pub fn values(&self) -> Vec<&'ast Ast<'ast>> {
         match self {
             Def::Let { value, .. } => vec![value],
@@ -595,6 +599,69 @@ impl<'ast> Def<'ast> {
             ..Default::default()
         }
     }
+
+    pub fn parent_def(&self) -> Option<Self> {
+        match self {
+            Def::Let {
+                ident,
+                metadata,
+                value,
+                path,
+            } => {
+                if path.is_empty() {
+                    None
+                } else {
+                    let mut parent_path = path.clone();
+                    parent_path.pop();
+                    Some(Def::Let {
+                        ident: *ident,
+                        metadata,
+                        value,
+                        path: parent_path,
+                    })
+                }
+            }
+            Def::MatchBinding {
+                ident,
+                metadata,
+                value,
+                path,
+            } => {
+                if path.is_empty() {
+                    None
+                } else {
+                    let mut parent_path = path.clone();
+                    parent_path.pop();
+                    Some(Def::MatchBinding {
+                        ident: *ident,
+                        metadata,
+                        value: *value,
+                        path: parent_path,
+                    })
+                }
+            }
+            Def::Fn { .. } => None,
+            Def::Field {
+                ident,
+                pieces,
+                record,
+                path_in_record,
+            } => {
+                if path_in_record.is_empty() {
+                    None
+                } else {
+                    let mut parent_path = path_in_record.clone();
+                    parent_path.pop();
+                    Some(Def::Field {
+                        ident: *ident,
+                        pieces: pieces.clone(),
+                        record,
+                        path_in_record: parent_path,
+                    })
+                }
+            }
+        }
+    }
 }
 
 fn filter_records(containers: Vec<Container>) -> Vec<Record> {
@@ -619,6 +686,9 @@ fn filter_records(containers: Vec<Container>) -> Vec<Record> {
 pub struct FieldResolver<'ast> {
     world: &'ast World,
 
+    any_of: &'ast Ast<'ast>,
+    all_of: &'ast Ast<'ast>,
+
     // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
     // Variable resolution is an exception, however, and so we protect against
     // loops by recording the ids that we are currently resolving and refusing to
@@ -628,15 +698,43 @@ pub struct FieldResolver<'ast> {
 
 impl<'ast> FieldResolver<'ast> {
     pub fn new(world: &'ast World) -> Self {
+        // A quick and dirty way to access paths within the stdlib. Panics on failure,
+        // because we know how we expect the stdlib to look.
+        fn at_path<'ast>(ast: &'ast Ast<'ast>, path: &[Ident]) -> Option<&'ast Ast<'ast>> {
+            match path.split_first() {
+                None => Some(ast),
+                Some((id, rest)) => {
+                    let Node::Record(rec) = &ast.node else {
+                        panic!("expected record, got {ast}");
+                    };
+                    rec.defs_of(*id)
+                        .flat_map(|def| def.value.as_ref().and_then(|v| at_path(v, rest)))
+                        .next()
+                }
+            }
+        }
+
+        let any_of = at_path(
+            world.analysis_reg.stdlib_analysis().ast(),
+            &[Ident::new("contract"), Ident::new("any_of")],
+        )
+        .unwrap();
+        let all_of = at_path(
+            world.analysis_reg.stdlib_analysis().ast(),
+            &[Ident::new("contract"), Ident::new("all_of")],
+        )
+        .unwrap();
         Self {
             world,
+            all_of,
+            any_of,
             blackholed_ids: Default::default(),
         }
     }
 
     /// Finds all the records that are descended from `ast` at the given path.
     ///
-    /// For example, if `ast` is { foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
+    /// For example, if `ast` is `{ foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
     /// and `path` is ['foo', 'bar'] then this will return `{ ...1 }` and `{ ...2 }`.
     pub fn resolve_path(
         &self,
@@ -817,6 +915,30 @@ impl<'ast> FieldResolver<'ast> {
         fields
     }
 
+    /// Like [`Self::resolve_def_with_path`], but outputs AST nodes instead
+    /// of containers.
+    fn resolve_def_with_path_to_term(&self, def: &Def<'ast>) -> Vec<&'ast Ast<'ast>> {
+        let Some(parent_def) = def.parent_def() else {
+            return def
+                .values()
+                .iter()
+                .flat_map(|v| self.resolve_term(v))
+                .collect();
+        };
+        let Some(id) = def.path().last() else {
+            return Vec::new();
+        };
+        let parent_containers = self.resolve_def_with_path(&parent_def);
+        parent_containers
+            .into_iter()
+            .flat_map(|c| c.get(EltId::Ident(*id)))
+            .filter_map(|field_content| match field_content {
+                FieldContent::FieldDefPiece(piece) => piece.value(),
+                FieldContent::Type(_) => None,
+            })
+            .collect()
+    }
+
     fn resolve_annot<'a>(
         &'a self,
         annot: &'ast Annotation<'ast>,
@@ -876,6 +998,34 @@ impl<'ast> FieldResolver<'ast> {
                 defs.chain(self.resolve_container(inner)).collect()
             }
             Node::Type(typ) => self.resolve_type(typ),
+            Node::App { head, args } => {
+                let heads = self.resolve_term(head);
+                if heads.iter().any(|&a| a == self.any_of || a == self.all_of) {
+                    // `all_of` and `any_of` expect a single arg, and that arg
+                    // should be an array (but it might not be a literal array, so
+                    // we try to resolve it first).
+                    // TODO: can try let chains after edition 2024
+                    if let [arg] = args {
+                        let args = self.resolve_term(arg);
+                        // Take the union of all the contracts in all the resolutions
+                        // of this array. (This is an over-approximation, but it isn't
+                        // easy to do better.)
+                        args.iter()
+                            .flat_map(|contracts| match &contracts.node {
+                                Node::Array(contracts) => contracts
+                                    .iter()
+                                    .flat_map(|c| self.resolve_container(c))
+                                    .collect(),
+                                _ => Vec::new(),
+                            })
+                            .collect()
+                    } else {
+                        Default::default()
+                    }
+                } else {
+                    Default::default()
+                }
+            }
             _ => Default::default(),
         };
 
@@ -887,6 +1037,42 @@ impl<'ast> FieldResolver<'ast> {
         };
 
         combine(term_fields, typ_fields)
+    }
+
+    /// Resolves a single AST node into the possibly-multiple AST nodes that it
+    /// refers to.
+    ///
+    /// This is intended for seeing through bindings in order to retrieve the
+    /// more interesting things that they point to.
+    fn resolve_term(&self, ast: &'ast Ast<'ast>) -> Vec<&'ast Ast<'ast>> {
+        match &ast.node {
+            Node::Var(id) => {
+                let id = LocIdent::from(*id);
+                if self.blackholed_ids.borrow_mut().insert(id) {
+                    let ret = self
+                        .world
+                        .analysis_reg
+                        .get_def(&id)
+                        .map(|def| self.resolve_def_with_path_to_term(def))
+                        .unwrap_or_default();
+                    self.blackholed_ids.borrow_mut().remove(&id);
+                    ret
+                } else {
+                    log::warn!("detected recursion when resolving {id:?}");
+                    Vec::new()
+                }
+            }
+            Node::PrimOpApp {
+                op: PrimOp::RecordStatAccess(id),
+                args: [arg],
+            } => self
+                .resolve_record(arg)
+                .into_iter()
+                .flat_map(|rec| rec.defs_of(id.ident()))
+                .filter_map(|(_, piece)| piece.and_then(|piece| piece.value()))
+                .collect(),
+            _ => vec![ast],
+        }
     }
 
     fn resolve_type(&self, typ: &'ast Type<'ast>) -> Vec<Container<'ast>> {
