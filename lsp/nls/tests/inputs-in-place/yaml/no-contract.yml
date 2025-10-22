@@ -1,0 +1,2 @@
+# The contract isn't applied here, because our filename doesn't match "*.yaml"
+foo: 1

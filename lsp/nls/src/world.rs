@@ -15,11 +15,13 @@ use nickel_lang_core::{
     cache::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
-    error::{ImportError, IntoDiagnostics, ParseErrors},
+    error::{Diagnostic, ImportError, IntoDiagnostics, Label, ParseErrors},
     eval::{cache::CacheImpl, VirtualMachine, VmContext},
     files::FileId,
     position::{RawPos, RawSpan, TermPos},
+    term::{self, RichTerm, Term},
     traverse::TraverseAlloc,
+    typ::TypeF,
 };
 
 use crate::{
@@ -27,7 +29,8 @@ use crate::{
         AltFormatErrors, AnalysisRegistry, AnalysisRegistryRef, AnalysisState, AnalysisTarget,
         PackedAnalysis,
     },
-    diagnostic::SerializableDiagnostic,
+    config::LspConfig,
+    diagnostic::{DiagnosticCompat as _, SerializableDiagnostic},
     error::WarningReporter,
     field_walker::FieldResolver,
     files::uri_to_path,
@@ -67,10 +70,24 @@ pub struct World {
     /// avoiding work duplication as much as possible. In particular, the instances will use this
     /// parsed and converted representation of the stdlib and will share the same source cache.
     compiled_stdlib: nickel_lang_core::term::RichTerm,
+    contract_configs: crate::contracts::ContractConfigsWatcher,
+    pub config: LspConfig,
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub fn new(config: LspConfig) -> Self {
+        Self::new_with_contract_configs(config, crate::contracts::ContractConfigsWatcher::new())
+    }
+
+    /// Creates a new `World` that doesn't start a file-watcher for contract configurations.
+    pub fn new_without_contract_configs(config: LspConfig) -> Self {
+        Self::new_with_contract_configs(config, crate::contracts::ContractConfigsWatcher::dummy())
+    }
+
+    fn new_with_contract_configs(
+        config: LspConfig,
+        cfgs: crate::contracts::ContractConfigsWatcher,
+    ) -> Self {
         use nickel_lang_core::bytecode::ast::compat::ToMainline;
 
         let mut sources = SourceCache::new();
@@ -90,6 +107,8 @@ impl World {
             file_uris: HashMap::new(),
             failed_imports: HashMap::new(),
             compiled_stdlib,
+            contract_configs: cfgs,
+            config,
         }
     }
 
@@ -104,6 +123,7 @@ impl World {
         contents: String,
     ) -> anyhow::Result<(FileId, HashSet<FileId>)> {
         let path = uri_to_path(&uri)?;
+        self.contract_configs.watch_configs_for(&uri);
 
         // Invalidate the cache of every file that tried, but failed, to import a file
         // with a name like this.
@@ -114,9 +134,10 @@ impl World {
 
         // Replace the path (as opposed to adding it): we may already have this file in the
         // cache if it was imported by an already-open file.
+        let format = InputFormat::from_path(&path).unwrap_or_default();
         let file_id = self
             .sources
-            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
+            .replace_string(SourcePath::Path(path, format), contents);
 
         // We invalidate our reverse dependencies.
         let mut invalid = failed_to_import.clone();
@@ -152,9 +173,10 @@ impl World {
         contents: String,
     ) -> anyhow::Result<(FileId, Vec<FileId>)> {
         let path = uri_to_path(&uri)?;
+        let format = InputFormat::from_path(&path).unwrap_or_default();
         let file_id = self
             .sources
-            .replace_string(SourcePath::Path(path, InputFormat::Nickel), contents);
+            .replace_string(SourcePath::Path(path, format), contents);
 
         let invalid = self.invalidate(file_id);
 
@@ -172,9 +194,8 @@ impl World {
     pub fn close_file(&mut self, uri: Url) -> anyhow::Result<(Option<FileId>, Vec<FileId>)> {
         let path = uri_to_path(&uri)?;
 
-        let result = self
-            .sources
-            .close_in_memory_file(path, InputFormat::Nickel)?;
+        let format = InputFormat::from_path(&path).unwrap_or_default();
+        let result = self.sources.close_in_memory_file(path, format)?;
         self.analysis_reg.remove(result.closed_id);
 
         let invalid = self.invalidate(result.closed_id);
@@ -215,19 +236,48 @@ impl World {
     }
 
     /// Returns all of the diagnostics encountered during parsing.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `file_id` is invalid.
     pub fn parse(&mut self, file_id: FileId) -> Vec<SerializableDiagnostic> {
-        let mut errs = nickel_lang_core::error::ParseErrors::default();
-        self.analysis_reg
-            .insert_with(|init_term_env, init_type_ctxt| {
-                let analysis = PackedAnalysis::parsed(
-                    file_id,
-                    &self.sources,
-                    init_term_env.clone(),
-                    init_type_ctxt.clone(),
-                );
-                errs = analysis.parse_errors().clone();
-                analysis
-            });
+        let errs = match self.file_format(file_id).unwrap() {
+            InputFormat::Nickel => {
+                let mut errs = nickel_lang_core::error::ParseErrors::default();
+                self.analysis_reg
+                    .insert_with(|init_term_env, init_type_ctxt| {
+                        let analysis = PackedAnalysis::parsed(
+                            file_id,
+                            &self.sources,
+                            init_term_env.clone(),
+                            init_type_ctxt.clone(),
+                        );
+                        errs = analysis.parse_errors().clone();
+                        analysis
+                    });
+                errs
+            }
+            InputFormat::Yaml => {
+                let mut errs = nickel_lang_core::error::ParseErrors::default();
+                self.analysis_reg
+                    .insert_with(|_init_term_env, _init_type_ctxt| {
+                        let analysis = PackedAnalysis::parsed_yaml(file_id, &self.sources);
+                        errs = analysis.parse_errors().clone();
+                        analysis
+                    });
+                errs
+            }
+            format => {
+                let errors = self
+                    .sources
+                    .parse_other(file_id, format)
+                    .err()
+                    .map(|e| ParseErrors::new(vec![e]))
+                    .unwrap_or_else(|| ParseErrors::new(vec![]));
+                eprintln!("parsed {file_id:?}, errors {errors:?}");
+                errors
+            }
+        };
 
         self.lsp_diagnostics(file_id, errs)
     }
@@ -241,6 +291,17 @@ impl World {
     ///
     /// Panics if `file_id` is unknown
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
+        // unwrap: if `file_id` is known, `file_format` will be `Some`. If `file_id` is unknown,
+        // we're allowed to panic
+        match self.file_format(file_id).unwrap() {
+            InputFormat::Nickel => {}
+            format => {
+                // We don't need to avoid import loops for non-Nickel files, because we don't
+                // call `typecheck` on an imported non-Nickel file.
+                return self.check_non_nickel(file_id, format);
+            }
+        }
+
         let analysis = self.analysis_reg.get(file_id);
         match analysis.map(PackedAnalysis::state) {
             // If an analysis is already being typechecked or has been typechecked, return
@@ -259,6 +320,134 @@ impl World {
                 }
             }
             _ => self.typecheck_uncached(file_id),
+        }
+    }
+
+    /// Checks the validity of a non-Nickel file, if there's a Nickel contract configured
+    /// for it.
+    fn check_non_nickel(
+        &mut self,
+        file_id: FileId,
+        format: InputFormat,
+    ) -> Result<(), Vec<SerializableDiagnostic>> {
+        let Some(uri) = self.file_uris.get(&file_id) else {
+            return Ok(());
+        };
+        let Some(cfg) = self.contract_configs.config_for(uri) else {
+            return Ok(());
+        };
+
+        let Some(contract_id) = self
+            .sources
+            .get_or_add_file(&cfg.contract_path, InputFormat::Nickel)
+            .ok()
+            .map(|id| id.inner())
+        else {
+            return Ok(());
+        };
+
+        // If the contract hasn't already been loaded, load it.
+        if self.analysis_reg.get(contract_id).is_none() {
+            let contract_diagnostics = self.parse_and_typecheck(contract_id);
+            if !contract_diagnostics.is_empty() {
+                // We don't issue diagnostics on the contract (it might not
+                // even be loaded by the editor, and if it is then we should
+                // be issuing them elsewhere anyway). We issue a diagnostic
+                // at the beginning of the data file, just because otherwise
+                // it might be surprising that the contract is not doing
+                // anything.
+
+                return Err(SerializableDiagnostic::from_codespan(
+                    file_id,
+                    Diagnostic {
+                        severity: codespan_reporting::diagnostic::Severity::Warning,
+                        code: None,
+                        message: format!(
+                            "the configured contract at {} failed to load",
+                            cfg.contract_path.display()
+                        ),
+                        labels: vec![Label::primary(file_id, 0..1)],
+                        notes: Vec::new(),
+                    },
+                    &self.sources.files,
+                ));
+            }
+        }
+
+        // The data file doesn't really *import* the contract, but we'll pretend it does
+        // because it fits with our dependency tracking: if the contract changes then we
+        // want to invalidate and re-check the data file.
+        self.import_data
+            .imports
+            .entry(file_id)
+            .or_default()
+            .insert(ImportTarget {
+                file_id: contract_id,
+                format: InputFormat::Nickel,
+            });
+
+        self.import_data
+            .rev_imports
+            .entry(contract_id)
+            .or_default()
+            .insert(file_id, TermPos::None);
+
+        let (reporter, warnings) = WarningReporter::new();
+        let mut vm_ctxt = VmContext::new(
+            self.cache_hub_for_eval(contract_id),
+            std::io::stderr(),
+            reporter,
+        );
+
+        let term = match self.sources.parse_other(file_id, format) {
+            Ok(t) => t,
+            Err(e) => {
+                return Err(self.lsp_diagnostics(file_id, ParseErrors::new(vec![e])));
+            }
+        };
+
+        vm_ctxt.import_resolver.terms.insert(
+            file_id,
+            nickel_lang_core::cache::TermEntry {
+                term,
+                state: nickel_lang_core::cache::TermEntryState::Populated,
+                format,
+            },
+        );
+
+        // unwrap: we don't expect an error here, since we already typechecked above.
+        let contract_rt = vm_ctxt.prepare_eval_only(contract_id).unwrap();
+
+        let rt: RichTerm = Term::ResolvedImport(file_id).into();
+
+        let rt: RichTerm = Term::Annotated(
+            term::TypeAnnotation {
+                typ: None,
+                contracts: vec![term::LabeledType {
+                    typ: TypeF::Contract(contract_rt).into(),
+                    label: Default::default(),
+                }],
+            },
+            rt,
+        )
+        .into();
+
+        let mut vm = VirtualMachine::<_, CacheImpl>::new(&mut vm_ctxt);
+        let errors = vm.eval_permissive(rt, self.config.eval_config.eval_limits.recursion_limit);
+        let mut files = vm.import_resolver().sources.files().clone();
+        let mut diags: Vec<_> = errors
+            .into_iter()
+            .flat_map(|e| SerializableDiagnostic::from(e, &mut files, file_id))
+            .collect();
+
+        diags.extend(warnings.try_iter().flat_map(|(warning, mut files)| {
+            SerializableDiagnostic::from(warning, &mut files, file_id)
+        }));
+
+        if diags.is_empty() {
+            Ok(())
+        } else {
+            Err(diags)
         }
     }
 
@@ -792,9 +981,8 @@ impl World {
         let path = uri
             .to_file_path()
             .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
-        Ok(self
-            .sources
-            .id_of(&SourcePath::Path(path, InputFormat::Nickel)))
+        let format = InputFormat::from_path(&path).unwrap_or_default();
+        Ok(self.sources.id_of(&SourcePath::Path(path, format)))
     }
 
     /// Returns a [nickel_lang_core::cache::CacheHub] instance derived from this world and targeted
@@ -996,10 +1184,27 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                         self.reg.init_term_env.clone(),
                         self.reg.init_type_ctxt.clone(),
                     );
-                    // Since `new_imports` owns the packed anlysis, we need to push the analysis here
+                    // Since `new_imports` owns the packed analysis, we need to push the analysis here
                     // first and then re-borrow it from `new_imports`.
-                    self.new_imports.push(AnalysisTarget::Nickel(analysis));
-                    if let AnalysisTarget::Nickel(a) = self.new_imports.last().unwrap() {
+                    self.new_imports.push(AnalysisTarget::Analysis(analysis));
+                    if let AnalysisTarget::Analysis(a) = self.new_imports.last().unwrap() {
+                        Ok(Some(a.ast()))
+                    } else {
+                        // We just pushed the Nickel variant to new_imports so this can't
+                        // be anything else.
+                        unreachable!()
+                    }
+                }
+            }
+            InputFormat::Yaml => {
+                if let Some(analysis) = self.reg.get(file_id) {
+                    Ok(Some(analysis.ast()))
+                } else {
+                    let analysis = PackedAnalysis::parsed_yaml(file_id, self.sources);
+                    // Since `new_imports` owns the packed analysis, we need to push the analysis here
+                    // first and then re-borrow it from `new_imports`.
+                    self.new_imports.push(AnalysisTarget::Analysis(analysis));
+                    if let AnalysisTarget::Analysis(a) = self.new_imports.last().unwrap() {
                         Ok(Some(a.ast()))
                     } else {
                         // We just pushed the Nickel variant to new_imports so this can't
@@ -1009,11 +1214,12 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                 }
             }
             format => {
-                // For non-nickel files, we only gather parsing errors to display in
-                // diagnostics. A fuller analysis isn't possible because other formats
-                // don't get parsed into the Nickel AST. At some point we might want to
-                // do this, to allow to jump into a definition or to provide completions
-                // for JSON files, for example.
+                // Gather parsing errors to display in diagnostics. A fuller
+                // analysis isn't possible because other formats don't get
+                // parsed into the Nickel AST. At some point we might want to
+                // do this, to allow to jump into a definition or to provide
+                // completions for JSON files, for example. It's been done for YAML
+                // above.
                 let parse_errors = self
                     .sources
                     .parse_other(file_id, format)
@@ -1051,6 +1257,7 @@ impl AstImportResolver for StdlibResolver {
 mod tests {
 
     use lsp_types::{Position, Range};
+    use tempfile::TempDir;
 
     use crate::diagnostic::OrdRange;
 
@@ -1067,7 +1274,7 @@ mod tests {
 
     #[test]
     fn imported_file_analysis_is_cached_on_parent_typecheck_success() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (child, _) = world
             .add_file(make_file_url("child.ncl"), "2".to_string())
@@ -1089,7 +1296,7 @@ mod tests {
 
     #[test]
     fn imported_file_analysis_is_cached_on_parent_typecheck_failure() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (child, _) = world
             .add_file(make_file_url("child.ncl"), "2".to_string())
@@ -1109,7 +1316,7 @@ mod tests {
 
     #[test]
     fn imported_file_analysis_is_cached_on_child_parse_failure() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (child, _) = world
             .add_file(make_file_url("child.ncl"), "[1,2".to_string())
@@ -1134,7 +1341,7 @@ mod tests {
 
     #[test]
     fn imported_file_analysis_is_cached_on_partial_import_failure() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (child, _) = world
             .add_file(make_file_url("child.ncl"), "2".to_string())
@@ -1162,7 +1369,7 @@ mod tests {
 
     #[test]
     fn typechecking_succeeds_with_valid_json_import() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
         world.sources.add_string(
             SourcePath::Path(
                 make_file_url("child.json").to_file_path().unwrap(),
@@ -1184,7 +1391,7 @@ mod tests {
 
     #[test]
     fn typechecking_fails_with_invalid_json_import() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
         let child_path = make_file_url("child.json").to_file_path().unwrap();
         world.sources.add_string(
             SourcePath::Path(child_path.clone(), InputFormat::Json),
@@ -1226,7 +1433,7 @@ mod tests {
 
     #[test]
     fn imported_json_parse_errors_are_cached() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
         let child = world.sources.add_string(
             SourcePath::Path(
                 make_file_url("child.json").to_file_path().unwrap(),
@@ -1249,7 +1456,7 @@ mod tests {
 
     #[test]
     fn typechecking_succeeds_after_fixing_import_type() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let url = make_file_url("parent.ncl");
         let (parent, _) = world
@@ -1273,7 +1480,7 @@ mod tests {
 
     #[test]
     fn typechecking_errors_are_cached() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (file_id, _) = world
             .add_file(make_file_url("file.ncl"), "1 : String".to_string())
@@ -1292,7 +1499,7 @@ mod tests {
 
     #[test]
     fn import_errors_are_cached() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         world
             .add_file(make_file_url("child.ncl"), "1 : String".to_string())
@@ -1319,7 +1526,7 @@ mod tests {
 
     #[test]
     fn typecheck_cache_is_invalidated_on_dependency_update() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let url = make_file_url("child.ncl");
         world
@@ -1342,7 +1549,7 @@ mod tests {
 
     #[test]
     fn typecheck_cache_is_invalidated_on_transitive_dependency_update() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let url = make_file_url("a.ncl");
         world
@@ -1367,7 +1574,7 @@ mod tests {
 
     #[test]
     fn close_deleted_file() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let url = make_file_url("nonexistent.ncl");
         let (file, _) = world.add_file(url.clone(), "1".to_string()).unwrap();
@@ -1384,7 +1591,7 @@ mod tests {
 
     #[test]
     fn close_existing_file() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let url = make_file_url("tests/unit_test_resources/closed_file.ncl");
         let (file, _) = world
@@ -1400,7 +1607,7 @@ mod tests {
 
     #[test]
     fn closing_file_invalidates_reverse_deps() {
-        let mut world = World::new();
+        let mut world = World::new(LspConfig::default());
 
         let (parent, _) = world
             .add_file(
@@ -1428,5 +1635,35 @@ mod tests {
         // Since the in memory file was closed, the parent should now be importing the correctly
         // typed file from the filesystem, and should no longer return any diagnostics.
         assert_eq!(world.parse_and_typecheck(parent), vec![]);
+    }
+
+    #[test]
+    fn contract_changes_reload() {
+        let _ = env_logger::try_init();
+
+        let mut world = World::new(LspConfig::default());
+        let dir = TempDir::new().unwrap();
+
+        std::fs::write(
+            dir.path().join(crate::contracts::CONFIG_FILE_NAME),
+            r#"[{ glob = "*.yaml", contract_path = "C.ncl" }]"#,
+        )
+        .unwrap();
+
+        std::fs::write(dir.path().join("C.ncl"), r#"{ foo | String }"#).unwrap();
+        let url = Url::from_file_path(dir.path().join("input.yaml")).unwrap();
+        let file_id = world.add_file(url, r#"foo: 1"#.to_owned()).unwrap().0;
+        assert!(!world.parse_and_typecheck(file_id).is_empty());
+
+        // Rewriting the contract file on disk should trigger a reload.
+        std::fs::write(dir.path().join("C.ncl"), r#"{ foo | Number }"#).unwrap();
+        assert!(world.parse_and_typecheck(file_id).is_empty());
+
+        // Opening the contract file in the editor should trigger a reload.
+        let contract_url = Url::from_file_path(dir.path().join("C.ncl")).unwrap();
+        world
+            .add_file(contract_url, r#"{ foo | String }"#.to_owned())
+            .unwrap();
+        assert!(!world.parse_and_typecheck(file_id).is_empty());
     }
 }

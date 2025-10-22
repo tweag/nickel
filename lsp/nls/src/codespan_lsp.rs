@@ -13,15 +13,15 @@ use std::ops::Range;
 fn location_to_position(
     line_str: &str,
     line: usize,
-    column: usize,
+    mut column: usize,
     byte_index: usize,
 ) -> Result<LspPosition, Error> {
     if column > line_str.len() {
-        let max = line_str.len();
-        let given = column;
-
-        Err(Error::ColumnTooLarge { given, max })
-    } else if !line_str.is_char_boundary(column) {
+        // Be permissive with the column index. For example, serde_json
+        // sometimes gives its error position as one past the end of the file.
+        column = line_str.len();
+    }
+    if !line_str.is_char_boundary(column) {
         let given = byte_index;
 
         Err(Error::InvalidCharBoundary { given })

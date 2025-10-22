@@ -12,7 +12,12 @@ use lsp_types::Url;
 use nickel_lang_core::cache::{InputFormat, SourcePath};
 use serde::{Deserialize, Serialize};
 
-use crate::{config, diagnostic::SerializableDiagnostic, files::uri_to_path, world::World};
+use crate::{
+    config::{self, LspConfig},
+    diagnostic::SerializableDiagnostic,
+    files::uri_to_path,
+    world::World,
+};
 
 /// Environment variable used to pass the recursion limit value to the child worker
 const RECURSION_LIMIT_ENV_VAR_NAME: &str = "NICKEL_NLS_RECURSION_LIMIT";
@@ -53,7 +58,7 @@ fn run_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
 // reads an `Eval` (in bincode) from stdin, performs the evaluation, and
 // writes a `Diagnostics` (in bincode) to stdout.
 pub fn worker_main() -> anyhow::Result<()> {
-    let mut world = World::new();
+    let mut world = World::new_without_contract_configs(LspConfig::default());
     let eval: Eval = bincode::serde::decode_from_std_read(
         &mut std::io::stdin().lock(),
         bincode::config::standard(),
