@@ -5,7 +5,7 @@ use nickel_lang_core::cache::{InputFormat, SourcePath};
 use crate::{error::Error, files::uri_to_path, server::Server};
 
 /// Handle the LSP formatting request from a client using Topiary as a formatting library.
-/// If this succeds, it sends a reponse to the server and returns `Ok(..)`, otherwise,
+/// If this succeeds, it sends a response to the server and returns `Ok(..)`, otherwise,
 /// it only returns an `Err(..)`.
 pub fn handle_format_document(
     params: DocumentFormattingParams,

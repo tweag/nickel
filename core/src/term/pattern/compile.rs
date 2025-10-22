@@ -70,13 +70,13 @@ fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> Ri
 fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent) -> RichTerm {
     let rest = make::op1(UnaryOp::RecordAccess(rest_field), Term::Var(bindings_id));
 
-    let rest_shrinked = make::op2(
+    let rest_shrunk = make::op2(
         BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
         Term::Str(field.label().into()),
         rest,
     );
 
-    let bindings_shrinked = make::op2(
+    let bindings_shrunk = make::op2(
         BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
         Term::Str(rest_field.into()),
         Term::Var(bindings_id),
@@ -86,9 +86,9 @@ fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent
         make::op2(
             record_insert(),
             Term::Str(rest_field.into()),
-            bindings_shrinked,
+            bindings_shrunk,
         ),
-        rest_shrinked
+        rest_shrunk
     )
 }
 
@@ -1033,7 +1033,7 @@ struct TagsOnlyMatch {
 
 impl Compile for TagsOnlyMatch {
     fn compile(self, value: RichTerm, pos: TermPos) -> RichTerm {
-        increment!("pattern_comile(tags_only_match)");
+        increment!("pattern_compile(tags_only_match)");
 
         // We simply use the corresponding specialized primop in that case.
         let match_op = mk_app!(

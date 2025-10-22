@@ -1310,7 +1310,7 @@ pub fn mk_initial_ctxt<'ast>(
             // and is added directly to the top-level environment.
             (nickel_stdlib::StdlibModule::Internals, Node::Record(record)) => {
                 // We reject fields without a value (that would be a stdlib module without
-                // defintion). We also assume that the top-level modules of the stdlib aren't
+                // definition). We also assume that the top-level modules of the stdlib aren't
                 // defined piecewise, so that all path have length exactly one, and that those are
                 // static.
                 bindings.extend(record.field_defs.iter().map(|field_def| {
@@ -2028,7 +2028,7 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
     ) -> Result<(), TypecheckError> {
         visitor.visit_term(self, ty.clone());
 
-        // When checking against a polymorphic type, we immediatly instantiate potential heading
+        // When checking against a polymorphic type, we immediately instantiate potential heading
         // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
         // a polymorphic type for `ast`, the subsumption rule will take care of instantiating this type
         // with unification variables, such that terms like `(fun x => x : forall a. a -> a) : forall
@@ -2995,7 +2995,7 @@ impl<'ast> HasApparentType<'ast> for &'ast LetBinding<'ast> {
 // It's annoying to have a partial duplication of `apparent_type` here, but it's the simplest way
 // forward. It's not clear how to factor out the common code while maintaining that the normal
 // version of `apparent_type` should not pay an additional cost (if we used this function for
-// `apparent_type`, we might unduely copy stuff that is already in `ast_alloc`)
+// `apparent_type`, we might unduly copy stuff that is already in `ast_alloc`)
 fn apparent_type_move<'from, 'to>(
     ast_alloc: &'to AstAlloc,
     ast: &'from Ast<'from>,

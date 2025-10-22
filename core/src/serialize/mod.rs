@@ -32,7 +32,7 @@ pub mod yaml;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum ExportFormat {
-    /// Evalute a Nickel expression to a string and write that text to the output
+    /// Evaluate a Nickel expression to a string and write that text to the output
     /// Note: `raw` is a deprecated alias for `text`; prefer `text` instead.
     #[cfg_attr(feature = "clap", value(alias("raw")))]
     Text,
@@ -310,7 +310,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     static NUMBER_MIN: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MIN).unwrap());
     static NUMBER_MAX: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MAX).unwrap());
 
-    // Push an NickelPoinerElem to the end of the path of an ExportError
+    // Push an NickelPointerElem to the end of the path of an ExportError
     fn with_elem(mut err: ExportError, elem: NickelPointerElem) -> ExportError {
         err.path.0.push(elem);
         err

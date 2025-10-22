@@ -295,7 +295,7 @@ impl PrecisePkg {
         }
     }
 
-    /// If this is a path package with a relative path, turn it into an abolute path, relative to `root`.
+    /// If this is a path package with a relative path, turn it into an absolute path, relative to `root`.
     pub fn with_abs_path(self, root: &std::path::Path) -> Self {
         match self {
             PrecisePkg::Path(path) => PrecisePkg::Path(normalize_abs_path(&root.join(path))),

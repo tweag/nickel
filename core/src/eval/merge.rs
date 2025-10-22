@@ -462,7 +462,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
 /// Merge two optional documentations.
 ///
-/// This function is parametrized temporarily to accomodate both the mainline Nickel AST
+/// This function is parametrized temporarily to accommodate both the mainline Nickel AST
 /// ([crate::term::Term]) where documentation is represented as a `String`, and the new bytecode
 /// AST where documentation is represented as an `Rc<str>`.
 //FIXME: remove the type parameter `D` once we've moved evaluation to the new bytecode VM.
@@ -622,7 +622,7 @@ pub mod split {
         let mut right = m2;
 
         for (key, value) in m1 {
-            // We don't perserve the ordering of the right part. However, note that currently, what
+            // We don't preserve the ordering of the right part. However, note that currently, what
             // matters is that the iteration order on hashmap is _deterministic_. It's a bonus that
             // it corresponds to insertion order for record literal, but we don't make any
             // guarantee on the result of merging or other operations. Exporting will sort the

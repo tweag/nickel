@@ -295,7 +295,7 @@ pub enum Import<'ast> {
         path: &'ast OsStr,
         format: InputFormat,
     },
-    /// Importing packges requires a [`crate::package::PackageMap`] to translate the location
+    /// Importing packages requires a [`crate::package::PackageMap`] to translate the location
     /// to a path. The format is always Nickel.
     Package { id: Ident },
 }

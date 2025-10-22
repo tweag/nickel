@@ -187,7 +187,7 @@ impl Server {
 
     fn initialize(&mut self, initialization_options: Option<serde_json::Value>) -> Result<()> {
         // `root_path` is deprecated, but we need ot initialize the struct
-        // somehow. There is no `Default` implementation for `InitilizeParams`
+        // somehow. There is no `Default` implementation for `InitializeParams`
         // in versions of `lsp-types` compatible with `codespan-lsp`
         #[allow(deprecated)]
         self.send_request::<Initialize>(InitializeParams {

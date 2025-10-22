@@ -688,7 +688,7 @@ impl NickelValue {
     }
 
     /// Determines if a value is in evaluated form, called weak head normal form (WHNF). See
-    /// [crate::term::Term::is_whnf] for more detais.
+    /// [crate::term::Term::is_whnf] for more details.
     pub fn is_whnf(&self) -> bool {
         !matches!(self.body_tag(), Some(BodyTag::Thunk | BodyTag::Term))
     }
@@ -1241,7 +1241,7 @@ impl TryFrom<u64> for RefCount {
 /// The header for a heap-allocated Nickel value which is laid out at the beginning of a value
 /// block directly followed by the value data.
 // We set a minimal alignment of `4` bytes, so that pointers to the content of a value block
-// (which are aligned to the max of the alignement of `ValueBlockHeader` and the content) is
+// (which are aligned to the max of the alignment of `ValueBlockHeader` and the content) is
 // guaranteed to have at least the last 2 bits free for tagging (although we currently only use one
 // bits).
 #[repr(Rust, align(4))]
@@ -1879,7 +1879,7 @@ pub enum ValueContentRefMut<'a> {
     /// a more exoctic layout in the future making it impossible.
     ///
     /// A mutable reference to is mostly useful for value blocks anyway. For inline values, we just
-    /// return the original value back, which can be overriden directly with a new inline value.
+    /// return the original value back, which can be overridden directly with a new inline value.
     Inline(&'a mut NickelValue),
     Number(&'a mut NumberBody),
     Array(&'a mut ArrayBody),

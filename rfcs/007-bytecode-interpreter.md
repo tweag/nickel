@@ -49,7 +49,7 @@ lead to 25-30% speedups on medium to large codebases.
 
 `eval::stack::Marker` - which is what is stored on the evaluation stack - is in
 the same ballpark. Simply sprinkling `Box` here and there on both structures
-might be able to achieve a combined gain up to rougly 50%, at the cost of making
+might be able to achieve a combined gain up to roughly 50%, at the cost of making
 the implementation a bit uglier (one big issue of `Box` is the inability to do
 pattern matching on it directly, which makes in particular nested patterns
 impossible).
@@ -489,7 +489,7 @@ but just someone using Nix to install packages. Tvix aims at making Nix
 evaluation faster, among other things.
 
 We picked Tvix because the Nix language shares many performance characteristics
-with Nickel: it is a dynmaically typed, (almost) pure functional language that
+with Nickel: it is a dynamically typed, (almost) pure functional language that
 makes extensive use of records and fixpoints.
 
 #### Memory representation
@@ -829,13 +829,13 @@ environment to the stack and continuing with the original code for `(+)`.
 - Record representation: it's honestly a bit irrelevant, because it can evolve
     independently from the bytecode instructions and other representations.
     Maybe we should use persistent data structure? Still, there might be some
-    specific stuff related to the recursive environment and the "lazyness" of
+    specific stuff related to the recursive environment and the "laziness" of
     the recursive environment. Maybe compile that in the same way as OCaml
     mutually recursive closures.
     Should we have, as in JavaScript, a inline representation for small maps?
 - Array repr: todo. RPDS?
 - Stack elements repr (equality, deep_sequing, argument tracking and other
-    specifities of Nickel).
+    specifics of Nickel).
 - Number of stacks? Registers? Probably one stack. Should we have a bunch of
     registers as in Lua?
 - Instruction set: the Tvix one looks like the more adapted to our case.

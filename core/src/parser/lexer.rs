@@ -66,7 +66,7 @@ pub enum NormalToken<'input> {
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for RawEnumTag below, and
-    // also with the identifer regex in `std.package.Manifest`
+    // also with the identifier regex in `std.package.Manifest`
     #[regex("_*[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()).ok())]

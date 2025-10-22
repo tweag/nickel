@@ -2,4 +2,4 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[0:8-0:32: "import of /unparseable.ncl failed: This import could not be resolved because its content could not be parsed as Nickel.", 0:8-0:32: "imported here", 1:8-1:29: "import of /bad_type.ncl failed: This import could not be resolved because its content has failed to typecheck correctly.", 1:8-1:29: "imported here"]
+[0:8-0:32: "import of /unparsable.ncl failed: This import could not be resolved because its content could not be parsed as Nickel.", 0:8-0:32: "imported here", 1:8-1:29: "import of /bad_type.ncl failed: This import could not be resolved because its content has failed to typecheck correctly.", 1:8-1:29: "imported here"]

@@ -1,4 +1,4 @@
-//! A small crate providing a convienient interface to the git operations
+//! A small crate providing a convenient interface to the git operations
 //! that nickel uses.
 
 use anyhow::anyhow;

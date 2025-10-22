@@ -274,7 +274,7 @@ impl<'ast> Container<'ast> {
 /// [`Container`]s can have fields that are either record fields or types which is represented by
 /// [FieldContent].
 ///
-/// It is convenient, as often, to be able to talk about a piecewise field defintion _at some
+/// It is convenient, as often, to be able to talk about a piecewise field definition _at some
 /// index_, for example in `{ foo.bar.baz = 1}`, the definition of `foo` which is `bar.baz = 1`. We
 /// thus use [FieldDefPiece]s.
 #[derive(Clone, Debug, PartialEq)]
@@ -289,7 +289,7 @@ pub enum FieldContent<'ast> {
 /// We mostly store a [nickel_lang_core::bytecode::ast::record::FieldDef] but with an additional
 /// suffix of the original path.
 ///
-/// Indeed, take the defintion `{ foo.bar.baz = 1}`. This will lead to 3 [Def]s: one for `foo`, one
+/// Indeed, take the definition `{ foo.bar.baz = 1}`. This will lead to 3 [Def]s: one for `foo`, one
 /// for `bar` and one for `baz`. To differentiate them, we store the suffix of the path that
 /// corresponds to the definition: it will be the whole `[foo, bar, baz]` for the first definition,
 /// then `[bar, baz]` for the second and `[baz]` for the last. Note that we can recover the

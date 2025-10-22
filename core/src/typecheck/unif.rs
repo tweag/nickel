@@ -31,7 +31,7 @@ impl VarLevel {
         let new_value = self
             .0
             .checked_add(1)
-            .expect("reached the maxium unification variable level");
+            .expect("reached the maximum unification variable level");
         self.0 = new_value;
     }
 }
@@ -91,7 +91,7 @@ impl<'ast> UnifTable<'ast> {
     /// - This method doesn't force pending level updates when needed (calling to
     ///   `force_type_updates`), i.e. when `uty` is a rigid type variable. Having pending variable
     ///   level updates and using `assign_type` might make typechecking incorrect in some situation
-    ///   by unduely allowing unsound generalization. This is the responsibility of the caller.
+    ///   by unduly allowing unsound generalization. This is the responsibility of the caller.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType<'ast>) {
         // Unifying a free variable with itself is a no-op.
         if matches!(uty, UnifType::UnifVar { id, ..} if id == var) {
@@ -420,7 +420,7 @@ impl<'ast> UnifTable<'ast> {
     ///
     /// The whole point of variable levels is to forbid some unsound unifications of a unification
     /// variable with a rigid type variable. For performance reasons, those levels aren't
-    /// propagated immediatly when unifying a variable with a concrete type, but lazily stored at
+    /// propagated immediately when unifying a variable with a concrete type, but lazily stored at
     /// the level of types (see [VarLevel]).
     ///
     /// However, unifying with a rigid type variable is an instance that requires levels to be up

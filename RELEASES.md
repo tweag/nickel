@@ -705,7 +705,7 @@ Breaking changes
   CLI where arguments are field paths, the new customize mode CLI directly take
   assignments written in a Nickel-like syntax as positional arguments. For
   example, in 1.2, the command
-  `nickel eval -f confing.ncl -- \
+  `nickel eval -f config.ncl -- \
     --input.field1 '"Value"' --input.flag false \
     --override output.bar 0`
   now becomes
@@ -783,7 +783,7 @@ Core language
 * Improve polymorphism handling, bidirectional typechecking and fix unsound generalization by @yannham in https://github.com/tweag/nickel/pull/1372
 * Error on serializing very large numbers by @vkleen in https://github.com/tweag/nickel/pull/1470
 * Import YAML files containing multiple documents as arrays by @vkleen in https://github.com/tweag/nickel/pull/1497
-* Normalize line endings in string literals during parsing (Windows compatiblity) by @vkleen in https://github.com/tweag/nickel/pull/1562
+* Normalize line endings in string literals during parsing (Windows compatibility) by @vkleen in https://github.com/tweag/nickel/pull/1562
 * Implement curried dot operator by @suimong in https://github.com/tweag/nickel/pull/1578
 * Statically merge partial record definitions by @vkleen in https://github.com/tweag/nickel/pull/1599
 * Disable recursive priorities by @yannham in https://github.com/tweag/nickel/pull/1600
@@ -891,7 +891,7 @@ been stabilized and shouldn't evolve as much in the future.
   particular (but not limited to) merging, types and contracts with the
   implementation of RFC005
 - The stdlib has been augmented with many new functions
-- Parts of the syntax and some builtin symobls (types, stdlib functions, and so
+- Parts of the syntax and some builtin symbols (types, stdlib functions, and so
   on) have been improved and made consistent
 - New features for the LSP, and in particular code completion
 

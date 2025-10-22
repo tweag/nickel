@@ -102,7 +102,7 @@ fn extract_static_path<'ast>(mut ast: &'ast Ast<'ast>) -> (&'ast Ast<'ast>, Vec<
 ///
 /// This function starts by clearing `last_reparsed_ast` on the target analysis, such that
 /// [crate::analysis::Analysis::last_reparsed_ast] will return `Some(ast)` if and only if there was
-/// a sub-expression that was successfully reparsed to `ast`, and `None` otherwise, indepedently of
+/// a sub-expression that was successfully reparsed to `ast`, and `None` otherwise, independently of
 /// its previous value.
 ///
 /// # Parameters

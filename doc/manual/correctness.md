@@ -229,7 +229,7 @@ function contract for `split` has the following limitations:
   are raised.
 - The contract only checks the input and the return value. If
   `split` mishandles an intermediate value - as indeed it currently does - then
-  the caller is left with only unhelpful dyamic type errors. For example,
+  the caller is left with only unhelpful dynamic type errors. For example,
   evaluating `config.ncl` reports the following error:
 
   ```text

@@ -25,7 +25,7 @@
 //! add your new element. Then you clone the leaf's parent and populate it with
 //! pointers to the leaf's (unmodified) siblings, plus the leaf's new clone. Then
 //! you clone the leaf's grandparent and populate it with pointers to the leaf's
-//! (unmodified) uncles, plus the leaf's parent's new clone. You contine up the
+//! (unmodified) uncles, plus the leaf's parent's new clone. You continue up the
 //! tree like this, and you end up with a tree where the path from the leaf to
 //! the root is new but everything else is shared with the previous version of
 //! the vector.

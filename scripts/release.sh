@@ -24,7 +24,7 @@ DO_CLEANUP=true
 # commits on top of the previous release.
 #
 # Ideally that would be specified as an argument. For the time being, having a
-# variable makes it at least a bit more flexible than harcoding master.
+# variable makes it at least a bit more flexible than hardcoding master.
 RELEASE_BASE_BRANCH="master"
 
 # Perform clean up actions upon unexpected exit.
@@ -230,7 +230,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Check that the working directory is clean
 if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
-    confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
+    confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommitted changes"
 fi
 
 git switch "$RELEASE_BASE_BRANCH" > /dev/null

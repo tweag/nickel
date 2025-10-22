@@ -31,7 +31,7 @@ fn min_interpolate_sign(text: &str) -> usize {
     reg.find_iter(text)
         .map(|m| {
             // We iterate over all sequences `%+{` and `"%+`, which could clash with the
-            // interpolation syntax, and return the maximum number of `%` insead each sequence.
+            // interpolation syntax, and return the maximum number of `%` instead each sequence.
             //
             // For the case of a closing delimiter `"%`, we could actually be slightly smarter as we
             // don't necessarily need more `%`, but just a different number of `%`. For example, if

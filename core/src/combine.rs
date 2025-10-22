@@ -11,7 +11,7 @@ pub trait Combine {
     fn combine(left: Self, right: Self) -> Self;
 }
 
-/// [Combine] doens't work for new ast nodes, which requires an external allocator to create new
+/// [Combine] doesn't work for new ast nodes, which requires an external allocator to create new
 /// nodes. This trait is a version that takes this additional allocator. It's temporary: I suspect
 /// we won't need the original general [Combine] trait once we move to the bytecode VM, as
 /// [Combine] is used mostly on ast-like data, and we will rename [CombineAlloc] to [Combine].

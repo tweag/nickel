@@ -1,4 +1,4 @@
-//! This module provides [`Files`], a cheaply-clonable, persistent, `codespan`-compatible collection of files.
+//! This module provides [`Files`], a cheaply-cloneable, persistent, `codespan`-compatible collection of files.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -60,7 +60,7 @@ impl File {
     }
 }
 
-/// A cheaply-clonable, persistent, `codespan`-compatible collection of files.
+/// A cheaply-cloneable, persistent, `codespan`-compatible collection of files.
 ///
 /// `Files` knows about the nickel standard library, and automatically loads it on creation
 /// (but it doesn't do parsing, or anything particularly expensive).

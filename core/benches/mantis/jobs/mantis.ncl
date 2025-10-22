@@ -122,7 +122,7 @@ fun params =>
         reschedule = params.reschedule,
 
         task.telegraf | Telegraf = {
-          #infinte rec?
+          #infinite rec?
           # #namespace = namespace,
           name = "%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}",
           prometheusPort = "metrics",

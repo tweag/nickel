@@ -280,7 +280,7 @@ The first case is best modeled using record types. For example:
 
 ```nickel
 {
-  name = "virtal",
+  name = "virtual",
   version = "1.0.1",
   enabled = true,
 } : {

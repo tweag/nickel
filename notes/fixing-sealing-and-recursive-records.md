@@ -66,7 +66,7 @@ record fields and recursive references.
 We're keeping this draft note around to keep a record of our work debugging
 the issue.
 
-## Playgroud
+## Playground
 
 ```
 { foo = 1, bar = foo + 1} |> record.map (fun _key => (+) 1)
@@ -145,7 +145,7 @@ RECORD{ foo = f (%contract/apply% Num %1), bar = f (%contract/apply% PosNat,Even
 # : ~> {foo | unseal 1, bar | unseal 1}
 #
 
-{ foo | (seal 0, a, ..data_abouta) = 1, bar | (seal 0, a, ..data_abouta) = foo + 1}
+{ foo | (seal 0, a, ..data_about) = 1, bar | (seal 0, a, ..data_about) = foo + 1}
 
 (a -> Dyn)
 RECORD{ foo = 1 |> seal 0, bar = (1 |> seal 0 |> a.dualize()) + 1 |> seal 0}

@@ -88,7 +88,7 @@
       else
         'Error { message = "expected a function" },
 
-  # A specialied version of `Dyn -> _`
+  # A specialized version of `Dyn -> _`
   "$func_codom" = fun Codomain =>
     fun label value =>
       if %typeof% value == 'Function then
@@ -101,7 +101,7 @@
       else
         'Error { message = "expected a function" },
 
-  # A specialied version of `Dyn -> Dyn`
+  # A specialized version of `Dyn -> Dyn`
   "$func_dyn" = fun _label value =>
     if %typeof% value == 'Function then
       'Ok value
@@ -313,7 +313,7 @@
   # of the contract for static record types, and have the same return type as
   # other contract implementations.
   #
-  # The `sealing_key` is the sealing key corresponding to the variable occuring
+  # The `sealing_key` is the sealing key corresponding to the variable occurring
   # in the tail. `constr` are the fields that can't appear in the value because
   # they are already in the tail. Both are provided by the interpreter when
   # applying this function.
@@ -410,7 +410,7 @@
   # `%contract/custom%`).
   "$naked_to_custom" = fun naked label value => 'Ok (naked label value),
 
-  # Provide access to std.contract.Equal within the initial environement. Merging
+  # Provide access to std.contract.Equal within the initial environment. Merging
   # makes use of `std.contract.Equal`, but it can't blindly substitute such an
   # expression, because `contract` might have been redefined locally. Putting it
   # in an internal value prefixed with `$` makes it accessible from the initial
@@ -418,7 +418,7 @@
   "$stdlib_contract_equal" = std.contract.Equal,
 
   # Adds a default blame location to some contract error data, if the error
-  # data does not suppy its own value.
+  # data does not supply its own value.
   #
   # It might be more natural to swap the argument order, but this way requires
   # less messing with the stack.

@@ -49,7 +49,7 @@ pub struct World {
     pub sources: SourceCache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    /// A map of all live file anlyses.
+    /// A map of all live file analyses.
     pub analysis_reg: AnalysisRegistry,
     /// A map of import dependencies and reverse import dependencies between Nickel source files.
     pub(crate) import_data: ImportData,
