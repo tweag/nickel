@@ -27,6 +27,7 @@ in
     b | contract.any_of [C, D] = { field },
     c | foo [C, D] = { field },
     d | foo both = { field },
+    e | std.contract.Sequence [C, D] = { field },
   },
 ]
 ### [[request]]
@@ -68,3 +69,8 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///file.ncl"
 ### position = { line = 27, character = 26 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///file.ncl"
+### position = { line = 28, character = 46 }

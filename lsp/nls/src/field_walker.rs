@@ -600,6 +600,10 @@ impl<'ast> Def<'ast> {
         }
     }
 
+    /// If this `Def` has a non-trivial path, returns its parent.
+    ///
+    /// For example, if we're pointing to the definition of `c` in
+    /// `let { a.b.c } = ... `, our parent points to the definition of `b`.
     pub fn parent_def(&self) -> Option<Self> {
         match self {
             Def::Let {
@@ -686,8 +690,10 @@ fn filter_records(containers: Vec<Container>) -> Vec<Record> {
 pub struct FieldResolver<'ast> {
     world: &'ast World,
 
+    // Here are some stdlib functions that we recognize and handle specially.
     any_of: &'ast Ast<'ast>,
     all_of: &'ast Ast<'ast>,
+    sequence: &'ast Ast<'ast>,
 
     // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
     // Variable resolution is an exception, however, and so we protect against
@@ -714,20 +720,16 @@ impl<'ast> FieldResolver<'ast> {
             }
         }
 
-        let any_of = at_path(
-            world.analysis_reg.stdlib_analysis().ast(),
-            &[Ident::new("contract"), Ident::new("any_of")],
-        )
-        .unwrap();
-        let all_of = at_path(
-            world.analysis_reg.stdlib_analysis().ast(),
-            &[Ident::new("contract"), Ident::new("all_of")],
-        )
-        .unwrap();
+        let std = world.analysis_reg.stdlib_analysis().ast();
+        let any_of = at_path(std, &[Ident::new("contract"), Ident::new("any_of")]).unwrap();
+        let all_of = at_path(std, &[Ident::new("contract"), Ident::new("all_of")]).unwrap();
+        let sequence = at_path(std, &[Ident::new("contract"), Ident::new("Sequence")]).unwrap();
+
         Self {
             world,
             all_of,
             any_of,
+            sequence,
             blackholed_ids: Default::default(),
         }
     }
@@ -1000,7 +1002,10 @@ impl<'ast> FieldResolver<'ast> {
             Node::Type(typ) => self.resolve_type(typ),
             Node::App { head, args } => {
                 let heads = self.resolve_term(head);
-                if heads.iter().any(|&a| a == self.any_of || a == self.all_of) {
+                if heads
+                    .iter()
+                    .any(|&a| a == self.any_of || a == self.all_of || a == self.sequence)
+                {
                     // `all_of` and `any_of` expect a single arg, and that arg
                     // should be an array (but it might not be a literal array, so
                     // we try to resolve it first).
