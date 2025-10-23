@@ -1070,16 +1070,20 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                 FieldPathElem::Ident(id) => {
                     let mut fields = IndexMap::new();
                     fields.insert(*id, acc);
+                    let pos_idx = pos_table.push_block(pos);
                     // unwrap(): will go away soon
                     term::record::Field::from(
-                        NickelValue::record(
-                            term::record::RecordData {
-                                fields,
-                                ..Default::default()
-                            },
-                            pos_table.push_block(pos),
-                        )
-                        .unwrap(),
+                        // See [^closurize-insertion]
+                        closurize(
+                            NickelValue::record(
+                                term::record::RecordData {
+                                    fields,
+                                    ..Default::default()
+                                },
+                                pos_idx,
+                            )
+                            .unwrap(),
+                        ),
                     )
                 }
                 FieldPathElem::Expr(expr) => {
@@ -1095,14 +1099,17 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         fields.insert(id, acc);
 
                         term::record::Field::from(
-                            NickelValue::record(
-                                term::record::RecordData {
-                                    fields,
-                                    ..Default::default()
-                                },
-                                pos_table.push_block(pos),
-                            )
-                            .unwrap(),
+                            // See [^closurize-insertion]
+                            closurize(
+                                NickelValue::record(
+                                    term::record::RecordData {
+                                        fields,
+                                        ..Default::default()
+                                    },
+                                    pos_table.push_block(pos),
+                                )
+                                .unwrap(),
+                            ),
                         )
                     } else {
                         // The record we create isn't recursive, because it is only comprised of
@@ -1602,13 +1609,17 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
             Node::Array(array) => {
                 let pos_idx = pos_table.push_block(ast.pos);
                 let array = array.iter().map(|elt| elt.to_mainline(pos_table)).collect();
-                // When converting from the AST, we need to generate well-formed values. In
-                // particular, containers (arrays and non-recursive records) must be closurized the
-                // first time they are evaluated. So instead of being translated as arrays
-                // directly, we wrap them using the `Closurize` operation.
-                let array_val = NickelValue::array_force_pos(pos_table, array, Vec::new(), pos_idx);
 
-                NickelValue::term(Term::Closurize(array_val), pos_idx)
+                // [^closurize-insertion]: When converting from the AST, we need to generate
+                // well-formed values. In particular, containers (arrays and non-recursive records)
+                // must be closurized the first time they are evaluated. So instead of being
+                // translated as arrays directly, we wrap them using the `Closurize` operation.
+                closurize(NickelValue::array_force_pos(
+                    pos_table,
+                    array,
+                    Vec::new(),
+                    pos_idx,
+                ))
             }
             Node::PrimOpApp { op, args } => {
                 let term = match (*op).to_mainline(pos_table) {
@@ -1790,7 +1801,7 @@ fn merge_fields(
         bytecode::value::ValueContent,
         eval::merge::{merge_doc, split},
     };
-    use term::{BinaryOp, make as mk_term, record::RecordData};
+    use term::{make as mk_term, record::RecordData, BinaryOp};
 
     // FIXME: We're duplicating a lot of the logic in
     // [`eval::merge::merge_fields`] but not quite enough to actually factor
@@ -1813,11 +1824,12 @@ fn merge_fields(
                     fields.insert(id, merge_fields(id_span, field1, field2));
                 }
 
-                NickelValue::record_posless(RecordData::new(
+                // See [^closurize-insertion]
+                closurize(NickelValue::record_posless(RecordData::new(
                     fields,
                     Combine::combine(rd1.attrs, rd2.attrs),
                     None,
-                ))
+                )))
             }
             (lens1, lens2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
@@ -1863,4 +1875,11 @@ fn merge_fields(
         },
         pending_contracts: Vec::new(),
     }
+}
+
+/// Wrap a value in a [crate::term::Term::Closurize] operator with the same position index.
+fn closurize(value: NickelValue) -> NickelValue {
+    let pos_idx = value.pos_idx();
+
+    NickelValue::term(term::Term::Closurize(value), pos_idx)
 }
