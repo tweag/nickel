@@ -741,6 +741,7 @@ pub mod toml_deser {
 mod tests {
     use super::*;
     use crate::{
+        cache::CacheHub,
         cache::resolvers::DummyResolver,
         error::NullReporter,
         eval::{VirtualMachine, VmContext, cache::CacheImpl},
@@ -764,6 +765,25 @@ mod tests {
     }
 
     #[track_caller]
+    fn eval_with_ctxt(vm_ctxt: &mut VmContext<CacheHub, CacheImpl>, s: &str) -> NickelValue {
+        use crate::cache::{InputFormat, SourcePath};
+
+        let file_id = vm_ctxt
+            .import_resolver
+            .sources
+            .add_source(
+                SourcePath::Path("<test>".into(), InputFormat::Nickel),
+                Cursor::new(s),
+            )
+            .unwrap();
+        let value = vm_ctxt.prepare_eval(file_id).unwrap();
+
+        VirtualMachine::<_, CacheImpl>::new(vm_ctxt)
+            .eval_full(value)
+            .unwrap()
+    }
+
+    #[track_caller]
     fn assert_json_eq<T: Serialize>(term: &str, expected: T) {
         assert_eq!(
             serde_json::to_string(&eval(term)).unwrap(),
@@ -772,11 +792,13 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_nickel_eq(value: NickelValue, expected: NickelValue) {
-        let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::stderr(), NullReporter {});
-
+    fn assert_nickel_eq(
+        vm_ctxt: &mut VmContext<CacheHub, CacheImpl>,
+        value: NickelValue,
+        expected: NickelValue,
+    ) {
         assert!(
-            VirtualMachine::<_, CacheImpl>::new_empty_env(&mut vm_ctxt)
+            VirtualMachine::<_, CacheImpl>::new_empty_env(vm_ctxt)
                 .eval(mk_term::op2(BinaryOp::Eq, value, expected))
                 .unwrap()
                 .phys_eq(&NickelValue::bool_true())
@@ -795,16 +817,18 @@ mod tests {
 
     #[track_caller]
     fn assert_involutory(term: &str) {
-        let evaluated = eval(term);
+        let mut vm_ctxt = VmContext::new(CacheHub::new(), std::io::stderr(), NullReporter {});
+        let evaluated = eval_with_ctxt(&mut vm_ctxt, term);
+
         let from_json: NickelValue =
             serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
         let from_yaml: NickelValue =
             serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
         let from_toml: NickelValue = toml::from_str(&toml::to_string(&evaluated).unwrap()).unwrap();
 
-        assert_nickel_eq(from_json, evaluated.clone());
-        assert_nickel_eq(from_yaml, evaluated.clone());
-        assert_nickel_eq(from_toml, evaluated);
+        assert_nickel_eq(&mut vm_ctxt, from_json, evaluated.clone());
+        assert_nickel_eq(&mut vm_ctxt, from_yaml, evaluated.clone());
+        assert_nickel_eq(&mut vm_ctxt, from_toml, evaluated);
     }
 
     #[test]
