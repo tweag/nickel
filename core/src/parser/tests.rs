@@ -54,10 +54,11 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
         .field("prefix")
         .value(NickelValue::enum_tag_posless(prefix))
         .field("fragments")
-        .value(NickelValue::array_posless(
-            std::iter::once(mk_single_chunk(s)).collect(),
-            Vec::new(),
-        ))
+        // The compat conversion will insert a closurize operation here, that we need to reproduce
+        // to get the equality check to pass
+        .value(NickelValue::term_posless(Term::Closurize(
+            NickelValue::array_posless(std::iter::once(mk_single_chunk(s)).collect(), Vec::new()),
+        )))
         .into();
 
     // The builder interface is nice, but it produces non recursive records. On the other hand, the
