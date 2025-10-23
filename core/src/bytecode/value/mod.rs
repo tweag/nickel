@@ -972,7 +972,7 @@ impl NickelValue {
                 // ValueLens::xxx_lens: in each branch, the type of the inline value matches the
                 // type of the lens built with `body_lens`.
                 unsafe {
-                    match unsafe { self.as_inline_unchecked() } {
+                    match self.as_inline_unchecked() {
                         InlineValue::Null => ValueContent::Null(ValueLens::null_lens(self)),
                         InlineValue::True | InlineValue::False => {
                             ValueContent::Bool(ValueLens::bool_lens(self))
@@ -1343,7 +1343,8 @@ impl NickelValue {
         .unwrap()
         .traverse(
             &mut |val: NickelValue| {
-                Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE))
+                //unwrap(): will go away soon
+                Ok::<_, Infallible>(val.try_with_pos_idx(PosIdx::NONE).unwrap())
             },
             TraverseOrder::BottomUp,
         )
