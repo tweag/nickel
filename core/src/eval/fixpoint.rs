@@ -57,7 +57,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 } else {
                     if !value.is_constant() {
                         eprintln!("/!\\ Unclosurized field {id} with value {value}");
-                        eprintln!("Body tag: {:?}", value.body_tag());
+                        eprintln!("{:?}", value);
                     }
                     // If we are in this branch, `value` must be a constant after closurization
                     // (the evaluation of a recursive record starts by closurizing all fields
