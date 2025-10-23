@@ -27,6 +27,7 @@ use std::{
     alloc::{Layout, alloc, dealloc},
     cmp::max,
     convert::Infallible,
+    fmt,
     marker::PhantomData,
     mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
@@ -46,7 +47,7 @@ pub struct TagMismatchError;
 /// A tagged pointer to a [reference-counted Nickel value block][ValueBlockRc], or an inline value.
 /// The two least significant bits of the pointer are used as the tag. See [ValueTag] for more
 /// details.
-#[derive(Debug, Eq)]
+#[derive(Eq)]
 pub struct NickelValue {
     data: usize,
     // On 64-bits pointer-width archs, we can fit everything into one word. Otherwise, we stay safe
@@ -106,6 +107,37 @@ impl PartialEq for NickelValue {
             }
             _ => false,
         }
+    }
+}
+
+impl fmt::Debug for NickelValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "NickelValue(pos_idx: {:?}, content: ", self.pos_idx())?;
+
+        match self.content_ref() {
+            ValueContentRef::Null => write!(f, "null"),
+            ValueContentRef::Bool(b) => write!(f, "{b}"),
+            ValueContentRef::Number(number_body) => write!(f, "{}", number_body.0),
+            ValueContentRef::Array(container) => write!(f, "{container:?}"),
+            ValueContentRef::Record(container) => write!(f, "{container:?}"),
+            ValueContentRef::String(string_body) => write!(f, "{}", string_body.0),
+            ValueContentRef::Thunk(thunk_body) => write!(f, "{:?}", thunk_body.0),
+            ValueContentRef::Term(term_body) => write!(f, "{:?}", term_body.0),
+            ValueContentRef::Label(label_body) => write!(f, "{:?}", label_body.0),
+            ValueContentRef::EnumVariant(enum_variant_body) => {
+                write!(f, "{:?}", enum_variant_body)
+            }
+            ValueContentRef::ForeignId(foreign_id_body) => write!(f, "{:?}", foreign_id_body.0),
+            ValueContentRef::SealingKey(sealing_key_body) => {
+                write!(f, "{:?}", sealing_key_body.0)
+            }
+            ValueContentRef::CustomContract(custom_contract_body) => {
+                write!(f, "{:?}", custom_contract_body.0)
+            }
+            ValueContentRef::Type(type_body) => write!(f, "{type_body:?}"),
+        }?;
+
+        write!(f, ")")
     }
 }
 
