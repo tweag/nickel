@@ -2365,6 +2365,15 @@ impl Container<&RecordBody> {
     pub fn len(&self) -> usize {
         self.into_opt().map_or(0, |record| record.0.fields.len())
     }
+
+    /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying record is
+    /// empty (is such that [crate::term::record::RecordData::is_empty] returns `true`).
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Container::Empty => true,
+            Container::Alloc(record) => record.0.is_empty(),
+        }
+    }
 }
 
 impl Container<&ArrayBody> {
@@ -2388,6 +2397,15 @@ impl Container<&ArrayBody> {
     pub fn len(&self) -> usize {
         self.into_opt()
             .map_or(0, |array_body| array_body.array.len())
+    }
+
+    /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying array is
+    /// empty (is such that [crate::bytecode::value::Array::is_empty] returns `true`).
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Container::Empty => true,
+            Container::Alloc(array_data) => array_data.array.is_empty(),
+        }
     }
 }
 
