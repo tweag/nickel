@@ -1927,8 +1927,7 @@ mod blame_error {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
                 (TermPos::Original(val_pos), _) if files.is_stdlib(val_pos.src_id) => {
-                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
-                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
+                    evaluated_arg = evaluated_arg.with_pos_idx(PosIdx::NONE);
                     labels.push(
                         secondary_term(pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
@@ -1944,8 +1943,7 @@ mod blame_error {
                 // print the actual value than referring to the same position as
                 // before.
                 (TermPos::Inherited(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {
-                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
-                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
+                    evaluated_arg = evaluated_arg.with_pos_idx(PosIdx::NONE);
                     labels.push(
                         secondary_term(&pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
@@ -1959,8 +1957,7 @@ mod blame_error {
                             .push(secondary(val_pos).with_message("evaluated to this expression"));
                     }
 
-                    // unwrap(): PosIdx::NONE is always a valid position, even for inline values
-                    evaluated_arg = evaluated_arg.try_with_pos_idx(PosIdx::NONE).unwrap();
+                    evaluated_arg = evaluated_arg.with_pos_idx(PosIdx::NONE);
                     labels.push(
                         secondary_term(&pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),

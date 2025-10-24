@@ -585,18 +585,7 @@ impl SourceCache {
         format: InputFormat,
     ) -> Result<NickelValue, ParseError> {
         let whole_span: TermPos = self.files.source_span(file_id).into();
-
-        let attach_pos = |pos_table: &mut PosTable, t: NickelValue| -> NickelValue {
-            let pos_idx = if t.is_inline() {
-                pos_table.push_inline(whole_span).into()
-            } else {
-                pos_table.push_block(whole_span)
-            };
-
-            // unwrap(): we took care of creating a pos index of the right kind, if the value is
-            // inline.
-            t.try_with_pos_idx(pos_idx).unwrap()
-        };
+        let pos_idx = pos_table.push(whole_span);
 
         let source = self.files.source(file_id);
 
@@ -607,26 +596,23 @@ impl SourceCache {
                 panic!("error: trying to parse a Nickel source with parse_other_nocache")
             }
             InputFormat::Json => serde_json::from_str(source)
-                .map(|v| attach_pos(pos_table, v))
+                .map(|v: NickelValue| v.with_pos_idx(pos_idx))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => {
                 crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id))
             }
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
-                .map(|v| attach_pos(pos_table, v))
+                .map(|v : NickelValue| v.with_pos_idx(pos_idx))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
                 let json = nix_ffi::eval_to_json(source, &self.get_base_dir_for_nix(file_id))
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
-                    .map(|v| attach_pos(pos_table, v))
+                    .map(|v| v.with_pos_idx(pos_idx))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
             }
-            InputFormat::Text => Ok(attach_pos(
-                pos_table,
-                NickelValue::string_posless(source).into(),
-            )),
+            InputFormat::Text => Ok(NickelValue::string(source, pos_idx).into()),
         }
     }
 

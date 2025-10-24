@@ -49,7 +49,7 @@ use crate::{
     label::Polarity,
     metrics::increment,
     mk_app, mk_fun,
-    position::{InlinePosIdx, PosIdx, PosTable, TermPos},
+    position::{PosIdx, PosTable, TermPos},
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
@@ -1180,10 +1180,10 @@ impl Subcontract for EnumRows {
                         data: PatternData::Enum(EnumPattern {
                             tag: row.id,
                             pattern: arg_pattern,
-                            pos: pos_table.push_block(row.id.pos),
+                            pos: pos_table.push(row.id.pos),
                         }),
                         alias: None,
-                        pos: pos_table.push_block(row.id.pos),
+                        pos: pos_table.push(row.id.pos),
                     };
 
                     branches.push(MatchBranch {
@@ -1221,7 +1221,7 @@ impl Subcontract for EnumRows {
             pattern: Pattern {
                 data: PatternData::Wildcard,
                 alias: None,
-                pos: pos_table.push_block(default_pos),
+                pos: pos_table.push(default_pos),
             },
             guard: None,
             body: default,
@@ -1594,9 +1594,7 @@ impl Type {
         )
         .unwrap()
         .traverse(
-            &mut |val: NickelValue| {
-                Ok::<_, Infallible>(val.with_inline_pos_idx(InlinePosIdx::NONE))
-            },
+            &mut |val: NickelValue| Ok::<_, Infallible>(val.with_pos_idx(PosIdx::NONE)),
             TraverseOrder::BottomUp,
         )
         .unwrap()

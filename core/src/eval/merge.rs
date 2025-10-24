@@ -85,6 +85,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<Closure, EvalErrorData> {
         let pos1 = v1.pos_idx();
         let pos2 = v2.pos_idx();
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         // Determines if we need to wrap the result in `'Ok` upon successful merging, which is the case
         // when in contract merge mode. We're going to move out of `mode` at some point, so we need to
@@ -94,7 +95,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let result = match (v1.content(), v2.content()) {
             // Merge is idempotent on basic terms
             (ValueContent::Null(_), ValueContent::Null(_)) => Ok(NickelValue::null()
-                .with_inline_pos_idx(pos_op.to_inherited_inline(&mut self.context.pos_table))),
+                .with_pos_idx(pos_op_inh)),
             (ValueContent::Bool(lens1), ValueContent::Bool(lens2))
                 // phys_eq allows comparison in the guard without consuming both lenses, which we
                 // need for the result
@@ -102,7 +103,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             {
                 Ok(NickelValue::bool_value(
                     lens1.take(),
-                    pos_op.to_inherited_inline(&mut self.context.pos_table),
+                    pos_op_inh,
                 ))
             }
             (ValueContent::Number(lens1), ValueContent::Number(lens2)) => {
@@ -112,7 +113,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if n1 == n2 {
                     Ok(NickelValue::number(
                         n1,
-                        pos_op.to_inherited_block(&mut self.context.pos_table),
+                        pos_op_inh,
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -129,7 +130,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if s1 == s2 {
                     Ok(NickelValue::string(
                         s1,
-                        pos_op.to_inherited_block(&mut self.context.pos_table),
+                        pos_op_inh,
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -146,7 +147,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if label1 == label2 {
                     Ok(NickelValue::label(
                         label1,
-                        pos_op.to_inherited_block(&mut self.context.pos_table),
+                        pos_op_inh,
                     ))
                 } else {
                     Err(EvalErrorData::MergeIncompatibleArgs {
@@ -172,7 +173,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         },
                     ) if tag1 == tag2 => Ok(NickelValue::enum_tag(
                         tag1,
-                        pos_op.to_inherited_block(&mut self.context.pos_table),
+                        pos_op_inh,
                     )),
                     (
                         EnumVariantBody {
@@ -193,7 +194,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Ok(NickelValue::enum_variant(
                             tag1,
                             Some(arg),
-                            pos_op.to_inherited_block(&mut self.context.pos_table),
+                            pos_op_inh,
                         ))
                     }
                     (enum1, enum2) => Err(EvalErrorData::MergeIncompatibleArgs {
@@ -257,7 +258,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ),
                     v2
                 )
-                .with_pos_idx(&mut self.context.pos_table, pos_op))
+                .with_pos_idx(pos_op_inh))
             }
             // The empty record is the neutral element for merging. We treat this case specifically
             // for performance reasons: to avoid allocation, recomputation of fixpoint, etc.
@@ -267,7 +268,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             {
                 Ok(lens
                     .restore()
-                    .with_pos_idx(&mut self.context.pos_table, pos_op))
+                    .with_pos_idx(pos_op_inh))
             }
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
@@ -340,9 +341,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let final_pos = if let MergeMode::Standard(_) = mode {
-                    pos_op.to_inherited_block(&mut self.context.pos_table)
+                    pos_op_inh 
                 } else {
-                    pos1.to_inherited_block(&mut self.context.pos_table)
+                    pos1.to_inherited(&mut self.context.pos_table)
                 };
 
                 let merge_label = MergeLabel::from(mode);
@@ -536,9 +537,7 @@ impl Saturate for NickelValue {
         if let Some(ThunkBody(idx)) = self.as_thunk() {
             Ok(cache
                 .saturate(idx.clone(), fields.map(LocIdent::ident))
-                // unwrap(): will go away soon
-                .try_with_pos_idx(self.pos_idx())
-                .unwrap())
+                .with_pos_idx(self.pos_idx()))
         } else {
             // It's possible for constants, or arbitrary deserialized data since the introduction
             // of the compact value representation (`NickelValue`), to not be closurized.
