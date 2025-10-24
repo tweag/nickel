@@ -1123,8 +1123,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         let pos_inh = pos.to_inherited_block(&mut self.context.pos_table);
                         // unwrap(): will go away soon
-                        let cont =
-                            NickelValue::record(RecordData { fields, ..record }, pos_inh).unwrap();
+                        let cont = NickelValue::record_force_pos(
+                            &mut self.context.pos_table,
+                            RecordData { fields, ..record },
+                            pos_inh,
+                        );
 
                         Ok(seq_terms(&mut self.context.pos_table, terms, pos_op, cont).into())
                     }
@@ -3791,9 +3794,7 @@ fn eq<C: Cache>(
 
     match (value1.content_ref(), value2.content_ref()) {
         (ValueContentRef::Null, ValueContentRef::Null) => Ok(EqResult::Bool(true)),
-        (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => {
-            Ok(EqResult::Bool(b1 == b2))
-        }
+        (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => Ok(EqResult::Bool(b1 == b2)),
         (ValueContentRef::Number(NumberBody(n1)), ValueContentRef::Number(NumberBody(n2))) => {
             Ok(EqResult::Bool(n1 == n2))
         }
@@ -3832,7 +3833,13 @@ fn eq<C: Cache>(
             env1,
             env2,
         )),
-        (ValueContentRef::Record(Container::Empty), ValueContentRef::Record(Container::Empty)) => {
+        // [^eq-empty-containers]We can't just handle the pattern `(Container::Empty, Container::Empty)`, because the
+        // first could be the inlined empty record while the second is allocated but empty as well
+        // (typically the case for the empty open record `{..}`). Hence we rely on `is_empty`,
+        // which handles both cases.
+        (ValueContentRef::Record(container1), ValueContentRef::Record(container2))
+            if container1.is_empty() && container2.is_empty() =>
+        {
             Ok(EqResult::Bool(true))
         }
         (
@@ -3919,7 +3926,10 @@ fn eq<C: Cache>(
                 Ok(gen_eqs(cache, eqs?.into_iter(), env1, env2))
             }
         }
-        (ValueContentRef::Array(Container::Empty), ValueContentRef::Array(Container::Empty)) => {
+        // See [^eq-empty-containers]
+        (ValueContentRef::Array(container1), ValueContentRef::Array(container2))
+            if container1.is_empty() && container2.is_empty() =>
+        {
             Ok(EqResult::Bool(true))
         }
         (
