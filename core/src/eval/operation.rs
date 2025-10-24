@@ -1399,7 +1399,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 _ => mk_type_error!("Enum"),
             },
             UnaryOp::EnumIsVariant => Ok(NickelValue::bool_value(
-                value.as_enum_variant().is_some(),
+                value
+                    .as_enum_variant()
+                    .map_or(false, |enum_variant| enum_variant.arg.is_some()),
                 self.context.pos_table.make_inline(pos_op_inh),
             )
             .into()),
