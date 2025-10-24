@@ -184,7 +184,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let Closure { value, env } = clos;
         let pos = value.pos_idx();
-        let pos_op_inh = pos_op.to_inherited_block(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
@@ -262,9 +262,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // simpler and more efficient, but can make debugging harder. In any case,
                         // it should be solved only once primary operators have better support for
                         // laziness in some arguments.
-                        Some(false) => Ok(value
-                            .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                            .into()),
+                        Some(false) => Ok(value.with_pos_idx(pos_op_inh).into()),
                         _ => mk_type_error!("Bool", 1),
                     }
                 } else {
@@ -274,9 +272,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::BoolOr => {
                 if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
                     match value.as_bool() {
-                        Some(true) => Ok(value
-                            .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                            .into()),
+                        Some(true) => Ok(value.with_pos_idx(pos_op_inh).into()),
                         // FIXME: this does not check that the second argument is actually a
                         // boolean. This means `false || 2` silently evaluates to `2`. This is
                         // simpler and more efficient, but can make debugging harder. In any case,
@@ -292,7 +288,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::BoolNot => {
                 if let Some(b) = value.as_bool() {
                     Ok(NickelValue::bool_value_posless(!b)
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                        .with_pos_idx(pos_op_inh)
                         .into())
                 } else {
                     mk_type_error!("Bool")
@@ -321,9 +317,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // }),
             UnaryOp::EnumEmbed(_id) => {
                 if let Some(_) = value.as_enum_variant() {
-                    Ok(value
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                        .into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
                 } else {
                     mk_type_error!("Enum")
                 }
@@ -375,7 +369,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .ok_or_else(|| EvalErrorData::NonExhaustiveEnumMatch {
                             expected: container.field_names(RecordOpKind::IgnoreEmptyOpt),
                             found: NickelValue::enum_variant_posless(enum_body.tag, None)
-                                .with_pos_idx(&mut self.context.pos_table, pos),
+                                .with_pos_idx(pos),
                             pos: pos_op_inh,
                         })
                 } else if let Some(clos) = default {
@@ -397,7 +391,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::LabelPol => {
                 if let Some(label) = value.as_label() {
                     Ok(NickelValue::from(label.0.polarity)
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                        .with_pos_idx(pos_op_inh)
                         .into())
                 } else {
                     mk_type_error!("Label")
@@ -507,20 +501,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .field_names(op_kind)
                         .into_iter()
                         .map(|id| {
-                            NickelValue::string(
-                                id.label(),
-                                self.context.pos_table.push_block(id.pos),
-                            )
+                            NickelValue::string(id.label(), self.context.pos_table.push(id.pos))
                         })
                         .collect();
 
                     Ok(Closure {
-                        value: NickelValue::array_force_pos(
-                            &mut self.context.pos_table,
-                            fields_as_terms,
-                            Vec::new(),
-                            pos_op_inh,
-                        ),
+                        value: NickelValue::array(fields_as_terms, Vec::new(), pos_op_inh),
                         env,
                     })
                 } else {
@@ -543,12 +529,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Ok(Closure {
                         // TODO: once sure that the Record is properly closurized, we can safely
                         // assume that the extracted array here is, in turn, also closuried.
-                        value: NickelValue::array_force_pos(
-                            &mut self.context.pos_table,
-                            terms,
-                            Vec::new(),
-                            pos_op_inh,
-                        ),
+                        value: NickelValue::array(terms, Vec::new(), pos_op_inh),
                         env,
                     })
                 } else {
@@ -586,13 +567,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })
                             .collect();
 
-                        Ok(NickelValue::array_force_pos(
-                            &mut self.context.pos_table,
-                            ts,
-                            Vec::new(),
-                            pos_op_inh,
-                        )
-                        .into())
+                        Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
                     }
                     lens => {
                         mk_type_error!("Array", value = lens.restore())
@@ -641,12 +616,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .collect();
 
                 Ok(Closure {
-                    value: NickelValue::array_force_pos(
-                        &mut self.context.pos_table,
-                        ts,
-                        Vec::new(),
-                        pos_op_inh,
-                    ),
+                    value: NickelValue::array(ts, Vec::new(), pos_op_inh),
                     env: Environment::new(),
                 })
             }
@@ -656,10 +626,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 })?;
 
                 match value.content() {
-                    ValueContent::Record(lens) if lens.peek().is_empty_record() => Ok(lens
-                        .restore()
-                        .with_pos_idx(&mut self.context.pos_table, pos_op)
-                        .into()),
+                    ValueContent::Record(lens) if lens.peek().is_empty_record() => {
+                        Ok(lens.restore().with_pos_idx(pos_op).into())
+                    }
                     ValueContent::Record(lens) => {
                         //unwrap(): we checked the empty record case above
                         let record = lens.take().unwrap_alloc().0;
@@ -702,8 +671,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // perform the work again.
                         let attrs = record.attrs.frozen();
 
-                        Ok(NickelValue::record_force_pos(
-                            &mut self.context.pos_table,
+                        Ok(NickelValue::record(
                             RecordData {
                                 fields,
                                 attrs,
@@ -735,17 +703,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .expect("expected the argument to be a non-empty iterator");
 
                     it.fold(
-                        // unwrap(): an unary operation is never inline, so `try_with_pos_idx`
-                        // can't fail
-                        mk_term::op1(UnaryOp::DeepSeq, first)
-                            .try_with_pos_idx(pos_op_inh)
-                            .unwrap(),
+                        mk_term::op1(UnaryOp::DeepSeq, first).with_pos_idx(pos_op_inh),
                         |acc, t| {
-                            // unwrap(): an unary operation is never inline, so `try_with_pos_idx`
-                            // can't fail
-                            mk_app!(mk_term::op1(UnaryOp::DeepSeq, t), acc)
-                                .try_with_pos_idx(pos_op_inh)
-                                .unwrap()
+                            mk_app!(mk_term::op1(UnaryOp::DeepSeq, t), acc).with_pos_idx(pos_op_inh)
                         },
                     )
                 }
@@ -774,7 +734,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 let t_with_ctr = RuntimeContract::apply_all(
                                     t.clone(),
                                     array_data.pending_contracts.iter().cloned(),
-                                    pos.to_inherited_block(&mut self.context.pos_table),
+                                    pos.to_inherited(&mut self.context.pos_table),
                                 )
                                 .closurize(&mut self.context.cache, env.clone());
                                 t_with_ctr
@@ -884,13 +844,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::StringChars => {
                 if let Some(s) = value.as_string() {
                     let ts = s.0.characters();
-                    Ok(NickelValue::array_force_pos(
-                        &mut self.context.pos_table,
-                        ts,
-                        Vec::new(),
-                        pos_op_inh,
-                    )
-                    .into())
+                    Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
@@ -988,10 +942,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringIsMatchCompiled(regex) => {
                 if let Some(s) = value.as_string() {
-                    Ok(s.0
-                        .matches_regex(&regex)
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                        .into())
+                    Ok(s.0.matches_regex(&regex).with_pos_idx(pos_op_inh).into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
@@ -1032,17 +983,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ),
                     };
 
-                    Ok(result
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                        .into())
+                    Ok(result.with_pos_idx(pos_op_inh).into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
             }
             UnaryOp::StringFindAllCompiled(regex) => {
                 if let Some(s) = value.as_string() {
-                    let result = NickelValue::array_force_pos(
-                        &mut self.context.pos_table,
+                    let result = NickelValue::array(
                         Array::from_iter(s.0.find_all_regex(&regex).map(|found| {
                             mk_record!(
                                 ("matched", NickelValue::string_posless(found.matched)),
@@ -1079,18 +1027,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ignore_not_exported,
             } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
-                fn seq_terms<I>(
-                    pos_table: &mut PosTable,
-                    terms: I,
-                    pos: PosIdx,
-                    cont: NickelValue,
-                ) -> NickelValue
+                fn seq_terms<I>(terms: I, pos: PosIdx, cont: NickelValue) -> NickelValue
                 where
                     I: Iterator<Item = NickelValue>,
                 {
                     terms
                         .fold(cont, |acc, t| mk_app!(mk_term::op1(UnaryOp::Seq, t), acc))
-                        .with_pos_idx(pos_table, pos)
+                        .with_pos_idx(pos)
                 }
 
                 match value.content() {
@@ -1121,15 +1064,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             )
                         });
 
-                        let pos_inh = pos.to_inherited_block(&mut self.context.pos_table);
-                        // unwrap(): will go away soon
-                        let cont = NickelValue::record_force_pos(
-                            &mut self.context.pos_table,
-                            RecordData { fields, ..record },
-                            pos_inh,
-                        );
+                        let pos_inh = pos.to_inherited(&mut self.context.pos_table);
+                        let cont = NickelValue::record(RecordData { fields, ..record }, pos_inh);
 
-                        Ok(seq_terms(&mut self.context.pos_table, terms, pos_op, cont).into())
+                        Ok(seq_terms(terms, pos_op, cont).into())
                     }
                     ValueContent::Array(lens) if !lens.peek().is_empty_array() => {
                         //unwrap(): the guard of the pattern exclude empty arrays
@@ -1137,7 +1075,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             array: ts,
                             pending_contracts,
                         } = lens.take().unwrap_alloc();
-                        let pos_inh = pos.to_inherited_block(&mut self.context.pos_table);
+                        let pos_inh = pos.to_inherited(&mut self.context.pos_table);
 
                         let ts = ts
                             .into_iter()
@@ -1161,14 +1099,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .collect::<Array>();
 
                         let terms = ts.clone().into_iter();
-                        let cont = NickelValue::array_force_pos(
-                            &mut self.context.pos_table,
-                            ts,
-                            Vec::new(),
-                            pos_inh,
-                        );
+                        let cont = NickelValue::array(ts, Vec::new(), pos_inh);
 
-                        Ok(seq_terms(&mut self.context.pos_table, terms, pos_op, cont).into())
+                        Ok(seq_terms(terms, pos_op, cont).into())
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
@@ -1187,16 +1120,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let cont = NickelValue::enum_variant(
                                 tag,
                                 Some(arg.clone()),
-                                pos.to_inherited_block(&mut self.context.pos_table),
+                                pos.to_inherited(&mut self.context.pos_table),
                             );
 
                             Ok(Closure {
-                                value: seq_terms(
-                                    &mut self.context.pos_table,
-                                    std::iter::once(arg),
-                                    pos_op,
-                                    cont,
-                                ),
+                                value: seq_terms(std::iter::once(arg), pos_op, cont),
                                 env,
                             })
                         } else {
@@ -1224,8 +1152,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 result.sealed_tail = record.sealed_tail;
 
                 Ok(Closure {
-                    // unwrap(): will go away soon
-                    value: NickelValue::record(result, pos_op_inh).unwrap(),
+                    value: NickelValue::record(result, pos_op_inh),
                     env,
                 })
             }
@@ -1294,8 +1221,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let attrs = record.attrs.frozen();
 
                         Ok(Closure {
-                            value: NickelValue::record_force_pos(
-                                &mut self.context.pos_table,
+                            value: NickelValue::record(
                                 RecordData {
                                     fields,
                                     attrs,
@@ -1402,7 +1328,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 value
                     .as_enum_variant()
                     .map_or(false, |enum_variant| enum_variant.arg.is_some()),
-                self.context.pos_table.make_inline(pos_op_inh),
+                pos_op_inh,
             )
             .into()),
             UnaryOp::PatternBranch => {
@@ -1593,11 +1519,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
             })?;
 
-            Ok(NickelValue::number(
-                result,
-                pos_op.to_inherited_block(&mut self.context.pos_table),
+            Ok(
+                NickelValue::number(result, pos_op.to_inherited(&mut self.context.pos_table))
+                    .into(),
             )
-            .into())
         } else {
             Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
@@ -1635,7 +1560,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let pos1 = value1.pos_idx();
         let pos2 = value2.pos_idx();
-        let pos_op_inh = pos_op.to_inherited_block(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $arg_evaled:expr) => {
@@ -1978,7 +1903,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.stack.push_op_cont(
                         OperationCont::Op1(
                             UnaryOp::ContractPostprocessResult,
-                            pos1.to_inherited_block(&mut self.context.pos_table),
+                            pos1.to_inherited(&mut self.context.pos_table),
                         ),
                         self.call_stack.len(),
                         pos_op_inh,
@@ -1997,7 +1922,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.stack.push_op_cont(
                         OperationCont::Op1(
                             UnaryOp::ContractAttachDefaultLabel,
-                            pos1.to_inherited_block(&mut self.context.pos_table),
+                            pos1.to_inherited(&mut self.context.pos_table),
                         ),
                         self.call_stack.len(),
                         pos_op_inh,
@@ -2012,7 +1937,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 self.stack.push_tracked_arg(idx, stack_value_pos);
                 self.stack.push_arg(
                     new_label.into(),
-                    pos2.to_inherited_block(&mut self.context.pos_table),
+                    pos2.to_inherited(&mut self.context.pos_table),
                 );
 
                 // We convert the contract (which can be a custom contract, a record, a naked
@@ -2188,17 +2113,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
-                            Ok(NickelValue::bool_value(
-                                false,
-                                self.context.pos_table.make_inline(pos_op_inh),
-                            )
-                            .into())
+                            Ok(NickelValue::bool_value(false, pos_op_inh).into())
                         }
-                        (true, None) => Ok(NickelValue::bool_value(
-                            true,
-                            self.context.pos_table.make_inline(pos_op_inh),
-                        )
-                        .into()),
+                        (true, None) => Ok(NickelValue::bool_value(true, pos_op_inh).into()),
                         (true, Some((c1, c2))) => {
                             let v1 = c1.value.closurize(&mut self.context.cache, c1.env);
                             let v2 = c2.value.closurize(&mut self.context.cache, c2.env);
@@ -2486,7 +2403,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             container.get_field(id.clone().into()),
                             Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
-                    self.context.pos_table.make_inline(pos_op_inh)
+                    pos_op_inh
                 ).into())
             }
             BinaryOp::RecordFieldIsDefined(op_kind) => {
@@ -2503,7 +2420,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             container.get_field(id.clone().into()),
                             Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
-                        self.context.pos_table.make_inline(pos_op_inh),
+                        pos_op_inh,
                 ).into())
             }
             BinaryOp::ArrayConcat => {
@@ -2543,9 +2460,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .cloned()
                             .collect();
 
-                        Ok(NickelValue::array(result, vec![ctr1.clone()], pos_op_inh)
-                            .unwrap()
-                            .into())
+                        Ok(NickelValue::array(result, vec![ctr1.clone()], pos_op_inh).into())
                     }
                     _ => {
                         // We need to collect in two phases, since the mapped closures capture
@@ -2572,9 +2487,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .closurize(&mut self.context.cache, env2.clone())
                         }));
 
-                        Ok(NickelValue::array(result, Vec::new(), pos_op_inh)
-                            .unwrap()
-                            .into())
+                        Ok(NickelValue::array(result, Vec::new(), pos_op_inh).into())
                     }
                 }
             }
@@ -2622,7 +2535,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let elem_with_ctr = RuntimeContract::apply_all(
                     array_data.array.get(n_as_usize).unwrap().clone(),
                     array_data.pending_contracts.iter().cloned(),
-                    pos1.to_inherited_block(&mut self.context.pos_table),
+                    pos1.to_inherited(&mut self.context.pos_table),
                 );
 
                 Ok(Closure {
@@ -2770,31 +2683,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     _ => return mk_err_fst(),
                 };
 
-                Ok(deser
-                    .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                    .into())
+                Ok(deser.with_pos_idx(pos_op_inh).into())
             }
             BinaryOp::StringSplit => self.binary_string_fn(
-                |input, sep| {
-                    //unwrap(): will go away soon
-                    NickelValue::array(input.split(sep), Vec::new(), pos_op_inh).unwrap()
-                },
+                |input, sep| NickelValue::array(input.split(sep), Vec::new(), pos_op_inh),
                 value1,
                 value2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
-            BinaryOp::StringContains => {
-                let pos_op_inline = self.context.pos_table.make_inline(pos_op_inh);
-
-                self.binary_string_fn(
-                    |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inline),
-                    value1,
-                    value2,
-                    pos_op_inh,
-                    b_op.to_string(),
-                )
-            }
+            BinaryOp::StringContains => self.binary_string_fn(
+                |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inh),
+                value1,
+                value2,
+                pos_op_inh,
+                b_op.to_string(),
+            ),
             BinaryOp::StringCompare => {
                 let as_term_pos = self.context.pos_table.get(pos_op_inh);
 
@@ -2892,9 +2796,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let Container::Alloc(RecordBody(mut record_data)) = container else {
-                    return Ok(NickelValue::empty_record()
-                        .with_pos_idx(&mut self.context.pos_table, pos2)
-                        .into());
+                    return Ok(NickelValue::empty_record().with_pos_idx(pos2).into());
                 };
 
                 // Applying a lazy contract unfreezes a record, as frozen record are
@@ -2906,9 +2808,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let pos = ctr_val.pos_idx();
                     mk_app!(
                         ctr_val.clone(),
-                        NickelValue::string(id, self.context.pos_table.push_block(id.pos))
+                        NickelValue::string(id, self.context.pos_table.push(id.pos))
                     )
-                    .with_pos_idx(&mut self.context.pos_table, pos)
+                    .with_pos_idx(pos)
                     .closurize(&mut self.context.cache, ctr_env.clone())
                 };
 
@@ -3007,7 +2909,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 Ok(
                     NickelValue::from(label.type_environment.get(&key.0).unwrap())
-                        .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
+                        .with_pos_idx(pos_op_inh)
                         .into(),
                 )
             }
@@ -3061,8 +2963,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     attrs: RecordAttrs::default(),
                 });
 
-                Ok(NickelValue::record_force_pos(
-                    &mut self.context.pos_table,
+                Ok(NickelValue::record(
                     RecordData {
                         fields: IndexMap::from([
                             (
@@ -3105,13 +3006,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ) => (record1, record2),
                     (Container::Empty, _) => {
                         return Ok(Closure {
-                            value: value2.with_pos_idx(&mut self.context.pos_table, pos_op_inh),
+                            value: value2.with_pos_idx(pos_op_inh),
                             env: env2,
                         });
                     }
                     (_, Container::Empty) => {
                         return Ok(Closure {
-                            value: value1.with_pos_idx(&mut self.context.pos_table, pos_op_inh),
+                            value: value1.with_pos_idx(pos_op_inh),
                             env: env1,
                         });
                     }
@@ -3145,9 +3046,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 record1.attrs = Combine::combine(record1.attrs, record2.attrs);
                 record1.sealed_tail = sealed_tail;
 
-                Ok(value1
-                    .with_pos_idx(&mut self.context.pos_table, pos_op_inh)
-                    .into())
+                Ok(value1.with_pos_idx(pos_op_inh).into())
             }
         }
     }
@@ -3165,7 +3064,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     where
         Op: Fn(&Number, &Number) -> bool,
     {
-        let pos_op_inh = pos_op.to_inherited_inline(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         self.binary_number_fn(
             |n1, n2| NickelValue::bool_value(op(n1, n2), pos_op_inh),
@@ -3191,7 +3090,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     where
         Op: Fn(&Number, &Number) -> Number,
     {
-        let pos_op_inh = pos_op.to_inherited_block(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         self.binary_number_fn(
             |n1, n2| NickelValue::number(op(n1, n2), pos_op_inh),
@@ -3293,7 +3192,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{n_op}"));
 
-        let pos_op_inh = pos_op.to_inherited_block(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         let mk_type_error =
             |expected: &str, arg_number: usize, pos_arg: PosIdx, arg_evaluated: NickelValue| {
@@ -3588,10 +3487,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .insert(*key, TypeVarData { polarity });
 
                 Ok(arg3
-                    .try_with_pos_idx(arg_pos3.to_inherited_block(&mut self.context.pos_table))
-                    // unwrap(): arg3 is a label, which is a value block, so `try_with_pos_idx`
-                    // cannot fail
-                    .unwrap()
+                    .with_pos_idx(arg_pos3.to_inherited(&mut self.context.pos_table))
                     .into())
             }
             NAryOp::ArraySlice => {
@@ -3679,7 +3575,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 array.slice(start_as_usize, end_as_usize);
 
                 Ok(Closure {
-                    value: arg3.with_pos_idx(&mut self.context.pos_table, pos_op_inh),
+                    value: arg3.with_pos_idx(pos_op_inh),
                     env: env3,
                 })
             }
@@ -3949,7 +3845,7 @@ fn eq<C: Cache>(
                 .iter()
                 .cloned()
                 .map(|elt| {
-                    let pos = elt.pos_idx().to_inherited_block(pos_table);
+                    let pos = elt.pos_idx().to_inherited(pos_table);
                     RuntimeContract::apply_all(
                         elt,
                         array_data1.pending_contracts.iter().cloned(),
@@ -3960,7 +3856,7 @@ fn eq<C: Cache>(
                 .collect::<Vec<_>>()
                 .into_iter()
                 .zip(array_data2.array.iter().cloned().map(|elt| {
-                    let pos = elt.pos_idx().to_inherited_block(pos_table);
+                    let pos = elt.pos_idx().to_inherited(pos_table);
                     RuntimeContract::apply_all(
                         elt,
                         array_data2.pending_contracts.iter().cloned(),

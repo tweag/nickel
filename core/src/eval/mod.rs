@@ -468,7 +468,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .and_then(|record| record.0.fields.get(id))
                         .cloned()
                     else {
-                        let pos_op = self.context.pos_table.push_block(id.pos);
+                        let pos_op = self.context.pos_table.push(id.pos);
 
                         return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
@@ -918,18 +918,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 })
                                 .collect();
 
-                            NickelValue::array_force_pos(
-                                &mut self.context.pos_table,
-                                array,
-                                pending_contracts,
-                                pos_idx,
-                            )
+                            NickelValue::array(array, pending_contracts, pos_idx)
                         }
                         ValueContent::Record(lens) if lens.peek().is_empty_record() => {
                             lens.restore()
                         }
-                        ValueContent::Record(lens) => NickelValue::record_force_pos(
-                            &mut self.context.pos_table,
+                        ValueContent::Record(lens) => NickelValue::record(
                             // unwrap(): we treated the empty record case already
                             lens.take()
                                 .into_opt()
@@ -976,7 +970,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 let field = Field {
                                     value: Some(NickelValue::thunk(
                                         self.get_var(incl.ident, &env, PosIdx::NONE)?,
-                                        self.context.pos_table.push_block(incl.ident.pos),
+                                        self.context.pos_table.push(incl.ident.pos),
                                     )),
                                     metadata: incl.metadata.clone(),
                                     pending_contracts: Vec::new(),
@@ -1040,11 +1034,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
                     let extended = dyn_fields.into_iter().fold(
-                        NickelValue::record_force_pos(
-                            &mut self.context.pos_table,
-                            static_part,
-                            pos_idx,
-                        ),
+                        NickelValue::record(static_part, pos_idx),
                         |acc, (name_as_term, mut field)| {
                             let pos_idx = field
                                 .value
@@ -1075,16 +1065,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             match value {
                                 Some(value) => NickelValue::term(
                                     Term::App(extend, value),
-                                    pos_idx.to_inherited_block(&mut self.context.pos_table),
+                                    pos_idx.to_inherited(&mut self.context.pos_table),
                                 ),
                                 None => extend,
                             }
                         },
                     );
 
-                    extended
-                        .with_pos_idx(&mut self.context.pos_table, pos_idx)
-                        .into()
+                    extended.with_pos_idx(pos_idx).into()
                 }
                 ValueContentRef::Term(TermBody(Term::ResolvedImport(id))) => {
                     increment!(format!("import:{id:?}"));
@@ -1525,20 +1513,18 @@ pub fn subst<C: Cache>(
         }
         ValueContent::Record(lens) => {
             let Container::Alloc(RecordBody(record)) = lens.take() else {
-                //unwrap(): will go away soon
-                return NickelValue::empty_record().try_with_pos_idx(pos_idx).unwrap();
+                return NickelValue::empty_record().with_pos_idx(pos_idx);
             };
 
             let record = record.map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
             //unwrap(): we didn't change the size of the record, so whether it was inline or not,
             //its position index should be of the according type
-            NickelValue::record(record, pos_idx).unwrap()
+            NickelValue::record(record, pos_idx)
         }
         ValueContent::Array(lens) => {
             let Container::Alloc(array_data) = lens.take() else {
-                //unwrap(): will go away soon
-                return NickelValue::empty_array().try_with_pos_idx(pos_idx).unwrap();
+                return NickelValue::empty_array().with_pos_idx(pos_idx);
             };
 
             let array = array_data.array.into_iter()
@@ -1546,10 +1532,7 @@ pub fn subst<C: Cache>(
                 .map(|t| subst(pos_table, cache, t, initial_env, env))
                 .collect();
 
-            // unwrap(): we neither changed the emptyness or the position index of the array, so
-            // they should match. Also, this whole pos_idx juggling will be removed soon, together
-            // with this comment, anyway.
-            NickelValue::array(array, array_data.pending_contracts, pos_idx).unwrap()
+            NickelValue::array(array, array_data.pending_contracts, pos_idx)
         }
         ValueContent::EnumVariant(lens) => {
             let EnumVariantBody { tag, arg } = lens.take();

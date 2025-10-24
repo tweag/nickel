@@ -64,7 +64,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
             // unwrap(): substituting wildcards doesn't change the structure of the record, so if
             // it was empty, `pos_idx` must be an inline position index. It if wasn't empty, the
             // new record is also non-empty.
-            NickelValue::record(record_data.subst_wildcards(wildcards), pos_idx).unwrap()
+            NickelValue::record(record_data.subst_wildcards(wildcards), pos_idx)
         }
         lens => lens.restore(),
     }

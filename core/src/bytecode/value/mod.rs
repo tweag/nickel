@@ -12,7 +12,7 @@ use crate::{
     identifier::LocIdent,
     impl_display_from_pretty,
     label::Label,
-    position::{InlinePosIdx, PosIdx, PosTable, RawSpan, TermPos},
+    position::{PosIdx, PosTable, RawSpan, TermPos},
     term::{
         ForeignIdPayload, Number, RecordOpKind, RuntimeContract, SealingKey, Term,
         record::{Field, RecordData},
@@ -53,7 +53,7 @@ pub struct NickelValue {
     // On 64-bits pointer-width archs, we can fit everything into one word. Otherwise, we stay safe
     // and use a separate field for the position index of inline values.
     #[cfg(not(target_pointer_width = "64"))]
-    inline_pos_idx: InlinePosIdx,
+    pos_idx: PosIdx,
 }
 
 // PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
@@ -149,7 +149,7 @@ impl NickelValue {
 
     /// Returns `self` with the inline position index set to `idx` if `self` is an inline value, or
     /// returns `self` unchanged otherwise.
-    pub fn with_inline_pos_idx(mut self, idx: InlinePosIdx) -> Self {
+    fn with_inline_pos_idx(mut self, idx: PosIdx) -> Self {
         if self.tag() == ValueTag::Inline {
             self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | (usize::from(idx) << 32);
         }
@@ -157,14 +157,13 @@ impl NickelValue {
     }
 
     /// Returns the position index of `self` if it is an inline value, or `None` otherwise.
-    pub fn inline_pos_idx(&self) -> Option<InlinePosIdx> {
-        (self.tag() == ValueTag::Inline).then(|| {
-            InlinePosIdx::from_usize_truncate((self.data & Self::INLINE_POS_IDX_MASK) >> 32)
-        })
+    fn inline_pos_idx(&self) -> Option<PosIdx> {
+        (self.tag() == ValueTag::Inline)
+            .then(|| PosIdx::from_usize_truncate((self.data & Self::INLINE_POS_IDX_MASK) >> 32))
     }
 
     /// Creates a new inline value with an associated position index.
-    pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
+    pub const fn inline(inline: InlineValue, idx: PosIdx) -> Self {
         NickelValue {
             data: inline as usize | (idx.to_usize() << 32),
         }
@@ -220,27 +219,27 @@ impl NickelValue {
 impl NickelValue {
     /// Returns `self` with the position index set to `idx` if `self` is an inline value, or
     /// returns `self` unchanged otherwise.
-    pub fn with_inline_pos_idx(mut self, idx: InlinePosIdx) -> Self {
+    fn with_inline_pos_idx(mut self, idx: PosIdx) -> Self {
         // Although the inline position index is just dead data for value blocks on non-64 bits
         // architecture, we unconditionally update it to avoid branching
-        self.inline_pos_idx = idx;
+        self.pos_idx = idx;
         self
     }
 
     /// Returns the inline position index of `self` if it's an inline value, or `None` otherwise.
-    pub fn inline_pos_idx(&self) -> Option<InlinePosIdx> {
+    fn inline_pos_idx(&self) -> Option<PosIdx> {
         if self.tag() == ValueTag::Inline {
-            Some(self.inline_pos_idx)
+            Some(self.pos_idx)
         } else {
             None
         }
     }
 
     /// Creates a new inline value.
-    pub const fn inline(inline: InlineValue, idx: InlinePosIdx) -> Self {
+    pub const fn inline(inline: InlineValue, pos_idx: PosIdx) -> Self {
         NickelValue {
             data: inline as usize,
-            inline_pos_idx: idx,
+            pos_idx,
         }
     }
 
@@ -268,7 +267,7 @@ impl NickelValue {
     unsafe fn raw_copy(other: &Self) -> Self {
         NickelValue {
             data: other.data,
-            inline_pos_idx: other.inline_pos_idx,
+            pos_idx: other.pos_idx,
         }
     }
 
@@ -285,7 +284,7 @@ impl NickelValue {
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
-            inline_pos_idx: InlinePosIdx::NONE,
+            pos_idx: InlinePosIdx::NONE,
         }
     }
 }
@@ -302,7 +301,7 @@ impl NickelValue {
     /// Creates a new inline value without an associated position index. Same as
     /// `Self::inline(inline, InlinePosIdx::NONE)`.
     pub const fn inline_posless(inline: InlineValue) -> Self {
-        Self::inline(inline, InlinePosIdx::NONE)
+        Self::inline(inline, PosIdx::NONE)
     }
 
     /// Creates a new null value with the index set to [InlinePosIdx::NONE].
@@ -321,7 +320,7 @@ impl NickelValue {
     }
 
     /// Creates a new boolean value.
-    pub fn bool_value(value: bool, pos_idx: InlinePosIdx) -> Self {
+    pub fn bool_value(value: bool, pos_idx: PosIdx) -> Self {
         if value {
             Self::inline(InlineValue::True, pos_idx)
         } else {
@@ -331,7 +330,7 @@ impl NickelValue {
 
     /// Creates a new boolean value with the index set to [InlinePosIdx::NONE].
     pub fn bool_value_posless(value: bool) -> Self {
-        Self::bool_value(value, InlinePosIdx::NONE)
+        Self::bool_value(value, PosIdx::NONE)
     }
 
     /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
@@ -368,21 +367,10 @@ impl NickelValue {
 
     /// Allocates a new array value. If the array is empty, it is automatically inlined as
     /// [InlineValue::EmptyArray].
-    ///
-    /// Returns `None` if `value` is an empty array but `pos_idx` isn't a valid inline value index,
-    /// that is if `value.is_empty()` and `InlinePosIdx::try_from(pos_idx)` is `Err`.
-    pub fn array(
-        value: Array,
-        pending_contracts: Vec<RuntimeContract>,
-        pos_idx: PosIdx,
-    ) -> Option<Self> {
+    pub fn array(value: Array, pending_contracts: Vec<RuntimeContract>, pos_idx: PosIdx) -> Self {
         if value.is_empty() {
-            Some(Self::inline(
-                InlineValue::EmptyArray,
-                pos_idx.try_into().ok()?,
-            ))
+            Self::inline(InlineValue::EmptyArray, pos_idx)
         } else {
-            Some(
                 ValueBlockRc::encode(
                     ArrayBody {
                         array: value,
@@ -390,39 +378,7 @@ impl NickelValue {
                     },
                     pos_idx,
                 )
-                .into(),
-            )
-        }
-    }
-
-    /// Allocates a new array value. If the array is empty, it is automatically inlined as
-    /// [InlineValue::EmptyArray].
-    ///
-    /// As opposed to [Self::array], if `value` is an empty array but `pos_idx` isn't a valid
-    /// inline value, a new inline position index is allocated in the table automatically, making
-    /// this method always succeed.
-    pub fn array_force_pos(
-        pos_table: &mut PosTable,
-        value: Array,
-        pending_contracts: Vec<RuntimeContract>,
-        pos_idx: PosIdx,
-    ) -> Self {
-        if value.is_empty() {
-            Self::inline(
-                InlineValue::EmptyArray,
-                pos_idx
-                    .try_into()
-                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
-            )
-        } else {
-            ValueBlockRc::encode(
-                ArrayBody {
-                    array: value,
-                    pending_contracts,
-                },
-                pos_idx,
-            )
-            .into()
+                .into()
         }
     }
 
@@ -430,7 +386,7 @@ impl NickelValue {
     /// automatically inlined as [InlineValue::EmptyArray].
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
         if value.is_empty() {
-            Self::inline(InlineValue::EmptyArray, InlinePosIdx::NONE)
+            Self::inline(InlineValue::EmptyArray, PosIdx::NONE)
         } else {
             ValueBlockRc::encode(
                 ArrayBody {
@@ -443,9 +399,9 @@ impl NickelValue {
         }
     }
 
-    /// Creates a new empty array, but don't inline it. This forces the allocation of a value
-    /// block. [Self::empty_array] can be useful when one needs to have a pre-allocated array that
-    /// will be mutated in a second step.
+    /// Creates a new empty array, but doesn't inline it. This forces the allocation of a value
+    /// block. [Self::empty_array_block] can be useful when one needs to have a pre-allocated array
+    /// that will be mutated in a second step.
     pub fn empty_array_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(
             ArrayBody {
@@ -459,37 +415,11 @@ impl NickelValue {
 
     /// Allocates a new record value. If the record is empty, it is automatically inlined as
     /// [InlineValue::EmptyRecord].
-    ///
-    /// Returns `None` if `value` is an empty record but it can't be inlined because `pos_idx`
-    /// isn't a valid inline value index, that is if `value.is_empty()` and
-    /// `InlinePosIdx::try_from(pos_idx)` is `Err`.
-    pub fn record(value: RecordData, pos_idx: PosIdx) -> Option<Self> {
+    pub fn record(value: RecordData, pos_idx: PosIdx) -> Self {
         // We need to exclude empty open records here, because we would otherwise lose this bit of
         // information: an inline empty record is assumed to be closed.
         if value.is_empty() && !value.attrs.open {
-            Some(Self::inline(
-                InlineValue::EmptyRecord,
-                pos_idx.try_into().ok()?,
-            ))
-        } else {
-            Some(ValueBlockRc::encode(RecordBody(value), pos_idx).into())
-        }
-    }
-
-    /// Allocates a new record value. If the record is empty, it is automatically inlined as
-    /// [InlineValue::EmptyArray].
-    ///
-    /// As opposed to [Self::record], if `value` is an empty record but `pos_idx` isn't a valid
-    /// inline value index, a new inline position index is allocated in the table automatically, making
-    /// this method always succeed.
-    pub fn record_force_pos(pos_table: &mut PosTable, value: RecordData, pos_idx: PosIdx) -> Self {
-        if value.is_empty() {
-            Self::inline(
-                InlineValue::EmptyRecord,
-                pos_idx
-                    .try_into()
-                    .unwrap_or_else(|_| pos_table.push_inline(pos_table.get(pos_idx))),
-            )
+            Self::inline(InlineValue::EmptyRecord, pos_idx)
         } else {
             ValueBlockRc::encode(RecordBody(value), pos_idx).into()
         }
@@ -505,9 +435,9 @@ impl NickelValue {
         }
     }
 
-    /// Creates a new empty record, but don't inline it. This forces the allocation of a value
-    /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record that
-    /// will be mutated in a second step.
+    /// Creates a new empty record, but doesn't inline it. This forces the allocation of a value
+    /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record
+    /// that will be mutated in a second step.
     pub fn empty_record_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(RecordBody(RecordData::empty()), pos_idx).into()
     }
@@ -1246,44 +1176,16 @@ impl NickelValue {
         }
     }
 
-    /// Returns `self` with the position index set to `idx` if `self` is a block value (with the
-    /// same behavior as [Self::with_pos_idx] if the block is shared), or returns `self` unchanged
-    /// otherwise. Can be useful to avoid `self.try_with_pos_idx(pos_idx).unwrap()` or the need to
-    /// pass the position table to [Self::with_pos_idx] when one knows that `self` is not an inline
-    /// value, and thus that [Self::try_with_pos_idx] can't fail.
-    pub fn with_block_pos_idx(self, pos_idx: PosIdx) -> Self {
-        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| this)
-    }
-
-    /// Updates the position index of this value. As opposed to [Self::try_with_pos_idx], if `self`
-    /// is an inline value and `pos_idx` can't be converted to an inline index, a new inline index
-    /// is allocated in the position table to make it work.
-    pub fn with_pos_idx(self, pos_table: &mut PosTable, pos_idx: impl Into<PosIdx>) -> Self {
-        let pos_idx = pos_idx.into();
-
-        self.try_with_pos_idx(pos_idx).unwrap_or_else(|this| {
-            this.with_inline_pos_idx(pos_table.push_inline(pos_table.get(pos_idx)))
-        })
-    }
-
     /// Updates the position of this value. First allocates a position index of the proper type
     /// (inline or not) in the position table, and then use it as the new index.
     pub fn with_pos(self, pos_table: &mut PosTable, pos: TermPos) -> Self {
-        let pos_idx = if self.is_inline() {
-            pos_table.push_inline(pos).into()
-        } else {
-            pos_table.push_block(pos)
-        };
-
-        // unwrap(): we allocated `pos_idx` to be of the right type for `self`
-        self.try_with_pos_idx(pos_idx).unwrap()
+        self.with_pos_idx(pos_table.push(pos))
     }
 
-    /// Tries to update the position index of this value. If the value is a shared block (the ref
+    /// Updates the position index of this value. If the value is a shared block (the ref
     /// count is greater than one), the result will be a new copy of the original value with the
-    /// position set. This method fails if `self` is an inline value but `pos_idx` is too large and
-    /// can't be converted to a [InlinePosIdx].
-    pub fn try_with_pos_idx(self, pos_idx: impl Into<PosIdx>) -> Result<Self, Self> {
+    /// position set.
+    pub fn with_pos_idx(self, pos_idx: PosIdx) -> Self {
         match self.tag() {
             ValueTag::Pointer => {
                 // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
@@ -1291,19 +1193,11 @@ impl NickelValue {
                 let unique = block.make_unique();
                 // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
                 // access (ownership) of the block.
-                unsafe { (*unique.header_mut()).pos_idx = pos_idx.into() }
-                Ok(unique.into())
+                unsafe { (*unique.header_mut()).pos_idx = pos_idx }
+                unique.into()
             }
             // Safety: the tag is checked to be `Inline`
-            ValueTag::Inline => {
-                // See [^irrefutable-let-patterns-32bits]
-                #[allow(irrefutable_let_patterns)]
-                if let Ok(inline_pos_idx) = InlinePosIdx::try_from(pos_idx.into()) {
-                    Ok(self.with_inline_pos_idx(inline_pos_idx))
-                } else {
-                    Err(self)
-                }
-            }
+            ValueTag::Inline => self.with_inline_pos_idx(pos_idx),
         }
     }
 
@@ -1344,7 +1238,7 @@ impl NickelValue {
         .traverse(
             &mut |val: NickelValue| {
                 //unwrap(): will go away soon
-                Ok::<_, Infallible>(val.try_with_pos_idx(PosIdx::NONE).unwrap())
+                Ok::<_, Infallible>(val.with_pos_idx(PosIdx::NONE))
             },
             TraverseOrder::BottomUp,
         )
@@ -2560,40 +2454,40 @@ mod tests {
         assert!(
             inline_null
                 .clone()
-                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
-                    &NickelValue::null().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                    &NickelValue::null().with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
         assert!(
             inline_true
-                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
-                    &NickelValue::bool_true().with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                    &NickelValue::bool_true().with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
         assert!(
             inline_false
-                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
                     &NickelValue::bool_false()
-                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                        .with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
         assert!(
             inline_empty_array
-                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
                     &NickelValue::empty_array()
-                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                        .with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
         assert!(
             inline_empty_record
-                .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
                     &NickelValue::empty_record()
-                        .with_inline_pos_idx(pos_table.push_inline(dummy_pos))
+                        .with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
 

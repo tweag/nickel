@@ -651,8 +651,7 @@ fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
                 Ok(match value.content() {
                     ValueContent::Term(TermContent::RecRecord(lens)) => {
                         let (record, _, _, _, _) = lens.take();
-                        // unwrap(): will go away soon
-                        NickelValue::record(record, pos_idx).unwrap()
+                        NickelValue::record(record, pos_idx)
                     }
                     lens => lens.restore(),
                 })

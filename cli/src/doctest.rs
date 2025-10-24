@@ -495,8 +495,7 @@ fn doctest_transform(
                 pos,
             )
         } else {
-            // unwrap(): will go away soon
-            NickelValue::record(record_data, pos).unwrap()
+            NickelValue::record(record_data, pos)
         };
 
         Ok(value)

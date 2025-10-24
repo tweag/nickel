@@ -865,7 +865,7 @@ impl<'ast> FromAst<Pattern<'ast>> for term::pattern::Pattern {
         term::pattern::Pattern {
             data: pattern.data.to_mainline(pos_table),
             alias: pattern.alias,
-            pos: pos_table.push_block(pattern.pos),
+            pos: pos_table.push(pattern.pos),
         }
     }
 }
@@ -901,7 +901,7 @@ impl<'ast> FromAst<RecordPattern<'ast>> for term::pattern::PatternData {
         term::pattern::PatternData::Record(term::pattern::RecordPattern {
             patterns,
             tail,
-            pos: pos_table.push_block(record_pat.pos),
+            pos: pos_table.push(record_pat.pos),
         })
     }
 }
@@ -920,7 +920,7 @@ impl<'ast> FromAst<FieldPattern<'ast>> for term::pattern::FieldPattern {
             annotation,
             default,
             pattern,
-            pos: pos_table.push_block(field_pat.pos),
+            pos: pos_table.push(field_pat.pos),
         }
     }
 }
@@ -942,7 +942,7 @@ impl<'ast> FromAst<ArrayPattern<'ast>> for term::pattern::PatternData {
         term::pattern::PatternData::Array(term::pattern::ArrayPattern {
             patterns,
             tail,
-            pos: pos_table.push_block(array_pat.pos),
+            pos: pos_table.push(array_pat.pos),
         })
     }
 }
@@ -957,7 +957,7 @@ impl<'ast> FromAst<EnumPattern<'ast>> for term::pattern::PatternData {
         term::pattern::PatternData::Enum(term::pattern::EnumPattern {
             tag: enum_pat.tag,
             pattern,
-            pos: pos_table.push_block(enum_pat.pos),
+            pos: pos_table.push(enum_pat.pos),
         })
     }
 }
@@ -973,7 +973,7 @@ impl<'ast> FromAst<ConstantPattern<'ast>> for term::pattern::PatternData {
 
         term::pattern::PatternData::Constant(term::pattern::ConstantPattern {
             data,
-            pos: pos_table.push_block(pattern.pos),
+            pos: pos_table.push(pattern.pos),
         })
     }
 }
@@ -988,7 +988,7 @@ impl<'ast> FromAst<OrPattern<'ast>> for term::pattern::PatternData {
 
         term::pattern::PatternData::Or(term::pattern::OrPattern {
             patterns,
-            pos: pos_table.push_block(pattern.pos),
+            pos: pos_table.push(pattern.pos),
         })
     }
 }
@@ -1070,8 +1070,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                 FieldPathElem::Ident(id) => {
                     let mut fields = IndexMap::new();
                     fields.insert(*id, acc);
-                    let pos_idx = pos_table.push_block(pos);
-                    // unwrap(): will go away soon
+                    let pos_idx = pos_table.push(pos);
                     term::record::Field::from(
                         // See [^closurize-insertion]
                         closurize(
@@ -1081,8 +1080,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                                     ..Default::default()
                                 },
                                 pos_idx,
-                            )
-                            .unwrap(),
+                            ),
                         ),
                     )
                 }
@@ -1106,9 +1104,8 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                                         fields,
                                         ..Default::default()
                                     },
-                                    pos_table.push_block(pos),
-                                )
-                                .unwrap(),
+                                    pos_table.push(pos),
+                                ),
                             ),
                         )
                     } else {
@@ -1124,7 +1121,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                                 None,
                                 false,
                             ),
-                            pos_table.push_block(pos),
+                            pos_table.push(pos),
                         ))
                     }
                 }
@@ -1427,10 +1424,10 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
         use term::Term;
 
         let mut result = match &ast.node {
-            Node::Null => NickelValue::null().with_inline_pos_idx(pos_table.push_inline(ast.pos)),
-            Node::Bool(b) => NickelValue::bool_value(*b, pos_table.push_inline(ast.pos)),
-            Node::Number(n) => NickelValue::number((**n).clone(), pos_table.push_block(ast.pos)),
-            Node::String(s) => NickelValue::string(*s, pos_table.push_block(ast.pos)),
+            Node::Null => NickelValue::null().with_pos_idx(pos_table.push(ast.pos)),
+            Node::Bool(b) => NickelValue::bool_value(*b, pos_table.push(ast.pos)),
+            Node::Number(n) => NickelValue::number((**n).clone(), pos_table.push(ast.pos)),
+            Node::String(s) => NickelValue::string(*s, pos_table.push(ast.pos)),
             Node::StringChunks(chunks) => {
                 let chunks = chunks
                     .iter()
@@ -1443,7 +1440,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     })
                     .collect();
 
-                NickelValue::term(Term::StrChunks(chunks), pos_table.push_block(ast.pos))
+                NickelValue::term(Term::StrChunks(chunks), pos_table.push(ast.pos))
             }
             Node::Fun { args, body } => {
                 let body_pos = body.pos;
@@ -1465,11 +1462,9 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         // What we do here is to fuse the span of the term being built and the one
                         // of the current argument, which should be a reasonable approximation (if
                         // not exactly the same thing).
-                        NickelValue::term(term, pos_table.push_block(arg.pos.fuse(body_pos)))
+                        NickelValue::term(term, pos_table.push(arg.pos.fuse(body_pos)))
                     })
-                    //unwrap(): will go away soon
-                    .try_with_pos_idx(pos_table.push_block(ast.pos))
-                    .unwrap()
+                    .with_pos_idx(pos_table.push(ast.pos))
             }
             Node::Let {
                 bindings,
@@ -1493,7 +1488,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
 
                     NickelValue::term(
                         term::Term::Annotated(metadata.annotation.to_mainline(pos_table), value),
-                        pos_table.push_block(pos),
+                        pos_table.push(pos),
                     )
                 }
 
@@ -1543,7 +1538,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     Term::LetPattern(bindings, body, attrs)
                 };
 
-                NickelValue::term(term, pos_table.push_block(ast.pos))
+                NickelValue::term(term, pos_table.push(ast.pos))
             }
             Node::App { head, args } => {
                 let head_pos = head.pos;
@@ -1556,17 +1551,17 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         let arg_pos = arg.pos;
                         NickelValue::term(
                             Term::App(result, arg.to_mainline(pos_table)),
-                            pos_table.push_block(head_pos.fuse(arg_pos)),
+                            pos_table.push(head_pos.fuse(arg_pos)),
                         )
                     })
             }
             Node::Var(loc_ident) => {
-                NickelValue::term(Term::Var(*loc_ident), pos_table.push_block(ast.pos))
+                NickelValue::term(Term::Var(*loc_ident), pos_table.push(ast.pos))
             }
             Node::EnumVariant { tag, arg } => NickelValue::enum_variant(
                 *tag,
                 arg.map(|arg| arg.to_mainline(pos_table)),
-                pos_table.push_block(ast.pos),
+                pos_table.push(ast.pos),
             ),
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline(pos_table);
@@ -1582,7 +1577,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         None,
                         false,
                     ),
-                    pos_table.push_block(ast.pos),
+                    pos_table.push(ast.pos),
                 )
             }
             Node::IfThenElse {
@@ -1603,19 +1598,18 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
 
                 NickelValue::term(
                     Term::Match(term::MatchData { branches }),
-                    pos_table.push_block(ast.pos),
+                    pos_table.push(ast.pos),
                 )
             }
             Node::Array(array) => {
-                let pos_idx = pos_table.push_block(ast.pos);
+                let pos_idx = pos_table.push(ast.pos);
                 let array = array.iter().map(|elt| elt.to_mainline(pos_table)).collect();
 
                 // [^closurize-insertion]: When converting from the AST, we need to generate
                 // well-formed values. In particular, containers (arrays and non-recursive records)
                 // must be closurized the first time they are evaluated. So instead of being
                 // translated as arrays directly, we wrap them using the `Closurize` operation.
-                closurize(NickelValue::array_force_pos(
-                    pos_table,
+                closurize(NickelValue::array(
                     array,
                     Vec::new(),
                     pos_idx,
@@ -1641,25 +1635,25 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     ),
                 };
 
-                NickelValue::term(term, pos_table.push_block(ast.pos))
+                NickelValue::term(term, pos_table.push(ast.pos))
             }
             Node::Annotated { annot, inner } => NickelValue::term(
                 Term::Annotated(
                     (*annot).to_mainline(pos_table),
                     inner.to_mainline(pos_table),
                 ),
-                pos_table.push_block(ast.pos),
+                pos_table.push(ast.pos),
             ),
             Node::Import(Import::Path { path, format }) => NickelValue::term(
                 Term::Import(term::Import::Path {
                     path: (*path).to_owned(),
                     format: *format,
                 }),
-                pos_table.push_block(ast.pos),
+                pos_table.push(ast.pos),
             ),
             Node::Import(Import::Package { id }) => NickelValue::term(
                 Term::Import(term::Import::Package { id: *id }),
-                pos_table.push_block(ast.pos),
+                pos_table.push(ast.pos),
             ),
             Node::Type(typ) => {
                 let typ: mline_type::Type = (*typ).to_mainline(pos_table);
@@ -1674,11 +1668,11 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         Term::ParseError(ParseError::UnboundTypeVariables(vec![err.0])).into()
                     });
 
-                NickelValue::typ(typ, contract, pos_table.push_block(ast.pos))
+                NickelValue::typ(typ, contract, pos_table.push(ast.pos))
             }
             Node::ParseError(error) => NickelValue::term(
                 Term::ParseError((*error).clone()),
-                pos_table.push_block(ast.pos),
+                pos_table.push(ast.pos),
             ),
         };
 

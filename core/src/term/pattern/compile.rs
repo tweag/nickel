@@ -186,7 +186,8 @@ fn update_with_merge(
     //
     // unwrap(): typechecking ensures that there are no unbound variables at this point
     let singleton =
-        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton.into()).unwrap();
+        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton.into())
+            .unwrap();
 
     let span = annot
         .iter()
@@ -302,7 +303,12 @@ impl CompilePart for ConstantPattern {
 }
 
 impl CompilePart for ConstantPatternData {
-    fn compile_part(&self, _: &mut PosTable, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
+    fn compile_part(
+        &self,
+        _: &mut PosTable,
+        value_id: LocIdent,
+        bindings_id: LocIdent,
+    ) -> NickelValue {
         let compile_constant = |nickel_type: &str, value: NickelValue| {
             // if %typeof% value_id == '<nickel_type> && value_id == <value> then
             //   bindings_id
@@ -951,7 +957,12 @@ impl Compile for MatchData {
     //    else
     //      # this primop evaluates body with an environment extended with bindings_id
     //      %pattern_branch% body bindings_id
-    fn compile(mut self, pos_table: &mut PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue {
+    fn compile(
+        mut self,
+        pos_table: &mut PosTable,
+        value: NickelValue,
+        pos_idx: PosIdx,
+    ) -> NickelValue {
         increment!("pattern_compile");
 
         if self.branches.iter().all(|branch| {
@@ -1128,9 +1139,7 @@ impl Compile for TagsOnlyMatch {
                 },
                 value
             )
-            // unwrap(): a unary operator is not an inline value, so try_with_pos_idx() can't fail
-            .try_with_pos_idx(pos_idx)
-            .unwrap(),
+            .with_pos_idx(pos_idx),
             NickelValue::record_posless(RecordData::with_field_values(self.branches.into_iter()))
         );
 
@@ -1140,7 +1149,6 @@ impl Compile for TagsOnlyMatch {
             match_op
         };
 
-        // unwrap(): match_op is not an inline value, so try_with_pos_idx() can't fail
-        match_op.try_with_pos_idx(pos_idx).unwrap()
+        match_op.with_pos_idx(pos_idx)
     }
 }

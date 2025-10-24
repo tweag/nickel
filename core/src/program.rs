@@ -622,7 +622,7 @@ impl<EC: EvalCache> Program<EC> {
                                 record = record.path(ovd.path.0).priority(ovd.priority).value(
                                     NickelValue::string(
                                         env_var,
-                                        self.vm_ctxt.pos_table.push_block(
+                                        self.vm_ctxt.pos_table.push(
                                             RawSpan::from_range(
                                                 value_file_id,
                                                 value_sep + 1..value_unparsed.len(),
@@ -1068,9 +1068,7 @@ impl<EC: EvalCache> Program<EC> {
                 ValueContent::Record(lens) => {
                     let Container::Alloc(RecordBody(data)) = lens.take() else {
                         //unwrap(): will go away
-                        return Ok(NickelValue::empty_record()
-                            .try_with_pos_idx(pos_idx)
-                            .unwrap());
+                        return Ok(NickelValue::empty_record().with_pos_idx(pos_idx));
                     };
 
                     let fields = data
@@ -1103,8 +1101,7 @@ impl<EC: EvalCache> Program<EC> {
                         })
                         .collect::<Result<_, Error>>()?;
 
-                    // unwrap(): will go away
-                    Ok(NickelValue::record(RecordData { fields, ..data }, pos_idx).unwrap())
+                    Ok(NickelValue::record(RecordData { fields, ..data }, pos_idx))
                 }
                 lens => {
                     let value = lens.restore();
@@ -1186,7 +1183,7 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef, Container},
+        bytecode::value::{Container, NickelValue, RecordBody, TermBody, ValueContentRef},
         error::{Error, ExportError, ExportErrorData, IOError},
         position::PosTable,
         term::Term,

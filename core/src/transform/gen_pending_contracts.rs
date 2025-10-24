@@ -88,8 +88,6 @@ pub fn transform_one(
 
             let fields = attach_to_fields(pos_table, fields)?;
 
-            // unwrap(): since we took the position from `value` which is a record, its position
-            // index must be an inline position index.
             NickelValue::record(
                 RecordData {
                     fields,
@@ -98,7 +96,6 @@ pub fn transform_one(
                 },
                 pos_idx,
             )
-            .unwrap()
         }
         ValueContent::Term(lens) => match lens {
             TermContent::RecRecord(lens) => {

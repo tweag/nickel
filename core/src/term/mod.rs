@@ -385,10 +385,10 @@ impl RuntimeContract {
                 self.contract,
                 NickelValue::label_posless(self.label),
             )
-            .with_block_pos_idx(pos_idx),
+            .with_pos_idx(pos_idx),
             value
         )
-        .with_block_pos_idx(pos_idx)
+        .with_pos_idx(pos_idx)
     }
 
     /// Apply a series of contracts to a value, in order.
@@ -2128,7 +2128,6 @@ impl Traverse<NickelValue> for NickelValue {
                     RecordData::new(fields?, record.attrs, record.sealed_tail),
                     pos_idx,
                 )
-                .unwrap()
             }
             ValueContent::Array(lens) => {
                 //unwrap(): we already treated the empty case above, so if we end up here, the
@@ -2144,7 +2143,7 @@ impl Traverse<NickelValue> for NickelValue {
                     .collect::<Result<Array, _>>()?;
 
                 // We don't recurse into pending contracts currently
-                NickelValue::array(array, pending_contracts, pos_idx).unwrap()
+                NickelValue::array(array, pending_contracts, pos_idx)
             }
             ValueContent::Type(lens) => {
                 let TypeBody { typ, contract } = lens.take();
