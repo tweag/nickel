@@ -34,12 +34,12 @@ jobs:
           nix develop --command cargo bench --package nickel-lang-core --features=benchmark-ci --bench numeric --bench arrays > criterion-output.txt
           nix develop --command cargo bench --package nickel-lang-lsp >> criterion-output.txt
       - name: upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: criterion-output
           path: criterion-output.txt
       - name: Upload GitHub Pull Request Event
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: event.json
           path: ${{ github.event_path }}
