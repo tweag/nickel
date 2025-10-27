@@ -157,7 +157,7 @@ jobs:
       # Use to sign the release artifacts
       id-token: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           path: dist/
           merge-multiple: true
@@ -175,7 +175,7 @@ jobs:
       # Use to sign the release artifacts
       id-token: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v6
         with:
           path: dist/
           merge-multiple: true
