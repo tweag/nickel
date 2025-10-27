@@ -376,6 +376,33 @@
               '';
             } // extraArgs);
 
+          shrinkStaticLib = { pnameSuffix ? "", extraBuildArgs ? "", extraArgs ? { } }:
+            let
+              cApi = buildCApi { inherit pnameSuffix extraBuildArgs extraArgs; };
+            in
+            pkgs.stdenv.mkDerivation {
+              name = pname + pnameSuffix;
+              src = ./scripts/shrink_archive.sh;
+              dontUnpack = true;
+              nativeBuildInputs = [ pkgs.llvmPackages.bintools ];
+              buildPhase = ''
+                ${pkgs.bash}/bin/bash $src -o libnickel_lang.a ${cApi}/lib/libnickel_lang.a
+              '';
+              installPhase = ''
+                mkdir -p $out/lib
+                mkdir -p $out/include
+
+                cp libnickel_lang.a $out/lib/libnickel_lang.a
+                if [ -e ${cApi}/lib/libnickel_lang.so ]; then
+                  ln -sf ${cApi}/lib/libnickel_lang.so $out/lib/libnickel_lang.so
+                fi
+                if [ -e ${cApi}/lib/libnickel_lang.dylib ]; then
+                  ln -sf ${cApi}/lib/libnickel_lang.dylib $out/lib/libnickel_lang.dylib
+                fi
+                ln -sf ${cApi}/include/nickel_lang.h $out/include/nickel_lang.h
+              '';
+            };
+
           # In addition to external dependencies, we build the lalrpop file in a
           # separate derivation because it's expensive to build but needs to be
           # rebuilt infrequently.
@@ -454,7 +481,7 @@
               extraArgs = { meta.mainProgram = "nickel"; };
             });
 
-          nickel-lang-c = buildCApi { pnameSuffix = "-c-api"; };
+          nickel-lang-c = shrinkStaticLib { pnameSuffix = "-c-api"; };
 
           nickel-lang-c-test = pkgs.stdenv.mkDerivation {
             name = "nickel-lang-c-test";
