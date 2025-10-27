@@ -645,7 +645,7 @@ impl SourceCache {
             }
             InputFormat::Yaml => crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id)),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
-                .map(|v : NickelValue| v.with_pos_idx(pos_idx))
+                .map(|v: NickelValue| v.with_pos_idx(pos_idx))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
@@ -979,7 +979,7 @@ impl CacheHub {
     pub fn type_of(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<mainline_typ::Type>, AstCacheError<TypecheckError>> {
+    ) -> Result<CacheOp<ast::typ::Type<'_>>, AstCacheError<TypecheckError>> {
         let (slice, asts) = self.split_asts();
         asts.type_of(slice, file_id)
     }
@@ -1452,6 +1452,9 @@ impl CacheHub {
     /// the AST cache, or [CacheError::IncompatibleState] is returned. However, for non-Nickel
     /// dependencies, they are instead parsed directly into the term cache,
     ///
+    /// For entries that have been typechecked, the wildcard cache will be populate as well
+    /// (converting from `ast::typ::Type` to the runtime representation).
+    ///
     /// "Compile" is anticipating a bit on RFC007, although it is a lowering of the AST
     /// representation to the runtime representation.
     ///
@@ -1525,6 +1528,17 @@ impl CacheHub {
             };
 
             self.terms.insert(file_id, entry);
+            self.wildcards.wildcards.insert(
+                file_id,
+                self.asts
+                    .get_wildcards(file_id)
+                    .map(|ws| ws.iter())
+                    .unwrap_or_default()
+                    // .into_iter()
+                    // .flatten()
+                    .map(|ty| ty.to_mainline(pos_table))
+                    .collect(),
+            );
 
             work_stack.extend(
                 self.import_data
@@ -2583,6 +2597,8 @@ fn parse_nickel_repl<'ast>(
 /// nodes.
 mod ast_cache {
     use super::*;
+    use crate::traverse::TraverseAlloc as _;
+
     /// The AST cache packing together the AST allocator and the cached ASTs.
     #[self_referencing]
     pub struct AstCache {
@@ -2601,6 +2617,12 @@ mod ast_cache {
         #[borrows(alloc)]
         #[not_covariant]
         type_ctxt: typecheck::Context<'this>,
+        /// Mapping of each wildcard id to its inferred type, for each file in the cache. This is
+        /// the same as [super::WildcardsCache], but in the new AST representation. It is later on
+        /// transformed to the runtime representation to populate the wildcard cache.
+        #[borrows(alloc)]
+        #[covariant]
+        wildcards: HashMap<FileId, typecheck::Wildcards<'this>>,
     }
 
     impl AstCache {
@@ -2610,6 +2632,7 @@ mod ast_cache {
                 AstAlloc::new(),
                 |_alloc| HashMap::new(),
                 |_alloc| typecheck::Context::new(),
+                |_alloc| HashMap::new(),
             )
         }
 
@@ -2636,6 +2659,11 @@ mod ast_cache {
         /// Returns a reference to a cached AST entry.
         pub fn get_entry(&self, file_id: FileId) -> Option<&AstEntry<'_>> {
             self.borrow_asts().get(&file_id)
+        }
+
+        /// Returns the wildcards associated to an entry.
+        pub fn get_wildcards(&self, file_id: FileId) -> Option<&typecheck::Wildcards<'_>> {
+            self.borrow_wildcards().get(&file_id)
         }
 
         /// Retrieves the state of an entry. Returns `None` if the entry is not in the AST cache.
@@ -2713,9 +2741,7 @@ mod ast_cache {
         /// # RFC007
         ///
         /// During the transition period between the old VM and the new bytecode VM, this method
-        /// performs typechecking on the new representation [crate::bytecode::ast::Ast], and is also
-        /// responsible for then converting the term to the legacy representation and populate the
-        /// corresponding term cache.
+        /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
         pub fn typecheck(
             &mut self,
             mut slice: CacheHubView<'_>,
@@ -2753,13 +2779,8 @@ mod ast_cache {
                     "runtime:type_check",
                     typecheck(slf.alloc, ast, type_ctxt, &mut resolver, initial_mode)?
                 );
-                slice.wildcards.wildcards.insert(
-                    file_id,
-                    wildcards_map
-                        .iter()
-                        .map(|typ| typ.to_mainline(todo!("no pos table, man")))
-                        .collect(),
-                );
+                slf.wildcards.insert(file_id, wildcards_map);
+
                 Ok(())
             })?;
 
@@ -2822,50 +2843,41 @@ mod ast_cache {
             &mut self,
             mut slice: CacheHubView<'_>,
             file_id: FileId,
-        ) -> Result<CacheOp<mainline_typ::Type>, AstCacheError<TypecheckError>> {
+        ) -> Result<CacheOp<ast::typ::Type<'_>>, AstCacheError<TypecheckError>> {
             self.typecheck(slice.reborrow(), file_id, TypecheckMode::Walk)?;
 
-            let typ: Result<ast::typ::Type<'_>, AstCacheError<TypecheckError>> =
-                self.with_mut(|slf| {
-                    let ast = slf
-                        .asts
-                        .get(&file_id)
-                        .ok_or(CacheError::IncompatibleState {
-                            want: AstEntryState::Parsed,
-                        })?
-                        .ast;
+            self.with_mut(|slf| {
+                let ast = slf
+                    .asts
+                    .get(&file_id)
+                    .ok_or(CacheError::IncompatibleState {
+                        want: AstEntryState::Parsed,
+                    })?
+                    .ast;
 
-                    let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
-                    let type_ctxt = slf.type_ctxt.clone();
+                let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
+                let type_ctxt = slf.type_ctxt.clone();
 
-                    let typ = TryConvert::try_convert(
+                let typ: Result<ast::typ::Type<'_>, _> = TryConvert::try_convert(
+                    slf.alloc,
+                    ast.apparent_type(slf.alloc, Some(&type_ctxt.type_env), Some(&mut resolver)),
+                );
+
+                let typ = typ.unwrap_or(ast::typ::TypeF::Dyn.into());
+
+                // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
+                // must be populated
+                let wildcards = slf.wildcards.get(&file_id).unwrap();
+
+                Ok(CacheOp::Done(
+                    typ.traverse(
                         slf.alloc,
-                        ast.apparent_type(
-                            slf.alloc,
-                            Some(&type_ctxt.type_env),
-                            Some(&mut resolver),
-                        ),
-                    )
-                    .unwrap_or(ast::typ::TypeF::Dyn.into());
-                    Ok(typ)
-                });
-            let typ = typ?;
-
-            let target: mainline_typ::Type = typ.to_mainline(todo!("I said no pos table!"));
-
-            // unwrap(): we ensured that the file is typechecked, thus its wildcards and its AST
-            // must be populated
-            let wildcards = slice.wildcards.get(file_id).unwrap();
-
-            Ok(CacheOp::Done(
-                target
-                    .traverse(
-                        &mut |ty: mainline_typ::Type| -> Result<_, std::convert::Infallible> {
-                            if let mainline_typ::TypeF::Wildcard(id) = ty.typ {
+                        &mut |ty: ast::typ::Type| -> Result<_, std::convert::Infallible> {
+                            if let ast::typ::TypeF::Wildcard(id) = ty.typ {
                                 Ok(wildcards
                                     .get(id)
                                     .cloned()
-                                    .unwrap_or(mainline_typ::Type::from(mainline_typ::TypeF::Dyn)))
+                                    .unwrap_or(ast::typ::Type::from(ast::typ::TypeF::Dyn)))
                             } else {
                                 Ok(ty)
                             }
@@ -2873,7 +2885,8 @@ mod ast_cache {
                         TraverseOrder::TopDown,
                     )
                     .unwrap(),
-            ))
+                ))
+            })
         }
 
         /// If the type context hasn't been created yet, generate and cache the initial typing

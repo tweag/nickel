@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::{ast::AstAlloc, value::NickelValue},
+    bytecode::{ast::{typ::Type, alloc::AstAlloc}, value::NickelValue},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{
         Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors,
@@ -20,7 +20,6 @@ use crate::{
     position::PosTable,
     program::FieldPath,
     term::record::Field,
-    typ::Type,
     typecheck::TypecheckMode,
 };
 
