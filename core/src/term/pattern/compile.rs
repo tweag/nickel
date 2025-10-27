@@ -189,6 +189,10 @@ fn update_with_merge(
         crate::transform::gen_pending_contracts::transform_one(pos_table, singleton.into())
             .unwrap();
 
+    // Since we generate a non-recursive record and inject it in the evaluation, we must manually
+    // enforce it's properly closurized.
+    let singleton = NickelValue::term_posless(Term::Closurize(singleton));
+
     let span = annot
         .iter()
         .filter_map(|labeled_ty| labeled_ty.label.span)
@@ -410,8 +414,7 @@ impl CompilePart for RecordPattern {
     //      >
     //
     //     # If there is a default value, we must set it before the %record/field_is_defined% check below,
-    //     # because the default acts like if the original matched value always have this field
-    //     # defined
+    //     # because the default acts as if the original matched value had this field defined
     //     <if field.default.is_some()>
     //       let value_id = <with_default_value value_id field default> in
     //     <end if>
