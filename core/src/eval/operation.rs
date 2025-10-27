@@ -1057,17 +1057,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })
                             .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
-                        let terms = fields.clone().into_values().map(|field| {
-                            field.value.expect(
-                                "map_values_closurize ensures that values without a \
-                                            definition throw a MissingFieldDefError",
-                            )
-                        });
+                        let terms: Vec<NickelValue> = fields
+                            .values()
+                            .map(|field| {
+                                field.value.as_ref().cloned().expect(
+                                    "map_values_closurize ensures that values without a \
+                                    definition throw a MissingFieldDefError",
+                                )
+                            })
+                            .collect();
 
                         let pos_inh = pos.to_inherited(&mut self.context.pos_table);
                         let cont = NickelValue::record(RecordData { fields, ..record }, pos_inh);
 
-                        Ok(seq_terms(terms, pos_op, cont).into())
+                        Ok(seq_terms(terms.into_iter(), pos_op, cont).into())
                     }
                     ValueContent::Array(lens) if !lens.peek().is_empty_array() => {
                         //unwrap(): the guard of the pattern exclude empty arrays
