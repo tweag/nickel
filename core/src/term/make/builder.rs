@@ -3,7 +3,11 @@
 //! Using this module, you can define Nickel records using a builder style. For example:
 //!
 //! ```rust
-//! # use nickel_lang_core::term::{MergePriority, Term, NickelValue, make::builder::Record};
+//! # use nickel_lang_core::{
+//! #   bytecode::value::NickelValue,
+//! #   term::{MergePriority, Term, make::builder::Record},
+//! # };
+//!
 //! let b = Record::new()
 //!     .field("foo")
 //!     .priority(MergePriority::Bottom)
@@ -12,7 +16,7 @@
 //!     .value(NickelValue::string_posless("foo"));
 //! let t : NickelValue = b
 //!     .field("bar")
-//!     .value(Term::Num(42.into()))
+//!     .value(NickelValue::number_posless(42))
 //!     .into();
 //! ```
 //!
