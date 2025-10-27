@@ -43,7 +43,7 @@ lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 # building) but flake.nix needs to be kept in sync.
 wasm-bindgen = "=0.2.100"
 
-ansi_term = "0.12"
+anstyle = "1.0.13"
 anyhow = "1.0.97"
 assert_cmd = "2.0.11"
 assert_matches = "1.5.0"

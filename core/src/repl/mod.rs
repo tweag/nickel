@@ -39,7 +39,7 @@ use crate::{
     term::Term,
 };
 #[cfg(feature = "repl")]
-use ansi_term::{Colour, Style};
+use anstyle::{AnsiColor, Style};
 #[cfg(feature = "repl")]
 use rustyline::validate::{ValidationContext, ValidationResult};
 
@@ -375,8 +375,8 @@ impl rustyline::highlight::Highlighter for InputParser {
         prompt: &'p str,
         _default: bool,
     ) -> std::borrow::Cow<'b, str> {
-        let style = Style::new().fg(Colour::Green);
-        std::borrow::Cow::Owned(style.paint(prompt).to_string())
+        let style = Style::new().fg_color(Some(AnsiColor::Green.into()));
+        std::borrow::Cow::Owned(format!("{style}{prompt}"))
     }
 }
 
