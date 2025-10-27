@@ -237,6 +237,12 @@
     fun field_contracts tail_wrapper has_tail =>
       fun label value =>
         if %typeof% value == 'Record then
+          # [^split-right-tail]: Note that `record/split_pair` propagates the
+          # record tails. `field_contracts` is built by the interpreter, and
+          # should never have a tail, but `value` will have a tail for if the
+          # original record type had a tail and this contract is activated in
+          # positive position. We must be mindful of that when checking
+          # emptyness, for example.
           let split_result = %record/split_pair% field_contracts value in
 
           if split_result.left_only != {} then
@@ -325,22 +331,33 @@
     let current_polarity = %label/polarity% label in
     let polarity = (%label/lookup_type_variable% sealing_key label).polarity in
     let plural = fun list => if %array/length% list == 1 then "" else "s" in
+    # See [^split-right-tail]. If we want to check for the presence of extra
+    # fields, we should use `extra_fields_list`, and not `extra_fields` which
+    # might have a tail.
+    #
+    # TODO: this relies on the fact that `%record/fields(_with_opts)%` currently
+    # ignores the sealed tail. I'm not really sure this is a reasonable or
+    # accidental semantics. A proper solution would be to have a way to discard
+    # the tail or check if the unsealed part at least is empty (ideally,
+    # requiring the sealing key to perform those operations). In the meantime,
+    # as part of the compact value migration, I'm keeping the same behavior as
+    # before cheaply, without needing to introduce a new primop.
+    let extra_fields_list = %record/fields_with_opts% extra_fields in
 
     # If the polarity of the forall is the same as the current polarity, we are
     # in a positive occurrence (relative to the forall). Think of a return value
     # of a function type. In this case, the tail is supposed to be sealed, and
     # the function isn't allowed to inject any extra field in that sealed tail.
     if polarity == current_polarity then
-      if extra_fields == {} then
+      if extra_fields_list == [] then
         let tagged_label = %label/with_message% "polymorphic tail mismatch" label in
         let tail = %record/unseal_tail% sealing_key tagged_label extra_fields in
 
         'Ok (%record/disjoint_merge% value tail)
       else
-        let extra_fields = %record/fields% extra_fields in
-
         'Error {
-          message = "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`",
+          message = "extra field%{plural extra_fields_list} `%{std.string.join
+", " extra_fields_list}`",
         }
       # Otherwise, we are in a negative occurrence (relative to the forall). Think
       # of the argument of a function. There, extra fields are allowed, but must
