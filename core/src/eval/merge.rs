@@ -266,9 +266,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             | (ValueContent::Record(empty), ValueContent::Record(lens))
                 if empty.peek().is_empty_record() =>
             {
+                // In merge contract mode, we need to maintain the position of the first argument,
+                // which is the scrutinized value, to maintain good contract error messages.
+                //
+                // Otherwise, since one of the argument is the neutral element for merging, it's
+                // better to keep the position of the other argument (instead of the position of
+                // the merge), since the result will inherit everything from it.
+                let final_pos = if let MergeMode::Standard(_) = mode {
+                    lens.peek().pos_idx()
+                } else {
+                    pos1.to_inherited(&mut self.context.pos_table)
+                };
+
+
                 Ok(lens
                     .restore()
-                    .with_pos_idx(pos_op_inh))
+                    // In `MergeMode::Contract(_)` mode, we want to maintain
+                    .with_pos_idx(final_pos))
             }
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
