@@ -1754,13 +1754,13 @@ impl IntoDiagnostics for EvalError {
             EvalErrorData::UnaryPrimopTypeError {
                 primop,
                 expected,
-                pos_arg: arg_pos,
+                pos_arg,
                 arg_evaluated,
             } => EvalError {
                 error: EvalErrorData::TypeError {
                     message: format!("{primop} expects its argument to be a {expected}"),
                     expected,
-                    orig_pos: arg_pos,
+                    orig_pos: pos_arg,
                     term: arg_evaluated,
                 },
                 ctxt: EvalCtxt {
@@ -1773,9 +1773,9 @@ impl IntoDiagnostics for EvalError {
                 primop,
                 expected,
                 arg_number,
-                pos_arg: arg_pos,
+                pos_arg,
                 arg_evaluated,
-                pos_op: op_pos,
+                pos_op,
             } => {
                 // The parsing of binary subtraction vs unary negation has
                 // proven confusing in practice; for example, `add 1 -1` is
@@ -1792,7 +1792,7 @@ impl IntoDiagnostics for EvalError {
                     && arg_number == 1
                     && matches!(arg_evaluated.type_of(), Some("Function"))
                 {
-                    pos_table.get(op_pos).into_opt()
+                    pos_table.get(pos_op).into_opt()
                 } else {
                     None
                 };
@@ -1808,7 +1808,7 @@ impl IntoDiagnostics for EvalError {
                             cardinal(arg_number)
                         ),
                         expected,
-                        orig_pos: arg_pos,
+                        orig_pos: pos_arg,
                         term: arg_evaluated,
                     },
                 }
