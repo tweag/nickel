@@ -1462,45 +1462,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: Environment::new(),
                 })
             }
-            UnaryOp::NumberArcCos => self.process_unary_number_operation(
-                value,
-                pos_arg,
-                pos_op,
-                "number/arccos",
-                f64::acos,
-            ),
-            UnaryOp::NumberArcSin => self.process_unary_number_operation(
-                value,
-                pos_arg,
-                pos_op,
-                "number/arcsin",
-                f64::asin,
-            ),
-            UnaryOp::NumberArcTan => self.process_unary_number_operation(
-                value,
-                pos_arg,
-                pos_op,
-                "number/arctan",
-                f64::atan,
-            ),
+            UnaryOp::NumberArcCos => {
+                self.unary_number_op(value, pos_arg, pos_op, "number/arccos", f64::acos)
+            }
+            UnaryOp::NumberArcSin => {
+                self.unary_number_op(value, pos_arg, pos_op, "number/arcsin", f64::asin)
+            }
+            UnaryOp::NumberArcTan => {
+                self.unary_number_op(value, pos_arg, pos_op, "number/arctan", f64::atan)
+            }
             UnaryOp::NumberCos => {
-                self.process_unary_number_operation(value, pos_arg, pos_op, "number/cos", f64::cos)
+                self.unary_number_op(value, pos_arg, pos_op, "number/cos", f64::cos)
             }
             UnaryOp::NumberSin => {
-                self.process_unary_number_operation(value, pos_arg, pos_op, "number/sin", f64::sin)
+                self.unary_number_op(value, pos_arg, pos_op, "number/sin", f64::sin)
             }
             UnaryOp::NumberTan => {
-                self.process_unary_number_operation(value, pos_arg, pos_op, "number/tan", f64::tan)
+                self.unary_number_op(value, pos_arg, pos_op, "number/tan", f64::tan)
             }
             UnaryOp::RecDefault => unimplemented!(),
             UnaryOp::RecForce => unimplemented!(),
         }
     }
 
-    fn process_unary_number_operation<Op>(
+    fn unary_number_op<Op>(
         &mut self,
         body: NickelValue,
-        arg_pos: PosIdx,
+        pos_arg: PosIdx,
         pos_op: PosIdx,
         op_name: &str,
         op: Op,
@@ -1530,7 +1518,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             Err(EvalErrorData::UnaryPrimopTypeError {
                 primop: String::from(op_name),
                 expected: String::from("Number"),
-                pos_arg: arg_pos,
+                pos_arg,
                 arg_evaluated: body,
             })
         }
@@ -1544,9 +1532,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         b_op: BinaryOp,
         fst_clos: Closure,
-        fst_pos: PosIdx,
+        orig_arg_pos1: PosIdx,
         clos: Closure,
-        snd_pos: PosIdx,
+        orig_arg_pos2: PosIdx,
         pos_op: PosIdx,
     ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{b_op}"));
@@ -1573,8 +1561,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg_number: $arg_number,
                     pos_arg: {
                         match $arg_number {
-                            1 => fst_pos,
-                            2 => snd_pos,
+                            1 => orig_arg_pos1,
+                            2 => orig_arg_pos2,
                             _ => unimplemented!(),
                         }
                     },
@@ -1614,27 +1602,27 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::Plus => self.binary_number_op(
                 |n1, n2| n1 + n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::Sub => self.binary_number_op(
                 |n1, n2| n1 - n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::Mult => self.binary_number_op(
                 |n1, n2| n1 * n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
@@ -1831,7 +1819,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 value: value2,
                                 env: env2,
                             },
-                            fst_pos,
+                            orig_arg_pos1,
                         ),
                         self.call_stack.len(),
                         pos_op_inh,
@@ -1971,7 +1959,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     value: value1,
                                     env: env1,
                                 },
-                                fst_pos,
+                                orig_arg_pos1,
                             );
 
                             internals::naked_to_custom().into()
@@ -1989,7 +1977,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 value: value1,
                                 env: env1,
                             },
-                            fst_pos,
+                            orig_arg_pos1,
                         );
 
                         internals::record_contract().into()
@@ -2136,36 +2124,36 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::LessThan => self.binary_number_cmp(
                 |n1, n2| n1 < n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::LessOrEq => self.binary_number_cmp(
                 |n1, n2| n1 <= n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::GreaterThan => self.binary_number_cmp(
                 |n1, n2| n1 > n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::GreaterOrEq => self.binary_number_cmp(
                 |n1, n2| n1 >= n2,
                 value1,
-                pos1,
+                orig_arg_pos1,
                 value2,
-                pos2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
@@ -2197,7 +2185,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return Err(EvalErrorData::TypeError {
                         expected: String::from("Record"),
                         message: String::from("field access only makes sense for records"),
-                        orig_pos: snd_pos,
+                        orig_pos: orig_arg_pos2,
                         term: value2,
                     });
                 };
@@ -2691,14 +2679,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::StringSplit => self.binary_string_fn(
                 |input, sep| NickelValue::array(input.split(sep), Vec::new(), pos_op_inh),
                 value1,
+                orig_arg_pos1,
                 value2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
             BinaryOp::StringContains => self.binary_string_fn(
                 |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inh),
                 value1,
+                orig_arg_pos1,
                 value2,
+                orig_arg_pos2,
                 pos_op_inh,
                 b_op.to_string(),
             ),
@@ -2722,7 +2714,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         )
                     },
                     value1,
+                    orig_arg_pos1,
                     value2,
+                    orig_arg_pos2,
                     pos_op_inh,
                     b_op.to_string(),
                 )
@@ -3084,9 +3078,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         op: Op,
         value1: NickelValue,
-        pos1: PosIdx,
+        orig_pos_arg1: PosIdx,
         value2: NickelValue,
-        pos2: PosIdx,
+        orig_pos_arg2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
     ) -> Result<Closure, EvalErrorData>
@@ -3098,9 +3092,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         self.binary_number_fn(
             |n1, n2| NickelValue::number(op(n1, n2), pos_op_inh),
             value1,
-            pos1,
+            orig_pos_arg1,
             value2,
-            pos2,
+            orig_pos_arg2,
             pos_op,
             op_name,
         )
@@ -3110,9 +3104,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         f: F,
         value1: NickelValue,
-        pos1: PosIdx,
+        orig_pos_arg1: PosIdx,
         value2: NickelValue,
-        pos2: PosIdx,
+        orig_pos_arg2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
     ) -> Result<Closure, EvalErrorData>
@@ -3124,7 +3118,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 primop: op_name,
                 expected: "Number".to_owned(),
                 arg_number: 1,
-                pos_arg: pos1,
+                pos_arg: orig_pos_arg1,
                 arg_evaluated: value1,
                 pos_op,
             });
@@ -3135,7 +3129,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 primop: op_name,
                 expected: "Number".to_owned(),
                 arg_number: 2,
-                pos_arg: pos2,
+                pos_arg: orig_pos_arg2,
                 arg_evaluated: value2,
                 pos_op,
             });
@@ -3151,7 +3145,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         f: F,
         value1: NickelValue,
+        orig_pos_arg1: PosIdx,
         value2: NickelValue,
+        orig_pos_arg2: PosIdx,
         pos_op: PosIdx,
         op_name: String,
     ) -> Result<Closure, EvalErrorData>
@@ -3163,7 +3159,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 primop: op_name,
                 expected: "String".to_owned(),
                 arg_number: 1,
-                pos_arg: value1.pos_idx(),
+                pos_arg: orig_pos_arg1,
                 arg_evaluated: value1,
                 pos_op,
             });
@@ -3174,7 +3170,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 primop: op_name,
                 expected: "String".to_owned(),
                 arg_number: 2,
-                pos_arg: value2.pos_idx(),
+                pos_arg: orig_pos_arg2,
                 arg_evaluated: value2,
                 pos_op,
             });

@@ -1148,7 +1148,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     } else {
                         break Ok(Closure {
-                            value: NickelValue::term(Term::Fun(*arg, body.clone()), pos_idx),
+                            value,
                             env,
                         });
                     }
