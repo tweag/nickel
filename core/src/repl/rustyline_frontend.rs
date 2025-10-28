@@ -5,7 +5,7 @@ use super::{command::Command, *};
 
 use crate::{error::report::ColorOpt, eval::cache::CacheImpl};
 
-use ansi_term::Style;
+use anstyle::Style;
 use rustyline::{error::ReadlineError, Config, EditMode, Editor};
 
 /// The config of rustyline's editor.
@@ -116,7 +116,7 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
                         Ok(())
                     }
                     Ok(Command::Exit) => {
-                        println!("{}", Style::new().bold().paint("Exiting"));
+                        println!("{}Exiting", Style::new().bold());
                         break Ok(());
                     }
                     Err(err) => Err(Error::from(err)),
@@ -136,7 +136,7 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
                 };
             }
             Err(ReadlineError::Eof) => {
-                println!("{}", Style::new().bold().paint("Ctrl+D. Exiting"));
+                println!("{}Ctrl+D. Exiting", Style::new().bold());
                 break Ok(());
             }
             Err(ReadlineError::Interrupted) => (),

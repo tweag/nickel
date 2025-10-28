@@ -23,7 +23,7 @@ bench = false
 default = ["markdown", "repl", "doc", "format"]
 clap = ["dep:clap"]
 markdown = ["dep:termimad"]
-repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
+repl = ["dep:rustyline", "dep:rustyline-derive", "dep:anstyle"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm-bindgen"]
 doc = ["dep:comrak"]
 format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
@@ -63,7 +63,7 @@ unicode-segmentation.workspace = true
 indoc.workspace = true
 
 termimad = { workspace = true, optional = true }
-ansi_term = { workspace = true, optional = true }
+anstyle = { workspace = true, optional = true }
 
 rustyline = { workspace = true, optional = true}
 rustyline-derive = { workspace = true, optional = true }
