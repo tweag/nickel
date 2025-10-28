@@ -341,7 +341,7 @@
         )
         { right = [], wrong = [] },
 
-  # can not be staticaly checked (see issue #423)
+  # can not be statically checked (see issue #423)
   groupBy
     | forall a. (a -> String) -> Array a -> { _ : Array a }
     | doc m%"

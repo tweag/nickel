@@ -3622,7 +3622,7 @@ fn type_tag(t: &Term) -> &'static str {
     }
 }
 
-/// A merge priority that can be recursively pushed down to the leafs of a record. Currently only
+/// A merge priority that can be recursively pushed down to the leaves of a record. Currently only
 /// `default` (`Bottom`) and `force` (`Top`) can be recursive.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum RecPriority {
@@ -4011,7 +4011,7 @@ fn eq<C: Cache>(
 trait MapValuesClosurize: Sized {
     /// Returns a HashMap from `Ident` to `Field` by:
     ///
-    /// 1. Appplying the pending contracts to each fields
+    /// 1. Applying the pending contracts to each fields
     /// 2. Applying the provided function
     /// 3. Closurizing each result into the shared environment.
     ///

@@ -6,7 +6,7 @@
 * Nickel Language Server (NLS) integration
 * Code formatting (through NLS)
 
-## Prerequsites
+## Prerequisites
 
 The VSCode extension is [available on the VSCode Market
 Place](https://marketplace.visualstudio.com/items?itemName=Tweag.vscode-nickel).

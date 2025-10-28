@@ -64,7 +64,7 @@ pub struct FieldPattern {
     pub matched_id: LocIdent,
     /// Type and contract annotations of this field.
     pub annotation: TypeAnnotation,
-    /// Potentital default value, set with the `? value` syntax.
+    /// Potential default value, set with the `? value` syntax.
     pub default: Option<RichTerm>,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
     /// sign, is parsed as `{foo=foo, bar=bar}`. In this case, `pattern.data` will be

@@ -680,11 +680,11 @@ new meta-values `default rec` and `force rec`, whose semantics are defined as:
     priority `prio` (possibly empty) and the other metavalues, then
     `defaulted(annots) := annots' | default`
 
-That is, `default rec` recursively overwrites all the priorities of the leafs of
+That is, `default rec` recursively overwrites all the priorities of the leaves of
 a record to `default`, excepted for `force` that is left untouched (metavalues
 are written in a liberal way, in that they can be empty).
 
-`force rec` is defined similarly, excepted that it erases all priorites, even
+`force rec` is defined similarly, excepted that it erases all priorities, even
 default ones. The names `default rec/force rec` are just suggestions.
 
 Example:
@@ -706,7 +706,7 @@ let defaulted | default rec = neutralConf
 #   },
 # }
 # This is different from `neutralConf | default`! The latter version
-# would be overrided at once, as illustrated below.
+# would be overridden at once, as illustrated below.
 
 defaulted & {bar.baz = "shapoinkl"}
 # ^ Gives the expected:
@@ -727,7 +727,7 @@ defaulted & {bar.baz = "shapoinkl"}
 This way, an existing definition (arbitrarily complex: that could be the root of
 all Nixpkgs) can easily (and lazily) be turned into a full overriding or
 overridable configuration. A possible extension is to have a user-provided
-function that is mapped on priotities: `default/force rec` are just special
+function that is mapped on priorities: `default/force rec` are just special
 cases of this.
 
 ### Custom merge functions 2
@@ -854,7 +854,7 @@ For example, `hasAnnot [| f (1 + 1) |] = false` means that the value of the
 
 ### Merge tree
 
-A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leafs
+A merge tree is a binary tree whose nodes are labelled by a `metadata`.  Leaves
 are labelled with both a `metadata` and a Nickel expression `e` in WHNF (weak
 head normal form, that is, evaluated). In this context, a `metadata` is a
 (meta-)record which field names corresponds to meta attributes
@@ -877,9 +877,9 @@ type MergeTree = MergeTree (AbsMergeTree (MergeTree, Metadata))
 ```
 
 The function `mergeTree: Expression -> MergeTree` compute the merge tree of an
-expression. It needs to evaluate leafs to see if they contains themselves merge
+expression. It needs to evaluate leaves to see if they contains themselves merge
 expressions, such that `let x = a & b in x & c` and `a & b & c` has the same
-merge tree: that is, merge treee commute with evaluation.
+merge tree: that is, merge tree commute with evaluation.
 
 ```text
 # we maintain an environment of bindings in `env`

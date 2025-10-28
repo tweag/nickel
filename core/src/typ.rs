@@ -23,7 +23,7 @@
 //!
 //! A dictionary type `{ _ : Type }` represents a record whose fields all have the type `Type`. The
 //! count and the name of the fields aren't constrained. Dictionaries can be mapped over, extended,
-//! shrinked and accessed in a type-safe manner.
+//! shrunk and accessed in a type-safe manner.
 //!
 //! # Enum types
 //!
@@ -974,7 +974,7 @@ impl Subcontract for Type {
             }
             TypeF::Enum(ref erows) => erows.subcontract(vars, pol, sy)?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
-            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
+            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialized to the constant-time
             // `dict_dyn`.
             TypeF::Dict {
                 ref type_fields,

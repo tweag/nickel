@@ -3,7 +3,7 @@ source: cli/tests/snapshot/main.rs
 expression: err
 ---
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:15:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:15:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -14,7 +14,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:14:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:14:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -25,7 +25,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:13:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:13:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -36,7 +36,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:12:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:12:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -47,7 +47,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:11:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:11:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -58,7 +58,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-   ┌─ [INPUTS_PATH]/warnings/supressed.ncl:10:3
+   ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:10:3
    │
  3 │ let C = fun label value => value in
    │         ------------------------ this function
@@ -69,7 +69,7 @@ warning: plain functions as contracts are deprecated
    = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-  ┌─ [INPUTS_PATH]/warnings/supressed.ncl:9:3
+  ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:9:3
   │
 3 │ let C = fun label value => value in
   │         ------------------------ this function
@@ -80,7 +80,7 @@ warning: plain functions as contracts are deprecated
   = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-  ┌─ [INPUTS_PATH]/warnings/supressed.ncl:8:3
+  ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:8:3
   │
 3 │ let C = fun label value => value in
   │         ------------------------ this function
@@ -91,7 +91,7 @@ warning: plain functions as contracts are deprecated
   = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-  ┌─ [INPUTS_PATH]/warnings/supressed.ncl:7:3
+  ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:7:3
   │
 3 │ let C = fun label value => value in
   │         ------------------------ this function
@@ -102,7 +102,7 @@ warning: plain functions as contracts are deprecated
   = wrap this function using one of the constructors in `std.contract` instead, like `std.contract.from_validator` or `std.contract.custom`
 
 warning: plain functions as contracts are deprecated
-  ┌─ [INPUTS_PATH]/warnings/supressed.ncl:6:3
+  ┌─ [INPUTS_PATH]/warnings/suppressed.ncl:6:3
   │
 3 │ let C = fun label value => value in
   │         ------------------------ this function

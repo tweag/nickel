@@ -7,7 +7,7 @@ use crate::position::TermPos;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Warning {
     /// Applied a `fun label value => ...` (or match) as a contract directly,
-    /// instead of using the constract constructors in the standard library.
+    /// instead of using the construct constructors in the standard library.
     NakedFunctionContract {
         /// The position of the function that was used as a contract.
         func_pos: TermPos,

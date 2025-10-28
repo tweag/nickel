@@ -89,7 +89,7 @@ impl FieldPath {
         Ok(FieldPath(field_path))
     }
 
-    /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
+    /// As [`Self::parse`], but accepts an `Option` to accommodate for the absence of path. If the
     /// input is `None`, `Ok(FieldPath::default())` is returned (that is, an empty field path).
     pub fn parse_opt(cache: &mut CacheHub, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
@@ -265,7 +265,7 @@ impl<EC: EvalCache> Program<EC> {
         Program::new_from_source(io::stdin(), "<stdin>", trace, reporter)
     }
 
-    /// Contructor that abstracts over the Input type (file, string, etc.). Used by
+    /// Constructor that abstracts over the Input type (file, string, etc.). Used by
     /// the other constructors. Published for those that need abstraction over the kind of Input.
     ///
     /// The format of the input is Nickel by default. However, for [Input::Path]s, the format is
@@ -875,7 +875,7 @@ impl<EC: EvalCache> Program<EC> {
     ///
     /// ## Record spine
     ///
-    /// By record spine, we mean that the result is a tree of evaluated nested records, and leafs
+    /// By record spine, we mean that the result is a tree of evaluated nested records, and leaves
     /// are either non-record values in WHNF or partial expressions left
     /// unevaluated[^missing-field-def]. For example, the record spine of:
     ///
@@ -929,7 +929,7 @@ impl<EC: EvalCache> Program<EC> {
     /// `eval_record_spine` will evaluate this into a record containing the
     /// field `bar`, and the value of that field will be a `Term::Array`
     /// containing a `Term::Var("foo")`. In contrast, `eval_closurized` will
-    /// still evaluate the term into a record contining `bar`, but the value of
+    /// still evaluate the term into a record containing `bar`, but the value of
     /// that field will be a `Term::Closure` containing that same `Term::Array`,
     /// together with an `Environment` defining the variable "foo". In
     /// particular, the closurized version is more useful if you intend to
@@ -1018,7 +1018,7 @@ impl<EC: EvalCache> Program<EC> {
             // recursively in the definition of some other fields. So instead of
             // bubbling up an evaluation error in this case we just leave fields
             // that depend on as yet undefined fields unevaluated; we wouldn't
-            // be able to extract dcoumentation from their values anyways. All
+            // be able to extract documentation from their values anyways. All
             // other evaluation errors should however be reported to the user
             // instead of resulting in documentation being silently skipped.
             if matches!(
@@ -1421,7 +1421,7 @@ mod doc {
         // example, the beginning of the documenantation of the current field might be merged with
         // the last type or contract item).
         //
-        // We probably shouldn't have to, but afer diving into comrak's rendering engine, it seems
+        // We probably shouldn't have to, but after diving into comrak's rendering engine, it seems
         // that some subtle interactions make things work correctly for parsed markdown (as opposed to
         // this one being programmatically generated) just because list items are always parsed as
         // paragraphs. We thus mimic this unspoken invariant here.

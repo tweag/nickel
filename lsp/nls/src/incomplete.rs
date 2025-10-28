@@ -1,8 +1,8 @@
-//! Utilities for dealing with unparseable input.
+//! Utilities for dealing with unparsable input.
 //!
 //! We try to use the nickel parser when we can, but the input file is just
 //! not completely parseable. Here we collect utilities for extracting some
-//! information from the unparseable part. This is necessarily somewhat
+//! information from the unparsable part. This is necessarily somewhat
 //! heuristic.
 
 use nickel_lang_core::{

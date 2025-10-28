@@ -5,7 +5,7 @@
 #  'input.foo.bar=="hello"',
 #  'input.foo.baz=[]',
 #  '--override',
-#  'unkonwn.field.path=null',
+#  'unknown.field.path=null',
 # ]
 {
   input.foo.bar | String,

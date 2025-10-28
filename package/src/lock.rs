@@ -130,7 +130,7 @@ pub struct LockFile {
     /// Note that the package list is not guaranteed to be closed: path dependencies
     /// cannot have their dependencies resolved in the on-disk lockfile because they
     /// can change at any time. *Some* path dependencies (for example, path dependencies
-    /// that are local to a git depencency repo) may have resolved dependencies.
+    /// that are local to a git dependency repo) may have resolved dependencies.
     pub packages: BTreeMap<EntryName, LockFileEntry>,
 }
 

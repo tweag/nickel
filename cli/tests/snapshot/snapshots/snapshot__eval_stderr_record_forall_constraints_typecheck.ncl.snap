@@ -9,7 +9,7 @@ error: multiple record row declarations
   │                                                                                        ^^^^^^^^^ this expression
   │
   = Found an expression with the row `x : _a`
-  = But this row appears inside another record type, which already has a diffent declaration for the field `x`
+  = But this row appears inside another record type, which already has a different declaration for the field `x`
   = A type cannot have two conflicting declarations for the same row
 
 note: while matching types

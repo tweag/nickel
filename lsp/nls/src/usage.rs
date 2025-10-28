@@ -110,7 +110,7 @@ impl<'ast> UsageLookup<'ast> {
         })
     }
 
-    /// Return the enviroment that a term belongs to.
+    /// Return the environment that a term belongs to.
     pub fn env(&self, ast: &'ast Ast<'ast>) -> Option<&Environment<'ast>> {
         ast.pos
             .as_opt_ref()
@@ -343,7 +343,7 @@ impl<'ast> UsageLookup<'ast> {
                                     // The first element of the path is already handled by the
                                     // recursive environment, but we still need to fill the symbol
                                     // table with the right `LocIdent` - see the building of the
-                                    // recursive enviroment above.
+                                    // recursive environment above.
                                     FieldPathElem::Ident(id) if index == 0 => {
                                         // unwrap(): we should have an aggregate definition for
                                         // each top-level field, and we put them in the recursive

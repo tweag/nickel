@@ -295,7 +295,7 @@ impl TermCache {
 /// use it as the path: `format!({IN_MEMORY_SOURCE_PATH_PREFIX}{src_name})`.
 pub const IN_MEMORY_SOURCE_PATH_PREFIX: &str = "%inmem_src%:";
 
-/// The source cache handles reading textual data from the file system or other souces and storing
+/// The source cache handles reading textual data from the file system or other sources and storing
 /// it in a [Files] instance.
 ///
 /// While not ideal, we have to make most of the fields public to allow the LSP to perform its own
@@ -655,7 +655,7 @@ impl SourceCache {
         self.files.is_stdlib(file)
     }
 
-    /// Retrieves the file id for a given standard libray module.
+    /// Retrieves the file id for a given standard library module.
     pub fn get_submodule_file_id(&self, module: StdlibModule) -> Option<FileId> {
         self.stdlib_modules()
             .find(|(m, _id)| m == &module)
@@ -2226,7 +2226,7 @@ pub fn timestamp(path: impl AsRef<OsStr>) -> io::Result<SystemTime> {
 ///
 /// For borrowing reasons, this can't be all of [CacheHub] or all of [ast_cache::AstCache], as we
 /// need to split the different things that are borrowed mutably or immutably. `AstResolver` is a
-/// structure that borrows some parts of the cache during its lifetime and will retrieve alredy
+/// structure that borrows some parts of the cache during its lifetime and will retrieve already
 /// imported ASTs, or register the newly imported ones in a separate hashmap that can be added back
 /// to the original cache once import resolution is done.
 pub struct AstResolver<'ast, 'cache> {
@@ -2537,7 +2537,7 @@ mod ast_cache {
         #[borrows(alloc)]
         #[covariant]
         asts: HashMap<FileId, AstEntry<'this>>,
-        /// The initial typing context. It's morally an option (unitialized at first), but we just
+        /// The initial typing context. It's morally an option (uninitialized at first), but we just
         /// use an empty context as a default value.
         ///
         /// This context can be augmented through [AstCache::add_repl_binding] and
