@@ -524,7 +524,11 @@ impl Expr {
     /// and you can use the [`VirtualMachine`] you got from `eval_shallow` to
     /// evaluate this expression further.
     pub fn is_value(&self) -> bool {
-        self.rt.as_ref().is_eff_whnf()
+        // The term here should always be closurized, because the only public way to
+        // construct an Expr is via evaluation. Therefore we do not check is_eff_whnf,
+        // which doesn't do what we want with with `eval_deep` because `subst` resets
+        // the `closurized` property.
+        self.rt.as_ref().is_whnf()
     }
 
     /// Converts this expression into any type that implements `serde::Deserialize`.
@@ -719,6 +723,7 @@ mod tests {
             .unwrap();
 
         assert!(expr.is_record());
+        assert!(expr.is_value());
         let rec = expr.as_record().unwrap();
         assert_eq!(2, rec.len());
         assert_eq!(Some("hi"), rec.value_by_name("bar").unwrap().as_str());
@@ -737,6 +742,7 @@ mod tests {
             .unwrap();
 
         assert!(expr.is_record());
+        assert!(expr.is_value());
         let rec = expr.as_record().unwrap();
         assert_eq!(3, rec.len());
 
