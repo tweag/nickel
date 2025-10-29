@@ -459,7 +459,7 @@ impl Expr {
     }
 
     /// Is this expression a string?
-    pub fn is_str(&self) -> bool {
+    pub fn is_string(&self) -> bool {
         self.as_str().is_some()
     }
 
