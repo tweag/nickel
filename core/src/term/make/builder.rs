@@ -28,7 +28,7 @@ use crate::{
     identifier::{Ident, LocIdent},
     label::Label,
     term::{
-        BinaryOp, LabeledType, MergePriority,
+        BinaryOp, LabeledType, MergePriority, Term,
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
     },
@@ -342,13 +342,21 @@ impl Record {
         self
     }
 
-    /// Finalize the record and turn it into a [`crate::term::NickelValue`]
+    /// Finalize the record and turn it into a [`crate::term::NickelValue`].
+    ///
+    /// # Closurization
+    ///
+    /// [Self::build] is intended to provide a ready-to-use value, so the built record is wrapped
+    /// into a [crate::term::Term::Closurize] operation. Otherwise, since records are assumed to be
+    /// closurized during evaluation, using a bare record at runtime would either panic or
+    /// introduce subtle bugs.
     pub fn build(self) -> NickelValue {
         let elaborated = self
             .fields
             .into_iter()
             .map(|(path, rt)| elaborate_field_path(path, rt));
-        build_record(elaborated, self.attrs)
+
+        NickelValue::term_posless(Term::Closurize(build_record(elaborated, self.attrs)))
     }
 }
 
@@ -386,6 +394,13 @@ mod tests {
 
     use super::*;
 
+    fn build_closurized_record<I>(fields: I, attrs: RecordAttrs) -> NickelValue
+    where
+        I: IntoIterator<Item = (LocIdent, record::Field)>,
+    {
+        NickelValue::term_posless(Term::Closurize(build_record(fields, attrs)))
+    }
+
     #[test]
     fn trivial() {
         let t: NickelValue = Record::new()
@@ -394,11 +409,10 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![("foo".into(), NickelValue::string_posless("bar").into())],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -411,14 +425,13 @@ mod tests {
         .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     ("foo".into(), NickelValue::null().into()),
                     ("bar".into(), NickelValue::null().into()),
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -432,7 +445,7 @@ mod tests {
         .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     (
                         "foo".into(),
@@ -452,7 +465,6 @@ mod tests {
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -466,14 +478,13 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     ("foo".into(), NickelValue::string_posless("foo").into()),
                     ("bar".into(), NickelValue::string_posless("bar").into()),
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -487,7 +498,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     (
                         "foo".into(),
@@ -506,7 +517,6 @@ mod tests {
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -523,11 +533,11 @@ mod tests {
             .into();
         assert_eq!(
             v,
-            build_record(
+            build_closurized_record(
                 vec![
                     elaborate_field_path(
                         vec!["terraform".into(), "required_providers".into()],
-                        build_record(
+                        build_closurized_record(
                             vec![
                                 ("foo".into(), NickelValue::null().into()),
                                 ("bar".into(), NickelValue::null().into())
@@ -547,7 +557,6 @@ mod tests {
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -556,14 +565,13 @@ mod tests {
         let t: NickelValue = Record::new().open().into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![],
                 RecordAttrs {
                     open: true,
                     ..Default::default()
                 }
             )
-            .into()
         );
     }
 
@@ -576,7 +584,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(FieldMetadata {
@@ -586,7 +594,6 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -599,7 +606,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(TypeAnnotation {
@@ -615,7 +622,6 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 
@@ -633,7 +639,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(FieldMetadata {
@@ -661,7 +667,6 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 }

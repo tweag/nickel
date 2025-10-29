@@ -46,7 +46,10 @@ fn mk_single_chunk(s: &str) -> NickelValue {
 }
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
-    use crate::{bytecode::value::ValueContent, term::make::builder};
+    use crate::{
+        bytecode::value::{ValueContent, lens::TermContent},
+        term::make::builder,
+    };
 
     let result: NickelValue = builder::Record::new()
         .field("tag")
@@ -61,25 +64,30 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
         )))
         .into();
 
-    // The builder interface is nice, but it produces non recursive records. On the other hand, the
-    // new AST symbolic string chunks produce recursive records (they're not really recursive, but
-    // there's no distinction in the source syntax, and it gets translated to a `RecRecord` by
-    // default).
+    // The builder interface is nice, but it produces closurized, non recursive records. On the
+    // other hand, the new AST symbolic string chunks produce recursive records (they're not really
+    // recursive, but there's no distinction in the source syntax, and it gets translated to a
+    // `RecRecord` by default).
     //
     // We hack around it by "peeling off" the outer record layer and replacing it with a recursive
     // record.
-
-    if let ValueContent::Record(lens) = result.content() {
-        NickelValue::term_posless(RecRecord(
-            lens.take().unwrap_or_alloc().0,
-            Vec::new(),
-            Vec::new(),
-            None,
-            false,
-        ))
+    if let ValueContent::Term(TermContent::Closurize(lens)) = result.content() {
+        if let ValueContent::Record(r_lens) = lens.take().content() {
+            NickelValue::term_posless(RecRecord(
+                r_lens.take().unwrap_or_alloc().0,
+                Vec::new(),
+                Vec::new(),
+                None,
+                false,
+            ))
+        } else {
+            unreachable!(
+                "record was built using Record::builder, expected a record in the closurize wrapper, got something else"
+            )
+        }
     } else {
         unreachable!(
-            "record was built using Record::builder, expected a record term, got something else"
+            "record was built using Record::builder, expected a `Term::Closurize` outer layer, got something else"
         )
     }
 }
