@@ -421,7 +421,7 @@ fn foreign_id() {
     // Terms that include foreign ids can be manipulated normally, and the ids are passed through.
     let container = &evaled.as_record().unwrap();
 
-    let field = container.get_field("b".into()).unwrap();
+    let field = container.get("b".into()).unwrap();
     assert_matches!(field.value.as_ref().unwrap().as_foreign_id().unwrap().0, 42);
 
     // Foreign ids cannot be compared for equality.

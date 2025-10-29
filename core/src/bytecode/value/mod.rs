@@ -127,7 +127,9 @@ impl fmt::Debug for NickelValue {
             ValueContentRef::EnumVariant(enum_variant_body) => {
                 write!(f, "{:?}", enum_variant_body)
             }
-            ValueContentRef::ForeignId(foreign_id_body) => write!(f, "foreign id: {:?}", foreign_id_body.0),
+            ValueContentRef::ForeignId(foreign_id_body) => {
+                write!(f, "foreign id: {:?}", foreign_id_body.0)
+            }
             ValueContentRef::SealingKey(sealing_key_body) => {
                 write!(f, "sealing key: {:?}", sealing_key_body.0)
             }
@@ -371,14 +373,14 @@ impl NickelValue {
         if value.is_empty() {
             Self::inline(InlineValue::EmptyArray, pos_idx)
         } else {
-                ValueBlockRc::encode(
-                    ArrayBody {
-                        array: value,
-                        pending_contracts,
-                    },
-                    pos_idx,
-                )
-                .into()
+            ValueBlockRc::encode(
+                ArrayBody {
+                    array: value,
+                    pending_contracts,
+                },
+                pos_idx,
+            )
+            .into()
         }
     }
 
@@ -2243,7 +2245,7 @@ impl<C: Default> Container<C> {
 impl Container<&RecordBody> {
     /// Retrieves a field from [crate::term::record::RecordData::fields], or returns `None` if `self`
     /// is [Self::Empty].
-    pub fn get_field(&self, id: LocIdent) -> Option<&Field> {
+    pub fn get(&self, id: LocIdent) -> Option<&Field> {
         self.into_opt().and_then(|record| record.0.fields.get(&id))
     }
 
@@ -2285,6 +2287,13 @@ impl Container<&ArrayBody> {
             .into_iter()
             .map(|array_body| array_body.pending_contracts.iter())
             .flatten()
+    }
+
+    /// Retrieves an element from the underlying array at the given index, or returns `None` if `self`
+    /// is [Self::Empty].
+    pub fn get(&self, idx: usize) -> Option<&NickelValue> {
+        self.into_opt()
+            .and_then(|array_body| array_body.array.get(idx))
     }
 
     /// Returns the length of the underlying array.
@@ -2455,39 +2464,30 @@ mod tests {
             inline_null
                 .clone()
                 .with_inline_pos_idx(pos_table.push(dummy_pos))
-                .phys_eq(
-                    &NickelValue::null().with_inline_pos_idx(pos_table.push(dummy_pos))
-                )
+                .phys_eq(&NickelValue::null().with_inline_pos_idx(pos_table.push(dummy_pos)))
         );
         assert!(
             inline_true
                 .with_inline_pos_idx(pos_table.push(dummy_pos))
-                .phys_eq(
-                    &NickelValue::bool_true().with_inline_pos_idx(pos_table.push(dummy_pos))
-                )
+                .phys_eq(&NickelValue::bool_true().with_inline_pos_idx(pos_table.push(dummy_pos)))
         );
         assert!(
             inline_false
                 .with_inline_pos_idx(pos_table.push(dummy_pos))
-                .phys_eq(
-                    &NickelValue::bool_false()
-                        .with_inline_pos_idx(pos_table.push(dummy_pos))
-                )
+                .phys_eq(&NickelValue::bool_false().with_inline_pos_idx(pos_table.push(dummy_pos)))
         );
         assert!(
             inline_empty_array
                 .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
-                    &NickelValue::empty_array()
-                        .with_inline_pos_idx(pos_table.push(dummy_pos))
+                    &NickelValue::empty_array().with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
         assert!(
             inline_empty_record
                 .with_inline_pos_idx(pos_table.push(dummy_pos))
                 .phys_eq(
-                    &NickelValue::empty_record()
-                        .with_inline_pos_idx(pos_table.push(dummy_pos))
+                    &NickelValue::empty_record().with_inline_pos_idx(pos_table.push(dummy_pos))
                 )
         );
 

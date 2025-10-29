@@ -559,13 +559,13 @@ impl Record<'_> {
 
     /// Is this record empty?
     pub fn is_empty(&self) -> bool {
-        self.data.into_opt().map_or(true, |data| data.0.is_empty())
+        self.data.is_empty()
     }
 
     /// If this field name is present in the record, return the field value.
     pub fn value_by_name(&self, key: &str) -> Option<Expr> {
         self.data
-            .get_field(Ident::new(key).into())
+            .get(Ident::new(key).into())
             .and_then(|fld| fld.value.as_ref())
             .map(|rt| Expr { value: rt.clone() })
     }
@@ -624,17 +624,14 @@ impl Array<'_> {
 
     /// Is this array empty?
     pub fn is_empty(&self) -> bool {
-        self.array
-            .into_opt()
-            .map_or(true, |array| array.array.is_empty())
+        self.array.is_empty()
     }
 
     /// Returns the element at the requested index, if the index is in-bounds.
     pub fn get(&self, idx: usize) -> Option<Expr> {
-        self.array
-            .into_opt()
-            .and_then(|data| data.array.get(idx))
-            .map(|rt| Expr { value: rt.clone() })
+        self.array.get(idx).map(|value| Expr {
+            value: value.clone(),
+        })
     }
 
     /// Returns an iterator over the elements of this array.

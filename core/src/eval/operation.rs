@@ -352,7 +352,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     };
 
                     container
-                        .get_field(enum_body.tag)
+                        .get(enum_body.tag)
                         .map(|field| Closure {
                             // The record containing the match cases, as well as the match primop
                             // itself, aren't accessible in the surface language. They are
@@ -2391,7 +2391,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 Ok(NickelValue::bool_value(matches!(
-                            container.get_field(id.clone().into()),
+                            container.get(id.clone().into()),
                             Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
                     pos_op_inh
@@ -2408,7 +2408,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 Ok(NickelValue::bool_value(
                         matches!(
-                            container.get_field(id.clone().into()),
+                            container.get(id.clone().into()),
                             Some(field @ Field { value: Some(_), ..}) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                         ),
                         pos_op_inh,
