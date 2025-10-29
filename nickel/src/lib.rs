@@ -135,10 +135,7 @@ impl Error {
                 let config = codespan_reporting::term::Config::default();
                 diagnostics.diagnostics.iter().try_for_each(|d| {
                     Ok(codespan_reporting::term::emit(
-                        writer,
-                        &config,
-                        &self.files,
-                        d,
+                        writer, &config, &err.files, d,
                     )?)
                 })
             }
@@ -768,5 +765,16 @@ mod tests {
         assert_eq!(tag, "Tag");
         assert!(!inner.is_value());
         assert_eq!(Some(2), vm.eval_shallow(inner).unwrap().as_i64());
+    }
+
+    #[test]
+    fn error_format() {
+        let Err(err) =
+            Context::default().eval_deep("{ port | Number = \"80\", name = \"myserver\" }")
+        else {
+            panic!("wanted an error");
+        };
+        let mut out = Vec::new();
+        err.format(&mut out, ErrorFormat::Text).unwrap();
     }
 }
