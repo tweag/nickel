@@ -794,7 +794,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 ValueContentRef::Term(TermBody(Term::Op1(op, arg))) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op.clone(), pos_idx),
+                        OperationCont::Op1(op.clone(), arg.pos_idx()),
                         self.call_stack.len(),
                         pos_idx,
                     );
@@ -812,7 +812,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 value: snd_arg.clone(),
                                 env: env.clone(),
                             },
-                            pos_idx,
+                            fst_arg.pos_idx(),
                         ),
                         self.call_stack.len(),
                         pos_idx,
@@ -844,7 +844,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             op: op.clone(),
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
-                            current_pos_idx: pos_idx,
+                            current_pos_idx: fst_arg.pos_idx(),
                         },
                         self.call_stack.len(),
                         pos_idx,
@@ -858,10 +858,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContentRef::Term(TermBody(Term::StrChunks(chunks))) => {
                     let mut chunks_iter = chunks.iter().cloned();
                     match chunks_iter.next_back() {
-                        None => Closure {
-                            value: NickelValue::string(NickelString::new(), pos_idx),
-                            env: Environment::new(),
-                        },
+                        None => NickelValue::string(NickelString::new(), pos_idx).into(),
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
                                 StrChunk::Literal(s) => (NickelValue::string_posless(s), 0),
@@ -873,7 +870,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 acc: String::new(),
                                 env: env.clone(),
                                 curr_indent: indent,
-                                curr_pos: pos_idx,
+                                curr_pos: arg.pos_idx(),
                             });
 
                             Closure {
@@ -1036,7 +1033,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let extended = dyn_fields.into_iter().fold(
                         NickelValue::record(static_part, pos_idx),
                         |acc, (name_as_term, mut field)| {
-                            let pos_idx = field
+                            let pos_dyn_field = field
                                 .value
                                 .as_ref()
                                 .map(NickelValue::pos_idx)
@@ -1065,7 +1062,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             match value {
                                 Some(value) => NickelValue::term(
                                     Term::App(extend, value),
-                                    pos_idx.to_inherited(&mut self.context.pos_table),
+                                    pos_dyn_field.to_inherited(&mut self.context.pos_table),
                                 ),
                                 None => extend,
                             }
@@ -1118,17 +1115,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // it is optimized.
                     let static_contract = annot.static_contract(&mut self.context.pos_table);
                     let contracts = annot.pending_contracts(&mut self.context.pos_table)?;
-                    let pos_idx = inner.pos_idx();
+                    let pos_inner = inner.pos_idx();
                     let inner = inner.clone();
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
-                        static_ctr?.apply(inner, pos_idx)
+                        static_ctr?.apply(inner, pos_inner)
                     } else {
                         inner
                     };
 
                     let inner_with_ctr =
-                        RuntimeContract::apply_all(inner_with_static, contracts, pos_idx);
+                        RuntimeContract::apply_all(inner_with_static, contracts, pos_inner);
 
                     Closure {
                         value: inner_with_ctr,
@@ -1147,10 +1144,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         }
                     } else {
-                        break Ok(Closure {
-                            value,
-                            env,
-                        });
+                        break Ok(Closure { value, env });
                     }
                 }
                 // A match expression acts as a function (in Nickel, a match expression corresponds
