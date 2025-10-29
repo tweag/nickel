@@ -14,8 +14,7 @@ use crate::{
     label::Label,
     position::{PosIdx, PosTable, RawSpan, TermPos},
     term::{
-        ForeignIdPayload, Number, RecordOpKind, RuntimeContract, SealingKey, Term,
-        record::{Field, RecordData},
+        ForeignIdPayload, Number, RecordOpKind, RuntimeContract, SealingKey, Term, record::Field,
         string::NickelString,
     },
     traverse::{Traverse as _, TraverseOrder},
@@ -32,6 +31,8 @@ use std::{
     mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
 };
+
+pub use crate::term::record::RecordData;
 
 pub mod lens;
 
@@ -117,26 +118,26 @@ impl fmt::Debug for NickelValue {
         match self.content_ref() {
             ValueContentRef::Null => write!(f, "content: null"),
             ValueContentRef::Bool(b) => write!(f, "content: {b}"),
-            ValueContentRef::Number(number_body) => write!(f, "content: {}", number_body.0),
+            ValueContentRef::Number(number) => write!(f, "content: {number}"),
             ValueContentRef::Array(container) => write!(f, "array: {container:?}"),
             ValueContentRef::Record(container) => write!(f, "record: {container:?}"),
-            ValueContentRef::String(string_body) => write!(f, "{}", string_body.0),
-            ValueContentRef::Thunk(thunk_body) => write!(f, "thunk: {:?}", thunk_body.0),
-            ValueContentRef::Term(term_body) => write!(f, "{:?}", term_body.0),
-            ValueContentRef::Label(label_body) => write!(f, "{:?}", label_body.0),
-            ValueContentRef::EnumVariant(enum_variant_body) => {
-                write!(f, "{:?}", enum_variant_body)
+            ValueContentRef::String(string) => write!(f, "{string}"),
+            ValueContentRef::Thunk(thunk) => write!(f, "thunk: {thunk:?}"),
+            ValueContentRef::Term(term) => write!(f, "{term:?}"),
+            ValueContentRef::Label(label) => write!(f, "{label:?}"),
+            ValueContentRef::EnumVariant(enum_variant_data) => {
+                write!(f, "{enum_variant_data:?}")
             }
-            ValueContentRef::ForeignId(foreign_id_body) => {
-                write!(f, "foreign id: {:?}", foreign_id_body.0)
+            ValueContentRef::ForeignId(foreign_id) => {
+                write!(f, "foreign id: {foreign_id:?}")
             }
-            ValueContentRef::SealingKey(sealing_key_body) => {
-                write!(f, "sealing key: {:?}", sealing_key_body.0)
+            ValueContentRef::SealingKey(sealing_key) => {
+                write!(f, "sealing key: {sealing_key:?}")
             }
-            ValueContentRef::CustomContract(custom_contract_body) => {
-                write!(f, "custom contract: {:?}", custom_contract_body.0)
+            ValueContentRef::CustomContract(custom_contract) => {
+                write!(f, "custom contract: {custom_contract:?}")
             }
-            ValueContentRef::Type(type_body) => write!(f, "{type_body:?}"),
+            ValueContentRef::Type(type_data) => write!(f, "{type_data:?}"),
         }?;
 
         write!(f, ")")
@@ -347,7 +348,7 @@ impl NickelValue {
 
     /// Allocates a new number value.
     pub fn number(value: impl Into<Number>, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(NumberBody(value.into()), pos_idx).into()
+        ValueBlockRc::encode(value.into(), pos_idx).into()
     }
 
     /// Allocates a new number value without any position set. Equivalent to `Self::number(value,
@@ -358,7 +359,7 @@ impl NickelValue {
 
     /// Allocates a new string value.
     pub fn string(value: impl Into<NickelString>, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(StringBody(value.into()), pos_idx).into()
+        ValueBlockRc::encode(value.into(), pos_idx).into()
     }
 
     /// Allocates a new string value without any position set. Equivalent to `Self::string(value,
@@ -374,7 +375,7 @@ impl NickelValue {
             Self::inline(InlineValue::EmptyArray, pos_idx)
         } else {
             ValueBlockRc::encode(
-                ArrayBody {
+                ArrayData {
                     array: value,
                     pending_contracts,
                 },
@@ -391,7 +392,7 @@ impl NickelValue {
             Self::inline(InlineValue::EmptyArray, PosIdx::NONE)
         } else {
             ValueBlockRc::encode(
-                ArrayBody {
+                ArrayData {
                     array: value,
                     pending_contracts,
                 },
@@ -406,7 +407,7 @@ impl NickelValue {
     /// that will be mutated in a second step.
     pub fn empty_array_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(
-            ArrayBody {
+            ArrayData {
                 array: Array::default(),
                 pending_contracts: Vec::new(),
             },
@@ -423,7 +424,7 @@ impl NickelValue {
         if value.is_empty() && !value.attrs.open {
             Self::inline(InlineValue::EmptyRecord, pos_idx)
         } else {
-            ValueBlockRc::encode(RecordBody(value), pos_idx).into()
+            ValueBlockRc::encode(value, pos_idx).into()
         }
     }
 
@@ -433,7 +434,7 @@ impl NickelValue {
         if value.is_empty() {
             Self::empty_record()
         } else {
-            ValueBlockRc::encode(RecordBody(value), PosIdx::NONE).into()
+            ValueBlockRc::encode(value, PosIdx::NONE).into()
         }
     }
 
@@ -441,12 +442,12 @@ impl NickelValue {
     /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record
     /// that will be mutated in a second step.
     pub fn empty_record_block(pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(RecordBody(RecordData::empty()), pos_idx).into()
+        ValueBlockRc::encode(RecordData::empty(), pos_idx).into()
     }
 
     /// Allocates a new thunk value.
     pub fn thunk(value: CacheIndex, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(ThunkBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new thunk value without any position set. Equivalent to `Self::thunk(value,
@@ -457,7 +458,7 @@ impl NickelValue {
 
     /// Allocates a new term value.
     pub fn term(value: Term, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(TermBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new term value without any position set. Equivalent to `Self::term(value,
@@ -468,7 +469,7 @@ impl NickelValue {
 
     /// Allocates a new label value.
     pub fn label(value: Label, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(LabelBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new label value without any position set. Equivalent to `Self::label(value,
@@ -484,7 +485,7 @@ impl NickelValue {
         pos_idx: PosIdx,
     ) -> Self {
         ValueBlockRc::encode(
-            EnumVariantBody {
+            EnumVariantData {
                 tag: tag.into(),
                 arg,
             },
@@ -512,7 +513,7 @@ impl NickelValue {
 
     /// Allocates a new foreign ID value.
     pub fn foreign_id(value: ForeignIdPayload, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(ForeignIdBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new foreign ID value without any position set. Equivalent to
@@ -523,7 +524,7 @@ impl NickelValue {
 
     /// Allocates a new sealing key value.
     pub fn sealing_key(value: SealingKey, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(SealingKeyBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new sealing key value without any position set. Equivalent to
@@ -534,7 +535,7 @@ impl NickelValue {
 
     /// Allocates a new custom contract value.
     pub fn custom_contract(value: NickelValue, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(CustomContractBody(value), pos_idx).into()
+        ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new custom contract value without any position set. Equivalent to
@@ -545,7 +546,7 @@ impl NickelValue {
 
     /// Allocates a new type.
     pub fn typ(typ: Type, contract: NickelValue, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(TypeBody { typ, contract }, pos_idx).into()
+        ValueBlockRc::encode(TypeData { typ, contract }, pos_idx).into()
     }
 
     /// Returns the inner value of `self` if it's an inline value, or `None` otherwise.
@@ -564,19 +565,19 @@ impl NickelValue {
 
     /// Returns a reference to the inner number stored in this value if `self` is a value block
     /// with tag number, or `None` otherwise.
-    pub fn as_number(&self) -> Option<&NumberBody> {
+    pub fn as_number(&self) -> Option<&NumberData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner string stored in this value if `self` is a value block
     /// with tag string, or `None` otherwise.
-    pub fn as_string(&self) -> Option<&StringBody> {
+    pub fn as_string(&self) -> Option<&StringData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
     /// with tag array, or `None` otherwise.
-    pub fn as_array(&self) -> Option<Container<&ArrayBody>> {
+    pub fn as_array(&self) -> Option<Container<&ArrayData>> {
         if self.is_empty_array() {
             Some(Container::Empty)
         } else {
@@ -586,7 +587,7 @@ impl NickelValue {
 
     /// Returns a reference to the inner record stored in this value if `self` is a value block
     /// with tag record, or `None` otherwise.
-    pub fn as_record(&self) -> Option<Container<&RecordBody>> {
+    pub fn as_record(&self) -> Option<Container<&RecordData>> {
         if self.is_empty_record() {
             Some(Container::Empty)
         } else {
@@ -596,25 +597,25 @@ impl NickelValue {
 
     /// Returns a reference to the inner thunk stored in this value if `self` is a value block with
     /// tag thunk, or `None` otherwise.
-    pub fn as_thunk(&self) -> Option<&ThunkBody> {
+    pub fn as_thunk(&self) -> Option<&ThunkData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner term stored in this value if `self` is a value block with
     /// a tag term, or `None` otherwise.
-    pub fn as_term(&self) -> Option<&TermBody> {
+    pub fn as_term(&self) -> Option<&TermData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner label stored in this value if `self` is a value block with
     /// tag label, or `None` otherwise.
-    pub fn as_label(&self) -> Option<&LabelBody> {
+    pub fn as_label(&self) -> Option<&LabelData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner enum variant stored in this value if `self` is a value
     /// block with tag enum variant, or `None` otherwise.
-    pub fn as_enum_variant(&self) -> Option<&EnumVariantBody> {
+    pub fn as_enum_variant(&self) -> Option<&EnumVariantData> {
         self.as_value_body()
     }
 
@@ -627,19 +628,19 @@ impl NickelValue {
 
     /// Returns a reference to the inner sealing key stored in this value if `self` is a value
     /// block with sealing key inside, or `None` otherwise.
-    pub fn as_sealing_key(&self) -> Option<&SealingKeyBody> {
+    pub fn as_sealing_key(&self) -> Option<&SealingKeyData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner type stored in this value if `self` is a value with a type
     /// inside, or `None` otherwise.
-    pub fn as_type(&self) -> Option<&TypeBody> {
+    pub fn as_type(&self) -> Option<&TypeData> {
         self.as_value_body()
     }
 
     /// Returns a reference to the inner foreign id stored in this value if `self` is a value
     /// block with a foreign value inside, or `None` otherwise.
-    pub fn as_foreign_id(&self) -> Option<&ForeignIdBody> {
+    pub fn as_foreign_id(&self) -> Option<&ForeignIdData> {
         self.as_value_body()
     }
 
@@ -832,9 +833,9 @@ impl NickelValue {
                         BodyTag::String => ValueContent::String(ValueLens::body_lens(self)),
                         BodyTag::Thunk => ValueContent::Thunk(ValueLens::body_lens(self)),
                         BodyTag::Term => {
-                            let term: &TermBody = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
+                            let term: &TermData = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
 
-                            ValueContent::Term(match term.0 {
+                            ValueContent::Term(match term {
                                 Term::Value(_) => {
                                     TermContent::Value(ValueLens::term_value_lens(self))
                                 }
@@ -1051,7 +1052,7 @@ impl NickelValue {
             ValueContentRef::Array(_) => Some("Array"),
             ValueContentRef::Record(_) => Some("Record"),
             ValueContentRef::String(_) => Some("String"),
-            ValueContentRef::Term(term_body) => match &term_body.0 {
+            ValueContentRef::Term(term) => match term {
                 Term::Value(v) | Term::Closurize(v) => v.type_of(),
                 Term::RecRecord(..) => Some("Record"),
                 Term::Fun(..) | Term::FunPattern(..) => Some("Function"),
@@ -1072,8 +1073,8 @@ impl NickelValue {
                 | Term::RuntimeError(_) => None,
             },
             ValueContentRef::Label(_) => Some("Label"),
-            ValueContentRef::EnumVariant(EnumVariantBody { arg: None, tag: _ }) => Some("EnumTag"),
-            ValueContentRef::EnumVariant(EnumVariantBody {
+            ValueContentRef::EnumVariant(EnumVariantData { arg: None, tag: _ }) => Some("EnumTag"),
+            ValueContentRef::EnumVariant(EnumVariantData {
                 arg: Some(_),
                 tag: _,
             }) => Some("EnumVariant"),
@@ -1128,20 +1129,19 @@ impl NickelValue {
             | BodyTag::SealingKey
             | BodyTag::Label
             | BodyTag::String => true,
-            BodyTag::Number => self.as_value_body::<NumberBody>().unwrap().0 >= 0,
+            BodyTag::Number => self.as_value_body::<NumberData>().unwrap() >= &0,
             BodyTag::EnumVariant => self
-                .as_value_body::<EnumVariantBody>()
+                .as_value_body::<EnumVariantData>()
                 .unwrap()
                 .arg
                 .is_none(),
             BodyTag::Thunk => false,
-            BodyTag::Term => self.as_value_body::<TermBody>().unwrap().0.fmt_is_atom(),
+            BodyTag::Term => self.as_value_body::<TermData>().unwrap().fmt_is_atom(),
             BodyTag::CustomContract => self
-                .as_value_body::<CustomContractBody>()
+                .as_value_body::<CustomContractData>()
                 .unwrap()
-                .0
                 .fmt_is_atom(),
-            BodyTag::Type => self.as_value_body::<TypeBody>().unwrap().typ.fmt_is_atom(),
+            BodyTag::Type => self.as_value_body::<TypeData>().unwrap().typ.fmt_is_atom(),
         }
     }
 
@@ -1151,9 +1151,9 @@ impl NickelValue {
         match self.content_ref() {
             ValueContentRef::Null => Some("null".into()),
             ValueContentRef::Bool(b) => Some(b.to_string().into()),
-            ValueContentRef::String(s) => Some(s.0.clone()),
-            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => Some((*tag).into()),
-            ValueContentRef::Number(n) => Some(format!("{}", n.0.to_sci()).into()),
+            ValueContentRef::String(s) => Some(s.clone()),
+            ValueContentRef::EnumVariant(EnumVariantData { tag, arg: None }) => Some((*tag).into()),
+            ValueContentRef::Number(n) => Some(format!("{}", n.to_sci()).into()),
             _ => None,
         }
     }
@@ -1443,18 +1443,18 @@ impl BodyTag {
     /// right type.
     fn padding(&self) -> usize {
         match self {
-            BodyTag::Number => ValueBlockRc::padding::<NumberBody>(),
-            BodyTag::String => ValueBlockRc::padding::<StringBody>(),
-            BodyTag::Array => ValueBlockRc::padding::<ArrayBody>(),
-            BodyTag::Record => ValueBlockRc::padding::<RecordBody>(),
-            BodyTag::Thunk => ValueBlockRc::padding::<ThunkBody>(),
-            BodyTag::Term => ValueBlockRc::padding::<TermBody>(),
-            BodyTag::Label => ValueBlockRc::padding::<LabelBody>(),
-            BodyTag::EnumVariant => ValueBlockRc::padding::<EnumVariantBody>(),
-            BodyTag::ForeignId => ValueBlockRc::padding::<ForeignIdBody>(),
-            BodyTag::SealingKey => ValueBlockRc::padding::<SealingKeyBody>(),
-            BodyTag::CustomContract => ValueBlockRc::padding::<CustomContractBody>(),
-            BodyTag::Type => ValueBlockRc::padding::<TypeBody>(),
+            BodyTag::Number => ValueBlockRc::padding::<NumberData>(),
+            BodyTag::String => ValueBlockRc::padding::<StringData>(),
+            BodyTag::Array => ValueBlockRc::padding::<ArrayData>(),
+            BodyTag::Record => ValueBlockRc::padding::<RecordData>(),
+            BodyTag::Thunk => ValueBlockRc::padding::<ThunkData>(),
+            BodyTag::Term => ValueBlockRc::padding::<TermData>(),
+            BodyTag::Label => ValueBlockRc::padding::<LabelData>(),
+            BodyTag::EnumVariant => ValueBlockRc::padding::<EnumVariantData>(),
+            BodyTag::ForeignId => ValueBlockRc::padding::<ForeignIdData>(),
+            BodyTag::SealingKey => ValueBlockRc::padding::<SealingKeyData>(),
+            BodyTag::CustomContract => ValueBlockRc::padding::<CustomContractData>(),
+            BodyTag::Type => ValueBlockRc::padding::<TypeData>(),
         }
     }
 
@@ -1462,18 +1462,18 @@ impl BodyTag {
     /// [ValueBlockRc::body_offset] under the hood instantiated with the right type.
     fn body_offset(&self) -> usize {
         match self {
-            BodyTag::Number => ValueBlockRc::body_offset::<NumberBody>(),
-            BodyTag::String => ValueBlockRc::body_offset::<StringBody>(),
-            BodyTag::Array => ValueBlockRc::body_offset::<ArrayBody>(),
-            BodyTag::Record => ValueBlockRc::body_offset::<RecordBody>(),
-            BodyTag::Thunk => ValueBlockRc::body_offset::<ThunkBody>(),
-            BodyTag::Term => ValueBlockRc::body_offset::<TermBody>(),
-            BodyTag::Label => ValueBlockRc::body_offset::<LabelBody>(),
-            BodyTag::EnumVariant => ValueBlockRc::body_offset::<EnumVariantBody>(),
-            BodyTag::ForeignId => ValueBlockRc::body_offset::<ForeignIdBody>(),
-            BodyTag::SealingKey => ValueBlockRc::body_offset::<SealingKeyBody>(),
-            BodyTag::CustomContract => ValueBlockRc::body_offset::<CustomContractBody>(),
-            BodyTag::Type => ValueBlockRc::body_offset::<TypeBody>(),
+            BodyTag::Number => ValueBlockRc::body_offset::<NumberData>(),
+            BodyTag::String => ValueBlockRc::body_offset::<StringData>(),
+            BodyTag::Array => ValueBlockRc::body_offset::<ArrayData>(),
+            BodyTag::Record => ValueBlockRc::body_offset::<RecordData>(),
+            BodyTag::Thunk => ValueBlockRc::body_offset::<ThunkData>(),
+            BodyTag::Term => ValueBlockRc::body_offset::<TermData>(),
+            BodyTag::Label => ValueBlockRc::body_offset::<LabelData>(),
+            BodyTag::EnumVariant => ValueBlockRc::body_offset::<EnumVariantData>(),
+            BodyTag::ForeignId => ValueBlockRc::body_offset::<ForeignIdData>(),
+            BodyTag::SealingKey => ValueBlockRc::body_offset::<SealingKeyData>(),
+            BodyTag::CustomContract => ValueBlockRc::body_offset::<CustomContractData>(),
+            BodyTag::Type => ValueBlockRc::body_offset::<TypeData>(),
         }
     }
 
@@ -1482,18 +1482,18 @@ impl BodyTag {
     /// type.
     fn block_layout(&self) -> Layout {
         match self {
-            BodyTag::Number => ValueBlockRc::block_layout::<NumberBody>(),
-            BodyTag::String => ValueBlockRc::block_layout::<StringBody>(),
-            BodyTag::Array => ValueBlockRc::block_layout::<ArrayBody>(),
-            BodyTag::Record => ValueBlockRc::block_layout::<RecordBody>(),
-            BodyTag::Thunk => ValueBlockRc::block_layout::<ThunkBody>(),
-            BodyTag::Term => ValueBlockRc::block_layout::<TermBody>(),
-            BodyTag::Label => ValueBlockRc::block_layout::<LabelBody>(),
-            BodyTag::EnumVariant => ValueBlockRc::block_layout::<EnumVariantBody>(),
-            BodyTag::ForeignId => ValueBlockRc::block_layout::<ForeignIdBody>(),
-            BodyTag::SealingKey => ValueBlockRc::block_layout::<SealingKeyBody>(),
-            BodyTag::CustomContract => ValueBlockRc::block_layout::<CustomContractBody>(),
-            BodyTag::Type => ValueBlockRc::block_layout::<TypeBody>(),
+            BodyTag::Number => ValueBlockRc::block_layout::<NumberData>(),
+            BodyTag::String => ValueBlockRc::block_layout::<StringData>(),
+            BodyTag::Array => ValueBlockRc::block_layout::<ArrayData>(),
+            BodyTag::Record => ValueBlockRc::block_layout::<RecordData>(),
+            BodyTag::Thunk => ValueBlockRc::block_layout::<ThunkData>(),
+            BodyTag::Term => ValueBlockRc::block_layout::<TermData>(),
+            BodyTag::Label => ValueBlockRc::block_layout::<LabelData>(),
+            BodyTag::EnumVariant => ValueBlockRc::block_layout::<EnumVariantData>(),
+            BodyTag::ForeignId => ValueBlockRc::block_layout::<ForeignIdData>(),
+            BodyTag::SealingKey => ValueBlockRc::block_layout::<SealingKeyData>(),
+            BodyTag::CustomContract => ValueBlockRc::block_layout::<CustomContractData>(),
+            BodyTag::Type => ValueBlockRc::block_layout::<TypeData>(),
         }
     }
 
@@ -1626,28 +1626,21 @@ pub trait ValueBlockBody {
     const TAG: BodyTag;
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct NumberBody(pub Number);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct StringBody(pub NickelString);
+pub type NumberData = Number;
+pub type StringData = NickelString;
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct ArrayBody {
+pub struct ArrayData {
     pub array: Array,
-    /// Arrays implement lazy contract application for performance reasons: contracts appiled to
+    /// Arrays implement lazy contract application for performance reasons: contracts applied to
     /// this array are lazily accumulated in this field and only applied when an element is
     /// extracted.
     pub pending_contracts: Vec<RuntimeContract>,
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct RecordBody(pub RecordData);
+pub type ThunkData = CacheIndex;
 
-#[derive(Clone, Debug)]
-pub struct ThunkBody(pub CacheIndex);
-
-impl PartialEq for ThunkBody {
+impl PartialEq for CacheIndex {
     fn eq(&self, other: &Self) -> bool {
         // We don't compare closure, because we can't, without the evaluation cache at hand. It's
         // ok even if the cache index are the same: we implement PartialEq, so we can have `x !=
@@ -1658,29 +1651,21 @@ impl PartialEq for ThunkBody {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct TermBody(pub Term);
+pub type TermData = Term;
+pub type LabelData = Label;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LabelBody(pub Label);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct EnumVariantBody {
+pub struct EnumVariantData {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ForeignIdBody(pub ForeignIdPayload);
+pub type ForeignIdData = ForeignIdPayload;
+pub type CustomContractData = NickelValue;
+pub type SealingKeyData = SealingKey;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CustomContractBody(pub NickelValue);
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SealingKeyBody(pub SealingKey);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TypeBody {
+pub struct TypeData {
     /// The static type.
     pub typ: Type,
     /// The conversion of this type to a contract, that is, `typ.contract()?`. This field
@@ -1689,51 +1674,51 @@ pub struct TypeBody {
     pub contract: NickelValue,
 }
 
-impl ValueBlockBody for NumberBody {
+impl ValueBlockBody for NumberData {
     const TAG: BodyTag = BodyTag::Number;
 }
 
-impl ValueBlockBody for ArrayBody {
+impl ValueBlockBody for ArrayData {
     const TAG: BodyTag = BodyTag::Array;
 }
 
-impl ValueBlockBody for RecordBody {
+impl ValueBlockBody for RecordData {
     const TAG: BodyTag = BodyTag::Record;
 }
 
-impl ValueBlockBody for StringBody {
+impl ValueBlockBody for StringData {
     const TAG: BodyTag = BodyTag::String;
 }
 
-impl ValueBlockBody for ThunkBody {
+impl ValueBlockBody for ThunkData {
     const TAG: BodyTag = BodyTag::Thunk;
 }
 
-impl ValueBlockBody for TermBody {
+impl ValueBlockBody for TermData {
     const TAG: BodyTag = BodyTag::Term;
 }
 
-impl ValueBlockBody for LabelBody {
+impl ValueBlockBody for LabelData {
     const TAG: BodyTag = BodyTag::Label;
 }
 
-impl ValueBlockBody for EnumVariantBody {
+impl ValueBlockBody for EnumVariantData {
     const TAG: BodyTag = BodyTag::EnumVariant;
 }
 
-impl ValueBlockBody for ForeignIdBody {
+impl ValueBlockBody for ForeignIdData {
     const TAG: BodyTag = BodyTag::ForeignId;
 }
 
-impl ValueBlockBody for CustomContractBody {
+impl ValueBlockBody for CustomContractData {
     const TAG: BodyTag = BodyTag::CustomContract;
 }
 
-impl ValueBlockBody for SealingKeyBody {
+impl ValueBlockBody for SealingKeyData {
     const TAG: BodyTag = BodyTag::SealingKey;
 }
 
-impl ValueBlockBody for TypeBody {
+impl ValueBlockBody for TypeData {
     const TAG: BodyTag = BodyTag::Type;
 }
 
@@ -1961,26 +1946,26 @@ impl ValueBlockRc {
     /// return a value that is 1-reference counted.
     pub fn strong_clone(&self) -> Self {
         match self.tag() {
-            BodyTag::Number => Self::encode(self.decode::<NumberBody>().clone(), self.pos_idx()),
-            BodyTag::Array => Self::encode(self.decode::<ArrayBody>().clone(), self.pos_idx()),
-            BodyTag::Record => Self::encode(self.decode::<RecordBody>().clone(), self.pos_idx()),
-            BodyTag::String => Self::encode(self.decode::<StringBody>().clone(), self.pos_idx()),
-            BodyTag::Thunk => Self::encode(self.decode::<ThunkBody>().clone(), self.pos_idx()),
-            BodyTag::Term => Self::encode(self.decode::<TermBody>().clone(), self.pos_idx()),
-            BodyTag::Label => Self::encode(self.decode::<LabelBody>().clone(), self.pos_idx()),
+            BodyTag::Number => Self::encode(self.decode::<NumberData>().clone(), self.pos_idx()),
+            BodyTag::Array => Self::encode(self.decode::<ArrayData>().clone(), self.pos_idx()),
+            BodyTag::Record => Self::encode(self.decode::<RecordData>().clone(), self.pos_idx()),
+            BodyTag::String => Self::encode(self.decode::<StringData>().clone(), self.pos_idx()),
+            BodyTag::Thunk => Self::encode(self.decode::<ThunkData>().clone(), self.pos_idx()),
+            BodyTag::Term => Self::encode(self.decode::<TermData>().clone(), self.pos_idx()),
+            BodyTag::Label => Self::encode(self.decode::<LabelData>().clone(), self.pos_idx()),
             BodyTag::EnumVariant => {
-                Self::encode(self.decode::<EnumVariantBody>().clone(), self.pos_idx())
+                Self::encode(self.decode::<EnumVariantData>().clone(), self.pos_idx())
             }
             BodyTag::ForeignId => {
-                Self::encode(self.decode::<ForeignIdBody>().clone(), self.pos_idx())
+                Self::encode(self.decode::<ForeignIdData>().clone(), self.pos_idx())
             }
             BodyTag::SealingKey => {
-                Self::encode(self.decode::<SealingKeyBody>().clone(), self.pos_idx())
+                Self::encode(self.decode::<SealingKeyData>().clone(), self.pos_idx())
             }
             BodyTag::CustomContract => {
-                Self::encode(self.decode::<CustomContractBody>().clone(), self.pos_idx())
+                Self::encode(self.decode::<CustomContractData>().clone(), self.pos_idx())
             }
-            BodyTag::Type => Self::encode(self.decode::<TypeBody>().clone(), self.pos_idx()),
+            BodyTag::Type => Self::encode(self.decode::<TypeData>().clone(), self.pos_idx()),
         }
     }
 
@@ -2153,40 +2138,40 @@ impl Drop for ValueBlockRc {
                 // of scope.
                 match tag {
                     BodyTag::Number => {
-                        ptr::drop_in_place(body_ptr as *mut NumberBody);
+                        ptr::drop_in_place(body_ptr as *mut NumberData);
                     }
                     BodyTag::Array => {
-                        ptr::drop_in_place(body_ptr as *mut ArrayBody);
+                        ptr::drop_in_place(body_ptr as *mut ArrayData);
                     }
                     BodyTag::Record => {
-                        ptr::drop_in_place(body_ptr as *mut RecordBody);
+                        ptr::drop_in_place(body_ptr as *mut RecordData);
                     }
                     BodyTag::String => {
-                        ptr::drop_in_place(body_ptr as *mut StringBody);
+                        ptr::drop_in_place(body_ptr as *mut StringData);
                     }
                     BodyTag::Thunk => {
-                        ptr::drop_in_place(body_ptr as *mut ThunkBody);
+                        ptr::drop_in_place(body_ptr as *mut ThunkData);
                     }
                     BodyTag::Term => {
-                        ptr::drop_in_place(body_ptr as *mut TermBody);
+                        ptr::drop_in_place(body_ptr as *mut TermData);
                     }
                     BodyTag::Label => {
-                        ptr::drop_in_place(body_ptr as *mut LabelBody);
+                        ptr::drop_in_place(body_ptr as *mut LabelData);
                     }
                     BodyTag::EnumVariant => {
-                        ptr::drop_in_place(body_ptr as *mut EnumVariantBody);
+                        ptr::drop_in_place(body_ptr as *mut EnumVariantData);
                     }
                     BodyTag::ForeignId => {
-                        ptr::drop_in_place(body_ptr as *mut ForeignIdBody);
+                        ptr::drop_in_place(body_ptr as *mut ForeignIdData);
                     }
                     BodyTag::CustomContract => {
-                        ptr::drop_in_place(body_ptr as *mut CustomContractBody);
+                        ptr::drop_in_place(body_ptr as *mut CustomContractData);
                     }
                     BodyTag::SealingKey => {
-                        ptr::drop_in_place(body_ptr as *mut SealingKeyBody);
+                        ptr::drop_in_place(body_ptr as *mut SealingKeyData);
                     }
                     BodyTag::Type => {
-                        ptr::drop_in_place(body_ptr as *mut TypeBody);
+                        ptr::drop_in_place(body_ptr as *mut TypeData);
                     }
                 };
 
@@ -2242,24 +2227,24 @@ impl<C: Default> Container<C> {
     }
 }
 
-impl Container<&RecordBody> {
+impl Container<&RecordData> {
     /// Retrieves a field from [crate::term::record::RecordData::fields], or returns `None` if `self`
     /// is [Self::Empty].
     pub fn get(&self, id: LocIdent) -> Option<&Field> {
-        self.into_opt().and_then(|record| record.0.fields.get(&id))
+        self.into_opt().and_then(|record| record.fields.get(&id))
     }
 
     /// Returns a vector of all the fields' names of this record sorted alphabetically. Returns an
     /// empty vector if `self` is [Self::Empty].
     pub fn field_names(&self, op_kind: RecordOpKind) -> Vec<LocIdent> {
         self.into_opt()
-            .map(|record| record.0.field_names(op_kind))
+            .map(|record| record.field_names(op_kind))
             .unwrap_or_default()
     }
 
     /// Returns the length of the underlying record.
     pub fn len(&self) -> usize {
-        self.into_opt().map_or(0, |record| record.0.fields.len())
+        self.into_opt().map_or(0, |record| record.fields.len())
     }
 
     /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying record is
@@ -2267,12 +2252,12 @@ impl Container<&RecordBody> {
     pub fn is_empty(&self) -> bool {
         match self {
             Container::Empty => true,
-            Container::Alloc(record) => record.0.is_empty(),
+            Container::Alloc(record) => record.is_empty(),
         }
     }
 }
 
-impl Container<&ArrayBody> {
+impl Container<&ArrayData> {
     /// Iterates over the elements of the array.
     pub fn iter(&self) -> impl Iterator<Item = &NickelValue> {
         self.into_opt()
@@ -2324,18 +2309,18 @@ impl Container<&ArrayBody> {
 pub enum ValueContentRef<'a> {
     Null,
     Bool(bool),
-    Number(&'a NumberBody),
-    Array(Container<&'a ArrayBody>),
-    Record(Container<&'a RecordBody>),
-    String(&'a StringBody),
-    Thunk(&'a ThunkBody),
-    Term(&'a TermBody),
-    Label(&'a LabelBody),
-    EnumVariant(&'a EnumVariantBody),
-    ForeignId(&'a ForeignIdBody),
-    SealingKey(&'a SealingKeyBody),
-    CustomContract(&'a CustomContractBody),
-    Type(&'a TypeBody),
+    Number(&'a NumberData),
+    Array(Container<&'a ArrayData>),
+    Record(Container<&'a RecordData>),
+    String(&'a StringData),
+    Thunk(&'a ThunkData),
+    Term(&'a TermData),
+    Label(&'a LabelData),
+    EnumVariant(&'a EnumVariantData),
+    ForeignId(&'a ForeignIdData),
+    SealingKey(&'a SealingKeyData),
+    CustomContract(&'a CustomContractData),
+    Type(&'a TypeData),
 }
 
 /// Mutable version of [ValueContentRef].
@@ -2352,18 +2337,18 @@ pub enum ValueContentRefMut<'a> {
     /// part in [Self::Array] and [Self::Record]. They won't appear as [ValueContent::InlineValue].
     Null(&'a mut NickelValue),
     Bool(&'a mut NickelValue),
-    Number(&'a mut NumberBody),
-    Array(Container<&'a mut ArrayBody>),
-    Record(Container<&'a mut RecordBody>),
-    String(&'a mut StringBody),
-    Thunk(&'a mut ThunkBody),
-    Term(&'a mut TermBody),
-    Label(&'a mut LabelBody),
-    EnumVariant(&'a mut EnumVariantBody),
-    ForeignId(&'a mut ForeignIdBody),
-    SealingKey(&'a mut SealingKeyBody),
-    CustomContract(&'a mut CustomContractBody),
-    Type(&'a mut TypeBody),
+    Number(&'a mut NumberData),
+    Array(Container<&'a mut ArrayData>),
+    Record(Container<&'a mut RecordData>),
+    String(&'a mut StringData),
+    Thunk(&'a mut ThunkData),
+    Term(&'a mut TermData),
+    Label(&'a mut LabelData),
+    EnumVariant(&'a mut EnumVariantData),
+    ForeignId(&'a mut ForeignIdData),
+    SealingKey(&'a mut SealingKeyData),
+    CustomContract(&'a mut CustomContractData),
+    Type(&'a mut TypeData),
 }
 
 /// A lazy handle to the owned content of a value block.
@@ -2382,18 +2367,18 @@ pub enum ValueContent {
     /// which is precisely the role of the lens.
     Null(lens::ValueLens<()>),
     Bool(lens::ValueLens<bool>),
-    Number(lens::ValueLens<NumberBody>),
-    Array(lens::ValueLens<Container<ArrayBody>>),
-    Record(lens::ValueLens<Container<RecordBody>>),
-    String(lens::ValueLens<StringBody>),
-    Thunk(lens::ValueLens<ThunkBody>),
+    Number(lens::ValueLens<NumberData>),
+    Array(lens::ValueLens<Container<ArrayData>>),
+    Record(lens::ValueLens<Container<RecordData>>),
+    String(lens::ValueLens<StringData>),
+    Thunk(lens::ValueLens<ThunkData>),
     Term(lens::TermContent),
-    Label(lens::ValueLens<LabelBody>),
-    EnumVariant(lens::ValueLens<EnumVariantBody>),
-    ForeignId(lens::ValueLens<ForeignIdBody>),
-    SealingKey(lens::ValueLens<SealingKeyBody>),
-    CustomContract(lens::ValueLens<CustomContractBody>),
-    Type(lens::ValueLens<TypeBody>),
+    Label(lens::ValueLens<LabelData>),
+    EnumVariant(lens::ValueLens<EnumVariantData>),
+    ForeignId(lens::ValueLens<ForeignIdData>),
+    SealingKey(lens::ValueLens<SealingKeyData>),
+    CustomContract(lens::ValueLens<CustomContractData>),
+    Type(lens::ValueLens<TypeData>),
 }
 
 impl ValueContent {
@@ -2504,7 +2489,7 @@ mod tests {
 
         assert_eq!(number_value.as_number().unwrap().0, Number::from(42));
         assert_eq!(
-            string_value.as_string().unwrap().0,
+            string_value.as_string().unwrap(),
             NickelString::from("Hello, World!")
         );
 
@@ -2576,7 +2561,7 @@ mod tests {
         let mut array_value = array.into_block().unwrap();
 
         assert_eq!(record_value.decode::<RecordBody>().0.fields.len(), 1);
-        assert_eq!(array_value.decode::<ArrayBody>().array.len(), 1);
+        assert_eq!(array_value.decode::<ArrayData>().array.len(), 1);
 
         record_value
             .get_mut::<RecordBody>()
@@ -2584,7 +2569,7 @@ mod tests {
             .fields
             .insert(LocIdent::from("world"), Default::default());
         array_value
-            .get_mut::<ArrayBody>()
+            .get_mut::<ArrayData>()
             .array
             .push(NickelValue::null());
 
@@ -2592,7 +2577,7 @@ mod tests {
         let record_copy = record_value.clone();
 
         assert_eq!(record_copy.decode::<RecordBody>().0.fields.len(), 2);
-        assert_eq!(array_copy.decode::<ArrayBody>().array.len(), 2);
+        assert_eq!(array_copy.decode::<ArrayData>().array.len(), 2);
     }
 
     #[test]
@@ -2624,7 +2609,7 @@ mod tests {
         if let Some(ValueContentRefMut::Array(Container::Alloc(array_body))) = array.content_mut() {
             array_body.array.push(NickelValue::null());
         } else {
-            panic!("Expected ArrayBody");
+            panic!("Expected ArrayData");
         }
 
         let array_copy = array.clone();
@@ -2664,7 +2649,7 @@ mod tests {
         if let ValueContentRefMut::Array(Container::Alloc(array_body)) = array.content_make_mut() {
             array_body.array.push(NickelValue::null());
         } else {
-            panic!("Expected ArrayBody");
+            panic!("Expected ArrayData");
         }
 
         let record_copy = record.clone();

@@ -43,7 +43,7 @@ use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
     bytecode::value::{
-        Container, EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContentRef,
+        Container, EnumVariantData, NickelValue, RecordBody, TermBody, ValueContentRef,
     },
     identifier::LocIdent,
     term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
@@ -133,21 +133,21 @@ fn contract_eq_bounded(
         (ValueContentRef::EnumVariant(enum1), ValueContentRef::EnumVariant(enum2)) => {
             match (enum1, enum2) {
                 (
-                    EnumVariantBody {
+                    EnumVariantData {
                         tag: tag1,
                         arg: None,
                     },
-                    EnumVariantBody {
+                    EnumVariantData {
                         tag: tag2,
                         arg: None,
                     },
                 ) => tag1 == tag2,
                 (
-                    EnumVariantBody {
+                    EnumVariantData {
                         tag: tag1,
                         arg: Some(arg1),
                     },
-                    EnumVariantBody {
+                    EnumVariantData {
                         tag: tag2,
                         arg: Some(arg2),
                     },

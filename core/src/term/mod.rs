@@ -12,8 +12,8 @@ use string::NickelString;
 
 use crate::{
     bytecode::value::{
-        self, Array, ArrayBody, Container, CustomContractBody, EnumVariantBody, NickelValue,
-        RecordBody, TermBody, TypeBody, ValueContent, ValueContentRef, lens::TermContent,
+        self, Array, ArrayBody, Container, CustomContractBody, EnumVariantData, NickelValue,
+        RecordBody, TermBody, TypeData, ValueContent, ValueContentRef, lens::TermContent,
     },
     cache::InputFormat,
     combine::Combine,
@@ -2146,14 +2146,14 @@ impl Traverse<NickelValue> for NickelValue {
                 NickelValue::array(array, pending_contracts, pos_idx)
             }
             ValueContent::Type(lens) => {
-                let TypeBody { typ, contract } = lens.take();
+                let TypeData { typ, contract } = lens.take();
                 let typ = typ.traverse(f, order)?;
                 let contract = contract.traverse(f, order)?;
 
                 NickelValue::typ(typ, contract, pos_idx)
             }
             ValueContent::EnumVariant(lens) => {
-                let EnumVariantBody { tag, arg } = lens.take();
+                let EnumVariantData { tag, arg } = lens.take();
                 let arg = arg.map(|arg| arg.traverse(f, order)).transpose()?;
                 NickelValue::enum_variant(tag, arg, pos_idx)
             }
@@ -2198,15 +2198,15 @@ impl Traverse<NickelValue> for NickelValue {
             | ValueContentRef::Label(_)
             | ValueContentRef::Thunk(_)
             | ValueContentRef::SealingKey(_)
-            | ValueContentRef::EnumVariant(EnumVariantBody { arg: None, .. })
+            | ValueContentRef::EnumVariant(EnumVariantData { arg: None, .. })
             | ValueContentRef::ForeignId(_) => None,
-            ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(v), .. })
+            ValueContentRef::EnumVariant(EnumVariantData { arg: Some(v), .. })
             | ValueContentRef::CustomContract(CustomContractBody(v)) => v.traverse_ref(f, scope),
             ValueContentRef::Array(Container::Alloc(array_data)) => array_data
                 .array
                 .iter()
                 .find_map(|t| t.traverse_ref(f, scope)),
-            ValueContentRef::Type(TypeBody { typ, contract }) => {
+            ValueContentRef::Type(TypeData { typ, contract }) => {
                 typ.traverse_ref(f, scope)?;
                 contract.traverse_ref(f, scope)
             }
@@ -2230,7 +2230,7 @@ impl Traverse<Type> for NickelValue {
 
                 match value.content() {
                     ValueContent::Type(lens) => {
-                        let TypeBody { typ, contract } = lens.take();
+                        let TypeData { typ, contract } = lens.take();
                         let typ = typ.traverse(f, order)?;
                         Ok(NickelValue::typ(typ, contract, pos_idx))
                     }
@@ -2248,7 +2248,7 @@ impl Traverse<Type> for NickelValue {
     ) -> Option<U> {
         self.traverse_ref(
             &mut |value: &NickelValue, state: &S| {
-                if let Some(TypeBody { typ, contract }) = value.as_type() {
+                if let Some(TypeData { typ, contract }) = value.as_type() {
                     typ.traverse_ref(f, state).into()
                 } else {
                     TraverseControl::Continue

@@ -7,8 +7,7 @@
 use super::{primop::PrimOp, *};
 use crate::{
     bytecode::value::{
-        ArrayBody, Container, CustomContractBody, EnumVariantBody, InlineValue, NickelValue,
-        NumberBody, RecordBody, StringBody, TermBody, TypeBody, ValueContentRef,
+        ArrayData, Container, EnumVariantData, InlineValue, NickelValue, TypeData, ValueContentRef,
         ValueContentRefMut,
     },
     combine::Combine,
@@ -390,11 +389,11 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 let final_body = loop {
                     match maybe_next_fun.as_term() {
-                        Some(TermBody(Term::Fun(next_id, next_body))) => {
+                        Some(Term::Fun(next_id, next_body)) => {
                             args.push(Pattern::any(*next_id));
                             maybe_next_fun = next_body;
                         }
-                        Some(TermBody(Term::FunPattern(next_pat, next_body))) => {
+                        Some(Term::FunPattern(next_pat, next_body)) => {
                             args.push(next_pat.to_ast(alloc, pos_table));
                             maybe_next_fun = next_body;
                         }
@@ -427,13 +426,13 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     // We have to special-case if-then-else, which is encoded as a primop application
                     // of the unary operator if-then-else to the condition, followed by two normal
                     // applications for the if and else branches, which is a bit painful to match.
-                    Some(TermBody(Term::App(fun_inner, arg_inner)))
+                    Some(Term::App(fun_inner, arg_inner))
                         if matches!(
                             fun_inner.as_term(),
-                            Some(TermBody(Term::Op1(term::UnaryOp::IfThenElse, _)))
+                            Some(Term::Op1(term::UnaryOp::IfThenElse, _))
                         ) =>
                     {
-                        if let Some(TermBody(Term::Op1(term::UnaryOp::IfThenElse, cond))) =
+                        if let Some(Term::Op1(term::UnaryOp::IfThenElse, cond)) =
                             fun_inner.as_term()
                         {
                             return alloc.if_then_else(
@@ -449,7 +448,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 let mut args = vec![arg.to_ast(alloc, pos_table)];
                 let mut maybe_next_app = fun.as_term();
 
-                while let Some(TermBody(Term::App(next_fun, next_arg))) = maybe_next_app {
+                while let Some(Term::App(next_fun, next_arg)) = maybe_next_app {
                     args.push(next_arg.to_ast(alloc, pos_table));
                     maybe_next_app = next_fun.as_term();
                 }
@@ -582,11 +581,11 @@ impl<'ast> FromMainline<'ast, NickelValue> for Ast<'ast> {
         let node = match rterm.content_ref() {
             ValueContentRef::Null => Node::Null,
             ValueContentRef::Bool(b) => Node::Bool(b),
-            ValueContentRef::Number(NumberBody(n)) => alloc.number(n.clone()),
+            ValueContentRef::Number(n) => alloc.number(n.clone()),
             ValueContentRef::Array(Container::Empty) => Node::Array(&[]),
             // We ignore pending contracts here. Conversion between ASTs should happen before
             // runtime, when `pending_contracts` is empty.
-            ValueContentRef::Array(Container::Alloc(ArrayBody {
+            ValueContentRef::Array(Container::Alloc(ArrayData {
                 array,
                 pending_contracts: _,
             })) => {
@@ -600,7 +599,7 @@ impl<'ast> FromMainline<'ast, NickelValue> for Ast<'ast> {
                 alloc.array(elts)
             }
             ValueContentRef::Record(Container::Empty) => alloc.record(Record::empty()),
-            ValueContentRef::Record(Container::Alloc(RecordBody(data))) => {
+            ValueContentRef::Record(Container::Alloc(data)) => {
                 let field_defs = alloc.alloc_many(data.fields.iter().map(|(id, field)| {
                     let pos = field
                         .value
@@ -625,13 +624,13 @@ impl<'ast> FromMainline<'ast, NickelValue> for Ast<'ast> {
                     open: data.attrs.open,
                 })
             }
-            ValueContentRef::String(StringBody(s)) => alloc.string(s),
-            ValueContentRef::Term(TermBody(term)) => term.to_ast(alloc, pos_table),
-            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg }) => {
+            ValueContentRef::String(s) => alloc.string(s),
+            ValueContentRef::Term(term) => term.to_ast(alloc, pos_table),
+            ValueContentRef::EnumVariant(EnumVariantData { tag, arg }) => {
                 alloc.enum_variant(*tag, arg.as_ref().map(|arg| arg.to_ast(alloc, pos_table)))
             }
             // We ignore the cached contract at this stage (it shouldn't be set)
-            ValueContentRef::Type(TypeBody { typ, contract: _ }) => {
+            ValueContentRef::Type(TypeData { typ, contract: _ }) => {
                 alloc.typ(typ.to_ast(alloc, pos_table))
             }
             // Those aren't representable in the new AST. We should have a better error than
@@ -1073,23 +1072,19 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                     let pos_idx = pos_table.push(pos);
                     term::record::Field::from(
                         // See [^closurize-insertion]
-                        closurize(
-                            NickelValue::record(
-                                term::record::RecordData {
-                                    fields,
-                                    ..Default::default()
-                                },
-                                pos_idx,
-                            ),
-                        ),
+                        closurize(NickelValue::record(
+                            term::record::RecordData {
+                                fields,
+                                ..Default::default()
+                            },
+                            pos_idx,
+                        )),
                     )
                 }
                 FieldPathElem::Expr(expr) => {
                     let pos = expr.pos;
                     let expr = NickelValue::from_ast(expr, pos_table);
-                    let static_access = expr
-                        .as_term()
-                        .and_then(|TermBody(t)| t.try_str_chunk_as_static_str());
+                    let static_access = expr.as_term().and_then(Term::try_str_chunk_as_static_str);
 
                     if let Some(static_access) = static_access {
                         let id = LocIdent::new_with_pos(static_access, pos);
@@ -1098,15 +1093,13 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
 
                         term::record::Field::from(
                             // See [^closurize-insertion]
-                            closurize(
-                                NickelValue::record(
-                                    term::record::RecordData {
-                                        fields,
-                                        ..Default::default()
-                                    },
-                                    pos_table.push(pos),
-                                ),
-                            ),
+                            closurize(NickelValue::record(
+                                term::record::RecordData {
+                                    fields,
+                                    ..Default::default()
+                                },
+                                pos_table.push(pos),
+                            )),
                         )
                     } else {
                         // The record we create isn't recursive, because it is only comprised of
@@ -1609,11 +1602,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                 // well-formed values. In particular, containers (arrays and non-recursive records)
                 // must be closurized the first time they are evaluated. So instead of being
                 // translated as arrays directly, we wrap them using the `Closurize` operation.
-                closurize(NickelValue::array(
-                    array,
-                    Vec::new(),
-                    pos_idx,
-                ))
+                closurize(NickelValue::array(array, Vec::new(), pos_idx))
             }
             Node::PrimOpApp { op, args } => {
                 let term = match (*op).to_mainline(pos_table) {
@@ -1670,18 +1659,14 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
 
                 NickelValue::typ(typ, contract, pos_table.push(ast.pos))
             }
-            Node::ParseError(error) => NickelValue::term(
-                Term::ParseError((*error).clone()),
-                pos_table.push(ast.pos),
-            ),
+            Node::ParseError(error) => {
+                NickelValue::term(Term::ParseError((*error).clone()), pos_table.push(ast.pos))
+            }
         };
 
         // See [^merge-label-span]
-        if let ValueContentRefMut::Term(TermBody(term::Term::Op2(
-            term::BinaryOp::Merge(label),
-            _,
-            _,
-        ))) = result.content_make_mut()
+        if let ValueContentRefMut::Term(term::Term::Op2(term::BinaryOp::Merge(label), _, _)) =
+            result.content_make_mut()
         {
             label.span = ast.pos.into_opt();
         }
@@ -1746,9 +1731,7 @@ impl<'ast> FromAst<Record<'ast>>
                     // Here, both fields are parsed as `StrChunks`, but the first field is actually a
                     // static one, just with special characters. The following code determines which fields
                     // are actually static or not, and inserts them in the right location.
-                    let static_access = expr
-                        .as_term()
-                        .and_then(|TermBody(t)| t.try_str_chunk_as_static_str());
+                    let static_access = expr.as_term().and_then(Term::try_chunks_as_static_str);
 
                     if let Some(static_access) = static_access {
                         insert_static_field(
@@ -1795,7 +1778,7 @@ fn merge_fields(
         bytecode::value::ValueContent,
         eval::merge::{merge_doc, split},
     };
-    use term::{make as mk_term, record::RecordData, BinaryOp};
+    use term::{BinaryOp, make as mk_term, record::RecordData};
 
     // FIXME: We're duplicating a lot of the logic in
     // [`eval::merge::merge_fields`] but not quite enough to actually factor
@@ -1803,8 +1786,8 @@ fn merge_fields(
     fn merge_values(id_span: RawSpan, v1: NickelValue, v2: NickelValue) -> NickelValue {
         match (v1.content(), v2.content()) {
             (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
-                let rd1 = lens1.take().unwrap_or_alloc().0;
-                let rd2 = lens2.take().unwrap_or_alloc().0;
+                let rd1 = lens1.take().unwrap_or_alloc();
+                let rd2 = lens2.take().unwrap_or_alloc();
 
                 let split::SplitResult {
                     left,

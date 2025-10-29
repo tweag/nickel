@@ -1,7 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     bytecode::value::{
-        ArrayBody, Container, EnumVariantBody, InlineValue, NickelValue, NumberBody, RecordBody,
+        ArrayBody, Container, EnumVariantData, InlineValue, NickelValue, NumberBody, RecordBody,
         TermBody, ValueContentRef,
     },
     error::{ExportError, ExportErrorData, PointedExportErrorData},
@@ -194,10 +194,10 @@ impl Serialize for NickelValue {
             ValueContentRef::Bool(b) => serializer.serialize_bool(b),
             ValueContentRef::Number(NumberBody(n)) => serialize_num(n, serializer),
             ValueContentRef::String(s) => serializer.serialize_str(&s.0),
-            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: None }) => {
+            ValueContentRef::EnumVariant(EnumVariantData { tag, arg: None }) => {
                 serializer.serialize_str(tag.label())
             }
-            ValueContentRef::EnumVariant(EnumVariantBody { tag, arg: Some(_) }) => {
+            ValueContentRef::EnumVariant(EnumVariantData { tag, arg: Some(_) }) => {
                 Err(serde::ser::Error::custom(format!(
                     "cannot serialize enum variant `'{tag}` with non-empty argument"
                 )))
@@ -462,8 +462,8 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
             | ValueContentRef::Record(Container::Empty)
             | ValueContentRef::Array(Container::Empty)
             | ValueContentRef::String(_) => Ok(()),
-            ValueContentRef::EnumVariant(EnumVariantBody { arg: None, .. }) => Ok(()),
-            ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(_), .. }) => {
+            ValueContentRef::EnumVariant(EnumVariantData { arg: None, .. }) => Ok(()),
+            ValueContentRef::EnumVariant(EnumVariantData { arg: Some(_), .. }) => {
                 Err(ExportErrorData::NonSerializable(value.clone()).into())
             }
             ValueContentRef::Number(NumberBody(n)) => {

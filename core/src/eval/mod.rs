@@ -75,7 +75,7 @@
 //! consider at some point.
 use crate::{
     bytecode::value::{
-        Container, EnumVariantBody, NickelValue, RecordBody, TermBody, ValueContent,
+        Container, EnumVariantData, NickelValue, RecordBody, TermBody, ValueContent,
         ValueContentRef, ValueContentRefMut, lens::TermContent,
     },
     cache::{CacheHub as ImportCaches, ImportResolver},
@@ -930,7 +930,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos_idx,
                         ),
                         ValueContent::EnumVariant(lens) => {
-                            let EnumVariantBody { tag, arg } = lens.take();
+                            let EnumVariantData { tag, arg } = lens.take();
                             let arg = arg.map(|arg| arg.closurize(&mut self.context.cache, env));
                             NickelValue::enum_variant(tag, arg, pos_idx)
                         }
@@ -1276,7 +1276,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             }
                         }
                     }
-                    ValueContentRef::EnumVariant(EnumVariantBody { arg: Some(arg), .. }) => {
+                    ValueContentRef::EnumVariant(EnumVariantData { arg: Some(arg), .. }) => {
                         inner(this, acc, arg.clone(), recursion_limit.saturating_sub(1));
                     }
                     _ => {}
@@ -1529,7 +1529,7 @@ pub fn subst<C: Cache>(
             NickelValue::array(array, array_data.pending_contracts, pos_idx)
         }
         ValueContent::EnumVariant(lens) => {
-            let EnumVariantBody { tag, arg } = lens.take();
+            let EnumVariantData { tag, arg } = lens.take();
             let arg = arg.map(|arg| subst(pos_table, cache, arg, initial_env, env));
 
             NickelValue::enum_variant(tag, arg, pos_idx)

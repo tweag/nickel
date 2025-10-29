@@ -20,7 +20,7 @@ use crate::{
             compat::ToMainline as _,
             typ::{EnumRow, RecordRow, Type},
         },
-        value::{EnumVariantBody, NickelValue},
+        value::{EnumVariantData, NickelValue},
     },
     cache::InputFormat,
     eval::callstack::CallStack,
@@ -1511,8 +1511,8 @@ impl IntoDiagnostics for EvalError {
                         }
                         "EnumVariant" => {
                             if let (
-                                Some(EnumVariantBody { tag: tag1, .. }),
-                                Some(EnumVariantBody { tag: tag2, .. }),
+                                Some(EnumVariantData { tag: tag1, .. }),
+                                Some(EnumVariantData { tag: tag2, .. }),
                             ) = (right_arg.as_enum_variant(), left_arg.as_enum_variant())
                             {
                                 // The only possible cause of failure of merging two enum variants is a

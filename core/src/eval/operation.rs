@@ -20,8 +20,8 @@ use crate::nix_ffi;
 
 use crate::{
     bytecode::value::{
-        Array, ArrayBody, Container, EnumVariantBody, InlineValue, LabelBody, NickelValue,
-        NumberBody, RecordBody, SealingKeyBody, StringBody, TermBody, TypeBody, ValueContent,
+        Array, ArrayBody, Container, EnumVariantData, InlineValue, LabelBody, NickelValue,
+        NumberBody, RecordBody, SealingKeyBody, StringBody, TermBody, TypeData, ValueContent,
         ValueContentRef, ValueContentRefMut,
     },
     cache::InputFormat,
@@ -744,7 +744,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         Ok(terms.into())
                     }
-                    ValueContentRef::EnumVariant(EnumVariantBody {
+                    ValueContentRef::EnumVariant(EnumVariantData {
                         tag: _,
                         arg: Some(arg),
                     }) => Ok(Closure {
@@ -1109,7 +1109,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
                     ValueContent::EnumVariant(lens) => {
-                        let EnumVariantBody { tag, arg } = lens.take();
+                        let EnumVariantData { tag, arg } = lens.take();
 
                         if let Some(arg) = arg {
                             let arg = mk_term::op1(
@@ -1294,7 +1294,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumGetArg => {
-                if let Some(EnumVariantBody { arg: Some(arg), .. }) = value.as_enum_variant() {
+                if let Some(EnumVariantData { arg: Some(arg), .. }) = value.as_enum_variant() {
                     Ok(Closure {
                         value: arg.clone(),
                         env,
@@ -1322,7 +1322,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 .into())
             }
             UnaryOp::EnumGetTag => match value.as_enum_variant() {
-                Some(EnumVariantBody { tag, .. }) => {
+                Some(EnumVariantData { tag, .. }) => {
                     Ok(NickelValue::enum_tag(*tag, pos_op_inh).into())
                 }
                 _ => mk_type_error!("Enum"),
@@ -1388,7 +1388,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::custom_contract(contract, pos_op_inh).into())
             }
             UnaryOp::ContractPostprocessResult => {
-                let Some(EnumVariantBody {
+                let Some(EnumVariantData {
                     tag,
                     arg: Some(arg),
                 }) = value.as_enum_variant()
@@ -1449,7 +1449,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::ContractAttachDefaultLabel => {
                 if !matches!(
                     value.as_enum_variant(),
-                    Some(EnumVariantBody { arg: Some(_), .. })
+                    Some(EnumVariantData { arg: Some(_), .. })
                 ) {
                     return mk_type_error!("[| 'Ok, 'Error _ |]");
                 }
@@ -1796,14 +1796,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // is enabled (we get unused variable warning otherwise). It's simpler to just make
                 // a separate `if` conditionally included.
                 #[cfg(feature = "metrics")]
-                if Some(TypeBody { typ, .. }) = value1.as_type() {
+                if Some(TypeData { typ, .. }) = value1.as_type() {
                     increment!(format!(
                         "primop:contract/apply:{}",
                         typ.pretty_print_cap(40)
                     ));
                 }
 
-                if let Some(TypeBody { typ: _, contract }) = value1.as_type() {
+                if let Some(TypeData { typ: _, contract }) = value1.as_type() {
                     // The contract generation from a static type might return any kind of
                     // contract, including e.g. a record or a custom contract. The result needs to
                     // be evaluated first, and then passed to `b_op` again. In that case, we don't
@@ -3706,21 +3706,21 @@ fn eq<C: Cache>(
             ValueContentRef::SealingKey(SealingKeyBody(k2)),
         ) => Ok(EqResult::Bool(k1 == k2)),
         (
-            ValueContentRef::EnumVariant(EnumVariantBody {
+            ValueContentRef::EnumVariant(EnumVariantData {
                 tag: tag1,
                 arg: None,
             }),
-            ValueContentRef::EnumVariant(EnumVariantBody {
+            ValueContentRef::EnumVariant(EnumVariantData {
                 tag: tag2,
                 arg: None,
             }),
         ) => Ok(EqResult::Bool(tag1.ident() == tag2.ident())),
         (
-            ValueContentRef::EnumVariant(EnumVariantBody {
+            ValueContentRef::EnumVariant(EnumVariantData {
                 tag: tag1,
                 arg: Some(arg1),
             }),
-            ValueContentRef::EnumVariant(EnumVariantBody {
+            ValueContentRef::EnumVariant(EnumVariantData {
                 tag: tag2,
                 arg: Some(arg2),
             }),

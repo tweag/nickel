@@ -27,7 +27,7 @@
 
 use super::*;
 use crate::{
-    bytecode::value::{EnumVariantBody, NickelValue, ThunkBody, ValueContent},
+    bytecode::value::{EnumVariantData, NickelValue, ThunkBody, ValueContent},
     closurize::Closurize,
     combine::Combine,
     error::{EvalError, IllegalPolymorphicTailAction},
@@ -163,11 +163,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 match (enum1, enum2) {
                     (
-                        EnumVariantBody {
+                        EnumVariantData {
                             tag: tag1,
                             arg: None,
                         },
-                        EnumVariantBody {
+                        EnumVariantData {
                             tag: tag2,
                             arg: None,
                         },
@@ -176,11 +176,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_op_inh,
                     )),
                     (
-                        EnumVariantBody {
+                        EnumVariantData {
                             tag: tag1,
                             arg: Some(arg1),
                         },
-                        EnumVariantBody {
+                        EnumVariantData {
                             tag: tag2,
                             arg: Some(arg2),
                         },
