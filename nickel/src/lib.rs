@@ -526,7 +526,7 @@ impl Expr {
     pub fn is_value(&self) -> bool {
         // The term here should always be closurized, because the only public way to
         // construct an Expr is via evaluation. Therefore we do not check is_eff_whnf,
-        // which doesn't do what we with with `eval_deep` because `subst` resets
+        // which doesn't do what we want with with `eval_deep` because `subst` resets
         // the `closurized` property.
         self.rt.as_ref().is_whnf()
     }
