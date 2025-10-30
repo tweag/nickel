@@ -39,28 +39,28 @@ impl CollectFreeVars for NickelValue {
             | ValueContentRefMut::ForeignId(_)
             | ValueContentRefMut::SealingKey(_)
             | ValueContentRefMut::Label(_) => (),
-            ValueContentRefMut::Array(Container::Alloc(body)) => {
-                for t in body.array.iter_mut() {
+            ValueContentRefMut::Array(Container::Alloc(array_data)) => {
+                for t in array_data.array.iter_mut() {
                     t.collect_free_vars(free_vars);
                 }
             }
-            ValueContentRefMut::Record(Container::Alloc(body)) => {
-                for t in body.0.fields.values_mut() {
+            ValueContentRefMut::Record(Container::Alloc(record)) => {
+                for t in record.fields.values_mut() {
                     t.collect_free_vars(free_vars);
                 }
             }
-            ValueContentRefMut::Term(body) => body.0.collect_free_vars(free_vars),
+            ValueContentRefMut::Term(term) => term.collect_free_vars(free_vars),
             ValueContentRefMut::EnumVariant(enum_variant) => {
                 if let Some(arg) = &mut enum_variant.arg {
                     arg.collect_free_vars(free_vars);
                 }
             }
             ValueContentRefMut::CustomContract(ctr) => {
-                ctr.0.collect_free_vars(free_vars);
+                ctr.collect_free_vars(free_vars);
             }
-            ValueContentRefMut::Type(type_body) => {
-                type_body.typ.collect_free_vars(free_vars);
-                type_body.contract.collect_free_vars(free_vars);
+            ValueContentRefMut::Type(type_data) => {
+                type_data.typ.collect_free_vars(free_vars);
+                type_data.contract.collect_free_vars(free_vars);
             }
             ValueContentRefMut::Thunk(_) => {
                 unreachable!("should never see closures at the transformation stage")

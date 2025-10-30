@@ -10,7 +10,7 @@ use serde::de::{
 
 use crate::{
     bytecode::value::{
-        Array, ArrayBody, Container, InlineValue, NickelValue, RecordBody, ValueContent,
+        Array, ArrayData, Container, InlineValue, NickelValue, RecordData, ValueContent,
         ValueContentRef,
     },
     error::{self, NullReporter},
@@ -28,7 +28,7 @@ macro_rules! deserialize_number {
         {
             match self.content_ref() {
                 ValueContentRef::Number(n) => {
-                    return visitor.$visit($type::rounding_from(&n.0, RoundingMode::Nearest).0);
+                    return visitor.$visit($type::rounding_from(n, RoundingMode::Nearest).0);
                 }
                 _ => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
@@ -181,15 +181,15 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
             ValueContent::Null(_) => visitor.visit_unit(),
             ValueContent::Bool(lens) => visitor.visit_bool(lens.take()),
             ValueContent::Number(lens) => {
-                visitor.visit_f64(f64::rounding_from(lens.take().0, RoundingMode::Nearest).0)
+                visitor.visit_f64(f64::rounding_from(lens.take(), RoundingMode::Nearest).0)
             }
-            ValueContent::String(lens) => visitor.visit_string(lens.take().0.into_inner()),
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
             ValueContent::EnumVariant(lens) => {
-                let body = lens.take();
+                let enum_variant = lens.take();
 
                 visitor.visit_enum(EnumDeserializer {
-                    tag: body.tag.into_label(),
-                    value: body.arg,
+                    tag: enum_variant.tag.into_label(),
+                    value: enum_variant.arg,
                 })
             }
             ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
@@ -237,12 +237,12 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
     {
         let (tag, arg) = match self.content() {
             ValueContent::EnumVariant(lens) => {
-                let body = lens.take();
+                let enum_var = lens.take();
 
-                (body.tag.into_label(), body.arg)
+                (enum_var.tag.into_label(), enum_var.arg)
             }
             ValueContent::Record(lens) => {
-                let record = lens.take().unwrap_or_alloc().0;
+                let record = lens.take().unwrap_or_alloc();
 
                 let mut iter = record.fields.into_iter();
                 let (tag, arg) = match iter.next() {
@@ -318,7 +318,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.as_string() {
-            Some(s) => visitor.visit_str(&s.0),
+            Some(s) => visitor.visit_str(s),
             _ => Err(RustDeserializationError::InvalidType {
                 expected: "Str".to_string(),
                 occurred: self.type_of().unwrap_or("Other").to_owned(),
@@ -332,7 +332,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::String(lens) => visitor.visit_string(lens.take().0.into_inner()),
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
             lens => Err(RustDeserializationError::InvalidType {
                 expected: "Str".to_string(),
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
@@ -354,7 +354,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         V: Visitor<'de>,
     {
         match self.content() {
-            ValueContent::String(lens) => visitor.visit_string(lens.take().0.into_inner()),
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
             ValueContent::Array(lens) => visit_array(lens.take().unwrap_or_alloc().array, visitor),
             lens => {
                 let value = lens.restore();
@@ -517,7 +517,7 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
 }
 
 fn visit_array_container<'de, V>(
-    container: Container<ArrayBody>,
+    container: Container<ArrayData>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where
@@ -598,13 +598,13 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
 }
 
 fn visit_record_container<'de, V>(
-    container: Container<RecordBody>,
+    container: Container<RecordData>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where
     V: Visitor<'de>,
 {
-    visit_record(container.unwrap_or_alloc().0.fields, visitor)
+    visit_record(container.unwrap_or_alloc().fields, visitor)
 }
 
 fn visit_record<'de, V>(

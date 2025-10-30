@@ -1,7 +1,7 @@
 use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
-    bytecode::value::{RecordBody, TermBody, ValueContentRef, Container},
+    bytecode::value::{ValueContentRef, Container},
     error::{Error, IOError, Reporter as _},
     eval::cache::lazy::CBNCache,
     identifier::{Ident, LocIdent},
@@ -76,17 +76,17 @@ impl From<Field> for QueryResult {
     fn from(field: Field) -> Self {
         let sub_fields = field.value.as_ref().and_then(|val| {
             match val.content_ref() {
-                ValueContentRef::Record(Container::Alloc(RecordBody(record))) if !record.fields.is_empty() => {
+                ValueContentRef::Record(Container::Alloc(record)) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().collect();
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                ValueContentRef::Term(TermBody(Term::RecRecord(
-                    record,
-                    includes,
-                    dyn_fields,
-                    ..,
-                ))) if !record.fields.is_empty() => {
+                ValueContentRef::Term(Term::RecRecord(
+                        record,
+                        includes,
+                        dyn_fields,
+                        ..,
+                )) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
                     fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                     fields.sort();
@@ -96,7 +96,7 @@ impl From<Field> for QueryResult {
                 }
                 // Empty record has empty sub_fields
                 ValueContentRef::Record(..)
-                | ValueContentRef::Term(TermBody(Term::RecRecord(..))) => Some(Vec::new()),
+                | ValueContentRef::Term(Term::RecRecord(..)) => Some(Vec::new()),
                 // Non-record has no concept of sub-field
                 _ => None,
             }

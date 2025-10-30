@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::{
-    bytecode::value::{Container, InlineValue, NickelValue, NumberBody, TermBody, ValueContentRef},
+    bytecode::value::{Container, InlineValue, NickelValue, ValueContentRef},
     cache::InputFormat,
     identifier::{Ident, LocIdent},
     parser::lexer::KEYWORDS,
@@ -114,12 +114,12 @@ impl RecursivePriority {
 /// If we find a recursive priority annotation we return the field's value
 /// with the internal application removed.
 fn split_recursive_priority(value: &NickelValue) -> (RecursivePriority, NickelValue) {
-    if let Some(TermBody(Term::App(head, arg))) = value.as_term() {
+    if let Some(Term::App(head, arg)) = value.as_term() {
         match head.as_term() {
-            Some(TermBody(Term::Var(id))) if id.label() == "$rec_default" => {
+            Some(Term::Var(id)) if id.label() == "$rec_default" => {
                 return (RecursivePriority::Default, arg.clone());
             }
-            Some(TermBody(Term::Var(id))) if id.label() == "$rec_force" => {
+            Some(Term::Var(id)) if id.label() == "$rec_force" => {
                 return (RecursivePriority::Force, arg.clone());
             }
             _ => (),
@@ -157,7 +157,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Contract(term) = &typ.typ {
         matches!(
             term.content_ref(),
-            ValueContentRef::Term(TermBody(
+            ValueContentRef::Term(
                 Term::Fun(..)
                     | Term::FunPattern(..)
                     | Term::Let(..)
@@ -165,7 +165,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
                     | Term::Op1(UnaryOp::IfThenElse, _)
                     | Term::Import { .. }
                     | Term::ResolvedImport(..)
-            )) | ValueContentRef::CustomContract(_)
+            ) | ValueContentRef::CustomContract(_)
         )
     } else {
         false
@@ -463,14 +463,14 @@ impl Allocator {
         docs![
             self,
             lhs,
-            if let Some(TermBody(Term::Annotated(annot, _))) = val.as_term() {
+            if let Some(Term::Annotated(annot, _)) = val.as_term() {
                 annot.pretty(self)
             } else {
                 self.nil()
             },
             self.line(),
             "= ",
-            if let Some(TermBody(Term::Annotated(_, inner))) = val.as_term() {
+            if let Some(Term::Annotated(_, inner)) = val.as_term() {
                 inner.pretty(self)
             } else {
                 val.pretty(self)
@@ -491,11 +491,11 @@ impl Allocator {
 
         loop {
             match body.as_term() {
-                Some(TermBody(Term::Fun(id, val))) => {
+                Some(Term::Fun(id, val)) => {
                     builder = docs![self, builder, self.line(), self.as_string(id)];
                     body = val;
                 }
-                Some(TermBody(Term::FunPattern(pat, val))) => {
+                Some(Term::FunPattern(pat, val)) => {
                     builder = docs![self, builder, self.line(), self.pat_with_parens(pat)];
                     body = val;
                 }
@@ -563,10 +563,8 @@ impl Allocator {
     fn dyn_field<'a>(&'a self, id_expr: &NickelValue, field: &Field) -> DocBuilder<'a, Self> {
         match id_expr.as_term() {
             // Nickel will not parse a multiline string literal in this position
-            Some(TermBody(Term::StrChunks(chunks))) => {
-                self.chunks(chunks, StringRenderStyle::ForceMonoline)
-            }
-            Some(TermBody(Term::ParseError(_))) => docs![self, "%<parse error>"],
+            Some(Term::StrChunks(chunks)) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            Some(Term::ParseError(_)) => docs![self, "%<parse error>"],
             _ => panic!("Dynamic record fields must be StrChunks currently"),
         }
         .append(self.field_body(field))
@@ -931,7 +929,7 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
         match self.content_ref() {
             ValueContentRef::Null => allocator.text("null"),
             ValueContentRef::Bool(b) => allocator.as_string(b),
-            ValueContentRef::Number(n) => allocator.as_string(n.0.to_sci()),
+            ValueContentRef::Number(n) => allocator.as_string(n.to_sci()),
             ValueContentRef::Array(container) =>
             // NOTE: the Array attributes are ignored here. They contain only
             // information that has no surface syntax.
@@ -950,12 +948,10 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
                 .group()
             }
             ValueContentRef::Record(Container::Empty) => allocator.text("{}"),
-            ValueContentRef::Record(Container::Alloc(record)) => {
-                allocator.record(&record.0, &[], &[])
-            }
-            ValueContentRef::String(s) => allocator.escaped_string(&s.0).double_quotes(),
-            ValueContentRef::Thunk(thunk) => allocator.text(format!("%<closure@{:p}>", thunk.0)),
-            ValueContentRef::Term(term) => term.0.pretty(allocator),
+            ValueContentRef::Record(Container::Alloc(record)) => allocator.record(record, &[], &[]),
+            ValueContentRef::String(s) => allocator.escaped_string(s).double_quotes(),
+            ValueContentRef::Thunk(thunk) => allocator.text(format!("%<closure@{thunk:p}>")),
+            ValueContentRef::Term(term) => term.pretty(allocator),
             ValueContentRef::Label(_label) => allocator.text("%<label>").append(allocator.line()),
             ValueContentRef::EnumVariant(enum_variant) => {
                 let tag = allocator
@@ -971,14 +967,12 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
                 }
             }
             ValueContentRef::ForeignId(_) => allocator.text("%<foreign>"),
-            ValueContentRef::SealingKey(key) => {
-                allocator.text(format!("%<sealing key: {}>", key.0))
-            }
+            ValueContentRef::SealingKey(key) => allocator.text(format!("%<sealing key: {key}>")),
             // Format this as the primop application `%contract/custom% <ctr>`.
             ValueContentRef::CustomContract(custom_ctr) => docs![
                 allocator,
                 "%contract/custom%",
-                docs![allocator, allocator.line(), allocator.atom(&custom_ctr.0),].nest(2),
+                docs![allocator, allocator.line(), allocator.atom(&custom_ctr),].nest(2),
             ]
             .group(),
             // This type is in term position, so we don't need to add parentheses.
@@ -1040,14 +1034,11 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .append(body.pretty(allocator).nest(2))
             .group(),
             Term::App(head, arg) => match head.as_term() {
-                Some(TermBody(Term::App(iop, t)))
-                    if matches!(
-                        iop.as_term(),
-                        Some(TermBody(Term::Op1(UnaryOp::IfThenElse, _)))
-                    ) =>
+                Some(Term::App(iop, t))
+                    if matches!(iop.as_term(), Some(Term::Op1(UnaryOp::IfThenElse, _))) =>
                 {
                     match iop.as_term() {
-                        Some(TermBody(Term::Op1(UnaryOp::IfThenElse, cond))) => docs![
+                        Some(Term::Op1(UnaryOp::IfThenElse, cond)) => docs![
                             allocator,
                             "if ",
                             cond,
@@ -1060,7 +1051,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                         _ => unreachable!(),
                     }
                 }
-                Some(TermBody(Term::Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), op_arg))) => {
+                Some(Term::Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), op_arg)) => {
                     docs![
                         allocator,
                         allocator.atom(op_arg),
@@ -1073,7 +1064,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                         allocator.atom(arg)
                     ]
                 }
-                Some(TermBody(Term::App(..))) => docs![
+                Some(Term::App(..)) => docs![
                     allocator,
                     head,
                     docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
@@ -1132,7 +1123,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             }
             Term::Op2(op, arg1, arg2) => docs![
                 allocator,
-                if let (&BinaryOp::Sub, Some(&NumberBody(Number::ZERO))) = (op, arg1.as_number()) {
+                if let (&BinaryOp::Sub, Some(&Number::ZERO)) = (op, arg1.as_number()) {
                     docs![allocator, allocator.text("-"), allocator.atom(arg2)]
                 } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(

@@ -1084,7 +1084,9 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                 FieldPathElem::Expr(expr) => {
                     let pos = expr.pos;
                     let expr = NickelValue::from_ast(expr, pos_table);
-                    let static_access = expr.as_term().and_then(Term::try_str_chunk_as_static_str);
+                    let static_access = expr
+                        .as_term()
+                        .and_then(term::Term::try_str_chunk_as_static_str);
 
                     if let Some(static_access) = static_access {
                         let id = LocIdent::new_with_pos(static_access, pos);
@@ -1264,7 +1266,7 @@ enum TermPrimOp {
 }
 
 impl FromAst<PrimOp> for TermPrimOp {
-    fn from_ast(op: &PrimOp, pos_table: &mut PosTable) -> Self {
+    fn from_ast(op: &PrimOp, _pos_table: &mut PosTable) -> Self {
         match op {
             PrimOp::Typeof => TermPrimOp::Unary(term::UnaryOp::Typeof),
             PrimOp::Cast => TermPrimOp::Unary(term::UnaryOp::Cast),
@@ -1731,7 +1733,9 @@ impl<'ast> FromAst<Record<'ast>>
                     // Here, both fields are parsed as `StrChunks`, but the first field is actually a
                     // static one, just with special characters. The following code determines which fields
                     // are actually static or not, and inserts them in the right location.
-                    let static_access = expr.as_term().and_then(Term::try_chunks_as_static_str);
+                    let static_access = expr
+                        .as_term()
+                        .and_then(term::Term::try_str_chunk_as_static_str);
 
                     if let Some(static_access) = static_access {
                         insert_static_field(

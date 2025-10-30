@@ -27,7 +27,7 @@
 
 use super::*;
 use crate::{
-    bytecode::value::{EnumVariantData, NickelValue, ThunkBody, ValueContent},
+    bytecode::value::{EnumVariantData, NickelValue, ValueContent},
     closurize::Closurize,
     combine::Combine,
     error::{EvalError, IllegalPolymorphicTailAction},
@@ -107,8 +107,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ))
             }
             (ValueContent::Number(lens1), ValueContent::Number(lens2)) => {
-                let n1 = lens1.take().0;
-                let n2 = lens2.take().0;
+                let n1 = lens1.take();
+                let n2 = lens2.take();
 
                 if n1 == n2 {
                     Ok(NickelValue::number(
@@ -124,8 +124,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             (ValueContent::String(lens1), ValueContent::String(lens2)) => {
-                let s1 = lens1.take().0;
-                let s2 = lens2.take().0;
+                let s1 = lens1.take();
+                let s2 = lens2.take();
 
                 if s1 == s2 {
                     Ok(NickelValue::string(
@@ -141,8 +141,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             (ValueContent::Label(lens1), ValueContent::Label(lens2)) => {
-                let label1 = lens1.take().0;
-                let label2 = lens2.take().0;
+                let label1 = lens1.take();
+                let label2 = lens2.take();
 
                 if label1 == label2 {
                     Ok(NickelValue::label(
@@ -287,8 +287,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
             (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
-                let r1 = lens1.take().unwrap_or_alloc().0;
-                let r2 = lens2.take().unwrap_or_alloc().0;
+                let r1 = lens1.take().unwrap_or_alloc();
+                let r2 = lens2.take().unwrap_or_alloc();
 
                 // While it wouldn't be impossible to merge records with sealed tails,
                 // working out how to do so in a "sane" way that preserves parametricity
@@ -548,7 +548,7 @@ impl Saturate for NickelValue {
         cache: &mut C,
         fields: I,
     ) -> Result<NickelValue, EvalError> {
-        if let Some(ThunkBody(idx)) = self.as_thunk() {
+        if let Some(idx) = self.as_thunk() {
             Ok(cache
                 .saturate(idx.clone(), fields.map(LocIdent::ident))
                 .with_pos_idx(self.pos_idx()))
@@ -562,7 +562,7 @@ impl Saturate for NickelValue {
 
 /// Return the dependencies of a field when represented as a `NickelValue`.
 fn field_deps<C: Cache>(cache: &C, value: &NickelValue) -> Result<FieldDeps, EvalError> {
-    if let Some(ThunkBody(idx)) = value.as_thunk() {
+    if let Some(idx) = value.as_thunk() {
         Ok(cache.deps(idx).unwrap_or_else(FieldDeps::empty))
     } else {
         Ok(FieldDeps::empty())
@@ -593,13 +593,9 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         t2.saturate(cache, fields)?,
     ));
 
-    // We closurize the final result with appropriate dependencies
-    let closure = Closure {
-        value: body,
-        env: Environment::new(),
-    };
-
-    let idx = cache.add(closure, BindingType::Revertible(combined_deps));
+    // We closurized the final result with appropriate dependencies, so we can return a closure
+    // with an empty environment.
+    let idx = cache.add(body.into(), BindingType::Revertible(combined_deps));
 
     Ok(NickelValue::thunk_posless(idx))
 }
@@ -612,7 +608,7 @@ pub(super) trait RevertClosurize {
 
 impl RevertClosurize for NickelValue {
     fn revert_closurize<C: Cache>(self, cache: &mut C) -> NickelValue {
-        if let Some(ThunkBody(idx)) = self.as_thunk() {
+        if let Some(idx) = self.as_thunk() {
             NickelValue::thunk(cache.revert(idx), self.pos_idx())
         } else {
             // It's possible for constants, or arbitrary deserialized data since the introduction

@@ -2,7 +2,7 @@
 //! customize mode of the command-line.
 use super::*;
 
-use nickel_lang_core::bytecode::value::{Container, NickelValue, RecordBody};
+use nickel_lang_core::bytecode::value::{Container, NickelValue};
 
 /// The interface of a configuration (a Nickel program) which represents all nested field paths
 /// that are accessible from the root term together with their associated metadata.
@@ -82,7 +82,7 @@ impl ExtractInterface for NickelValue {
             Container::Empty => ValueInterface {
                 fields: HashMap::new(),
             },
-            Container::Alloc(RecordBody(record)) => record.into(),
+            Container::Alloc(record) => record.into(),
         })
     }
 }

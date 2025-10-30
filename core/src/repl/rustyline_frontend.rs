@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::{command::Command, *};
 
 use crate::{
-    bytecode::value::{RecordBody, TermBody, ValueContentRef},
+    bytecode::value::ValueContentRef,
     error::report::ColorOpt,
     eval::cache::CacheImpl,
 };
@@ -72,7 +72,7 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
                                 container.len()
                             )
                         }
-                        ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..))) => {
+                        ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..)) => {
                             if !dyn_fields.is_empty() {
                                 println!(
                                     "Warning: loading dynamic fields is currently not supported. \

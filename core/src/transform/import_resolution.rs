@@ -84,7 +84,7 @@ pub mod tolerant {
     use super::ImportResolver;
     use crate::{
         bytecode::value::ValueContentRef,
-        bytecode::value::{NickelValue, TermBody},
+        bytecode::value::NickelValue,
         error::ImportError,
         files::FileId,
         position::PosTable,
@@ -127,7 +127,7 @@ pub mod tolerant {
                         import_errors.push(err);
                     }
 
-                    if let ValueContentRef::Term(TermBody(Term::ResolvedImport(file_id))) =
+                    if let ValueContentRef::Term(Term::ResolvedImport(file_id)) =
                         value.content_ref()
                     {
                         stack.push(*file_id);
@@ -162,7 +162,7 @@ pub mod tolerant {
         R: ImportResolver,
     {
         match value.content_ref() {
-            ValueContentRef::Term(TermBody(Term::Import(import))) => {
+            ValueContentRef::Term(Term::Import(import)) => {
                 match resolver.resolve(pos_table, import, parent, &value.pos(pos_table)) {
                     Ok((_, file_id)) => (
                         NickelValue::term(Term::ResolvedImport(file_id), value.pos_idx()),

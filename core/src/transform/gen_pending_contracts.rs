@@ -84,7 +84,7 @@ pub fn transform_one(
                 fields,
                 attrs,
                 sealed_tail,
-            } = lens.take().into_opt().unwrap().0;
+            } = lens.take().into_opt().unwrap();
 
             let fields = attach_to_fields(pos_table, fields)?;
 

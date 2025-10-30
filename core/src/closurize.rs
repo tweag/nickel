@@ -13,7 +13,7 @@
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::{Array, ArrayBody, NickelValue, TermBody, ValueContentRef, Container},
+    bytecode::value::{Array, ArrayData, NickelValue, ValueContentRef, Container},
     eval::{Closure, Environment, cache::Cache},
     term::{
         BindingType, RuntimeContract, Term,
@@ -102,11 +102,11 @@ impl Closurize for NickelValue {
             // If we just need a normal closure, and we find a normal closure inside the thunk, we
             // reuse it
             ValueContentRef::Thunk(thunk)
-                if thunk.0.deps().is_empty() && matches!(btype, BindingType::Normal) =>
+                if thunk.deps().is_empty() && matches!(btype, BindingType::Normal) =>
             {
-                thunk.0.clone()
+                thunk.clone()
             }
-            ValueContentRef::Term(TermBody(Term::Var(id))) if id.is_generated() => {
+            ValueContentRef::Term(Term::Var(id)) if id.is_generated() => {
                 let id = *id;
                 // Albeit we should always find a generated variable in the environment,
                 // `env.get` is technically fallible, while this method is not. We thus wrap a
@@ -122,7 +122,7 @@ impl Closurize for NickelValue {
                 // although I'm not sure it would actually break anything. We panic in debug mode
                 // to catch this case.
                 debug_assert!(
-                    !matches!((content, &btype), (ValueContentRef::Thunk(body), BindingType::Revertible(_)) if !body.0.deps().is_empty()),
+                    !matches!((content, &btype), (ValueContentRef::Thunk(thunk), BindingType::Revertible(_)) if !thunk.deps().is_empty()),
                     "wrapping a closure with non-empty deps in a new closure with different deps"
                 );
 
@@ -202,7 +202,7 @@ impl Closurize for Array {
 }
 
 // Closurize an array together with its pending contracts
-impl Closurize for ArrayBody {
+impl Closurize for ArrayData {
     fn closurize_as_btype<C: Cache>(
         self,
         cache: &mut C,
@@ -216,7 +216,7 @@ impl Closurize for ArrayBody {
             self.pending_contracts
                 .closurize_as_btype(cache, env.clone(), btype.clone());
 
-        ArrayBody {
+        ArrayData {
             array: self
                 .array
                 .closurize_as_btype(cache, env.clone(), btype.clone()),
@@ -253,7 +253,7 @@ impl Closurize for RecordData {
 
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {
-        ValueContentRef::Term(term) => match term.0 {
+        ValueContentRef::Term(term) => match term {
             | Term::Var(_)
             | Term::Fun(_, _)
             // match acts like a function, and is a WHNF

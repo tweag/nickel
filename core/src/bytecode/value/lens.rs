@@ -1,7 +1,7 @@
 //! Lenses are a way to lazily and conditionally extract owned data from a Nickel value.
 
 use super::{
-    Container, InlineValue, NickelValue, RefCount, TermBody, ValueBlockBody, ValueBlockHeader,
+    Container, InlineValue, NickelValue, RefCount, TermData, ValueBlockData, ValueBlockHeader,
     ValueBlockRc,
 };
 
@@ -30,10 +30,10 @@ use std::{
 
 /// A lazy handle to part or all of the content of a Nickel value, making it possible to
 /// conditionally take owned data out. If the value is unique (1-ref counted), the data is directly
-/// moved out and the corresponding block is consumed. Otherwise, the body is cloned, similarly to
-/// [std::rc::Rc::unwrap_or_clone].
+/// moved out and the corresponding block is consumed. Otherwise, the content is cloned, similarly
+/// to [std::rc::Rc::unwrap_or_clone].
 ///
-/// [Self] can either be consumed using `take()`, returning the owned content of the body, or
+/// [Self] can either be consumed using `take()`, returning the owned content of the data, or
 /// reverted back to the original value using `restore()`. When the structure of the lens isn't
 /// enough to check if the content should be taken or not, [Self] also provides [Self::peek] which
 /// returns a reference to the inner value, so that it can be examined arbitrarily.
@@ -46,7 +46,7 @@ pub struct ValueLens<T> {
 }
 
 impl<T> ValueLens<T> {
-    /// Do not access the body and restore the original value unchanged.
+    /// Do not access the content and restore the original value unchanged.
     pub fn restore(self) -> NickelValue {
         self.value
     }
@@ -56,7 +56,7 @@ impl<T> ValueLens<T> {
         &self.value
     }
 
-    /// Consumes the value and return the content of the body. If the block is unique, it is
+    /// Consumes the value and return the content of the block. If the block is unique, it is
     /// consumed. If the block is shared, the content is cloned. [Self::take] behaves very much
     /// like [std::rc::Rc::unwrap_or_clone].
     pub fn take(self) -> T {
@@ -64,9 +64,9 @@ impl<T> ValueLens<T> {
     }
 }
 
-impl<T: ValueBlockBody + Clone> ValueLens<Container<T>> {
+impl<T: ValueBlockData + Clone> ValueLens<Container<T>> {
     /// Create a new lens extracting either an inlined empty container or an allocated container
-    /// body from a value.
+    /// data from a value.
     ///
     /// # Safety
     ///
@@ -81,37 +81,37 @@ impl<T: ValueBlockBody + Clone> ValueLens<Container<T>> {
                 if v.is_inline() {
                     Container::Empty
                 } else {
-                    Container::Alloc(ValueLens::<T>::body_extractor(v))
+                    Container::Alloc(ValueLens::<T>::content_extractor(v))
                 }
             },
         }
     }
 }
 
-impl<T: ValueBlockBody + Clone> ValueLens<T> {
-    /// Create a new lens extracting a body of type `T` from a value.
+impl<T: ValueBlockData + Clone> ValueLens<T> {
+    /// Create a new lens extracting data of type `T` from a value.
     ///
     /// # Safety
     ///
     /// `value` must be a value block with tag [T::TAG].
-    pub(super) unsafe fn body_lens(value: NickelValue) -> Self {
+    pub(super) unsafe fn content_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
-            lens: Self::body_extractor,
+            lens: Self::content_extractor,
         }
     }
 
     /// Extractor for a value block.
-    fn body_extractor(value: NickelValue) -> T {
+    fn content_extractor(value: NickelValue) -> T {
         // Safety: the fields of LazyValueLens are private, so it can only be constructed from
-        // within this module. We maintain the invariant that if `body_extractor` is used as a lens
-        // for a `LazyValueLens` object, then `T : ValueBlockBody` and `self.value` is a value
+        // within this module. We maintain the invariant that if `content_extractor` is used as a
+        // lens for a `LazyValueLens` object, then `T : ValueBlockData` and `self.value` is a value
         // block whose tag matches `T::TAG`, so `self.value.data` is a valid pointer to a
         // `ValueBlockHeader` followed by a `U` at the right offset.
         unsafe {
             let ptr = NonNull::new_unchecked(value.data as *mut u8);
             let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count;
-            let ptr_content = ptr.add(ValueBlockRc::body_offset::<T>()).cast::<T>();
+            let ptr_content = ptr.add(ValueBlockRc::data_offset::<T>()).cast::<T>();
 
             if ref_count == RefCount::ONE {
                 // Since we "move" the original content, we don't want to run the destructor (if
@@ -271,7 +271,7 @@ impl TermContent {
         };
 
         // unwrap(): if the lens is a TermContent, then the underlying value must be a term block.
-        &value.as_term().unwrap().0
+        &value.as_term().unwrap()
     }
 
     /// Unconditionally take the inner `Term` out, ignoring the actual shape of the content.
@@ -299,9 +299,9 @@ impl TermContent {
             TermContent::RuntimeError(lens) => lens.value,
         };
 
-        // Safety: since the value was extracted from `TermContent`, it must a value block with a
+        // Safety: since the value was extracted from `TermContent`, it must be a value block with a
         // term inside.
-        unsafe { ValueLens::<TermBody>::body_lens(value).take().0 }
+        unsafe { ValueLens::<TermData>::content_lens(value).take() }
     }
 }
 
@@ -310,7 +310,7 @@ impl ValueLens<NickelValue> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Value].
     pub(super) unsafe fn term_value_lens(value: NickelValue) -> Self {
         Self {
@@ -323,7 +323,7 @@ impl ValueLens<NickelValue> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Closurize].
     pub(super) unsafe fn term_closurize_lens(value: NickelValue) -> Self {
         Self {
@@ -334,9 +334,9 @@ impl ValueLens<NickelValue> {
 
     /// Extractor for [crate::term::Term::Value].
     fn term_value_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Value(inner) = term.0 {
+        if let Term::Value(inner) = term {
             inner
         } else {
             unreachable!()
@@ -345,9 +345,9 @@ impl ValueLens<NickelValue> {
 
     /// Extractor for [crate::term::Term::Closurize].
     fn term_closurize_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Closurize(inner) = term.0 {
+        if let Term::Closurize(inner) = term {
             inner
         } else {
             unreachable!()
@@ -360,7 +360,7 @@ impl ValueLens<Vec<StrChunk<NickelValue>>> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::StrChunks].
     pub(super) unsafe fn term_str_chunks_lens(value: NickelValue) -> Self {
         Self {
@@ -371,9 +371,9 @@ impl ValueLens<Vec<StrChunk<NickelValue>>> {
 
     /// Extractor for [crate::term::Term::StrChunks].
     fn term_str_chunks_extractor(value: NickelValue) -> Vec<StrChunk<NickelValue>> {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::StrChunks(chunks) = term.0 {
+        if let Term::StrChunks(chunks) = term {
             chunks
         } else {
             unreachable!()
@@ -386,7 +386,7 @@ impl ValueLens<(LocIdent, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Fun].
     pub(super) unsafe fn term_fun_lens(value: NickelValue) -> Self {
         Self {
@@ -397,9 +397,9 @@ impl ValueLens<(LocIdent, NickelValue)> {
 
     /// Extractor for [crate::term::Term::Fun].
     fn term_fun_extractor(value: NickelValue) -> (LocIdent, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Fun(arg, body) = term.0 {
+        if let Term::Fun(arg, body) = term {
             (arg, body)
         } else {
             unreachable!()
@@ -412,7 +412,7 @@ impl ValueLens<(Pattern, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::FunPattern].
     pub(super) unsafe fn term_fun_pat_lens(value: NickelValue) -> Self {
         Self {
@@ -423,9 +423,9 @@ impl ValueLens<(Pattern, NickelValue)> {
 
     /// Extractor for [crate::term::Term::FunPattern].
     fn term_fun_pat_extractor(value: NickelValue) -> (Pattern, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::FunPattern(pat, body) = term.0 {
+        if let Term::FunPattern(pat, body) = term {
             (pat, body)
         } else {
             unreachable!()
@@ -444,7 +444,7 @@ impl
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Let].
     pub(super) unsafe fn term_let_lens(value: NickelValue) -> Self {
         Self {
@@ -461,9 +461,9 @@ impl
         NickelValue,
         LetAttrs,
     ) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Let(bindings, body, attrs) = term.0 {
+        if let Term::Let(bindings, body, attrs) = term {
             (bindings, body, attrs)
         } else {
             unreachable!()
@@ -476,7 +476,7 @@ impl ValueLens<(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::LetPattern].
     pub(super) unsafe fn term_let_pat_lens(value: NickelValue) -> Self {
         Self {
@@ -489,9 +489,9 @@ impl ValueLens<(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs)> {
     fn term_let_pat_extractor(
         value: NickelValue,
     ) -> (SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::LetPattern(bindings, body, attrs) = term.0 {
+        if let Term::LetPattern(bindings, body, attrs) = term {
             (bindings, body, attrs)
         } else {
             unreachable!()
@@ -504,7 +504,7 @@ impl ValueLens<(NickelValue, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::App].
     pub(super) unsafe fn term_app_lens(value: NickelValue) -> Self {
         Self {
@@ -515,9 +515,9 @@ impl ValueLens<(NickelValue, NickelValue)> {
 
     /// Extractor for [crate::term::Term::App].
     fn term_app_extractor(value: NickelValue) -> (NickelValue, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::App(fun, arg) = term.0 {
+        if let Term::App(fun, arg) = term {
             (fun, arg)
         } else {
             unreachable!()
@@ -530,7 +530,7 @@ impl ValueLens<LocIdent> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Var].
     pub(super) unsafe fn term_var_lens(value: NickelValue) -> Self {
         Self {
@@ -541,9 +541,9 @@ impl ValueLens<LocIdent> {
 
     /// Extractor for [crate::term::Term::Var].
     fn term_var_extractor(value: NickelValue) -> LocIdent {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Var(ident) = term.0 {
+        if let Term::Var(ident) = term {
             ident
         } else {
             unreachable!()
@@ -564,7 +564,7 @@ impl
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::RecRecord].
     pub(super) unsafe fn term_rec_record_lens(value: NickelValue) -> Self {
         Self {
@@ -583,9 +583,9 @@ impl
         Option<RecordDeps>,
         bool,
     ) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::RecRecord(data, includes, fields, deps, bool) = term.0 {
+        if let Term::RecRecord(data, includes, fields, deps, bool) = term {
             (data, includes, fields, deps, bool)
         } else {
             unreachable!()
@@ -598,7 +598,7 @@ impl ValueLens<MatchData> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Match].
     pub(super) unsafe fn term_match_lens(value: NickelValue) -> Self {
         Self {
@@ -609,9 +609,9 @@ impl ValueLens<MatchData> {
 
     /// Extractor for [crate::term::Term::Match].
     fn term_match_extractor(value: NickelValue) -> MatchData {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Match(data) = term.0 {
+        if let Term::Match(data) = term {
             data
         } else {
             unreachable!()
@@ -624,7 +624,7 @@ impl ValueLens<(UnaryOp, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Op1].
     pub(super) unsafe fn term_op1_lens(value: NickelValue) -> Self {
         Self {
@@ -635,9 +635,9 @@ impl ValueLens<(UnaryOp, NickelValue)> {
 
     /// Extractor for [crate::term::Term::Op1].
     fn term_op1_extractor(value: NickelValue) -> (UnaryOp, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Op1(op, arg) = term.0 {
+        if let Term::Op1(op, arg) = term {
             (op, arg)
         } else {
             unreachable!()
@@ -650,7 +650,7 @@ impl ValueLens<(BinaryOp, NickelValue, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Op2].
     pub(super) unsafe fn term_op2_lens(value: NickelValue) -> Self {
         Self {
@@ -661,9 +661,9 @@ impl ValueLens<(BinaryOp, NickelValue, NickelValue)> {
 
     /// Extractor for [crate::term::Term::Op2].
     fn term_op2_extractor(value: NickelValue) -> (BinaryOp, NickelValue, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Op2(op, left, right) = term.0 {
+        if let Term::Op2(op, left, right) = term {
             (op, left, right)
         } else {
             unreachable!()
@@ -676,7 +676,7 @@ impl ValueLens<(NAryOp, Vec<NickelValue>)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::OpN].
     pub(super) unsafe fn term_opn_lens(value: NickelValue) -> Self {
         Self {
@@ -687,9 +687,9 @@ impl ValueLens<(NAryOp, Vec<NickelValue>)> {
 
     /// Extractor for [crate::term::Term::OpN].
     fn term_opn_extractor(value: NickelValue) -> (NAryOp, Vec<NickelValue>) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::OpN(op, args) = term.0 {
+        if let Term::OpN(op, args) = term {
             (op, args)
         } else {
             unreachable!()
@@ -702,7 +702,7 @@ impl ValueLens<(SealingKey, NickelValue, Label)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Sealed].
     pub(super) unsafe fn term_sealed_lens(value: NickelValue) -> Self {
         Self {
@@ -713,9 +713,9 @@ impl ValueLens<(SealingKey, NickelValue, Label)> {
 
     /// Extractor for [crate::term::Term::Sealed].
     fn term_sealed_extractor(value: NickelValue) -> (SealingKey, NickelValue, Label) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Sealed(key, body, label) = term.0 {
+        if let Term::Sealed(key, body, label) = term {
             (key, body, label)
         } else {
             unreachable!()
@@ -728,7 +728,7 @@ impl ValueLens<(TypeAnnotation, NickelValue)> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Annotated].
     pub(super) unsafe fn term_annotated_lens(value: NickelValue) -> Self {
         Self {
@@ -739,9 +739,9 @@ impl ValueLens<(TypeAnnotation, NickelValue)> {
 
     /// Extractor for [crate::term::Term::Annotated].
     fn term_annotated_extractor(value: NickelValue) -> (TypeAnnotation, NickelValue) {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Annotated(annot, body) = term.0 {
+        if let Term::Annotated(annot, body) = term {
             (annot, body)
         } else {
             unreachable!()
@@ -754,7 +754,7 @@ impl ValueLens<Import> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Import].
     pub(super) unsafe fn term_import_lens(value: NickelValue) -> Self {
         Self {
@@ -765,9 +765,9 @@ impl ValueLens<Import> {
 
     /// Extractor for [crate::term::Term::Import].
     fn term_import_extractor(value: NickelValue) -> Import {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Import(import) = term.0 {
+        if let Term::Import(import) = term {
             import
         } else {
             unreachable!()
@@ -780,7 +780,7 @@ impl ValueLens<FileId> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::ResolvedImport].
     pub(super) unsafe fn term_resolved_import_lens(value: NickelValue) -> Self {
         Self {
@@ -791,9 +791,9 @@ impl ValueLens<FileId> {
 
     /// Extractor for [crate::term::Term::ResolvedImport].
     fn term_resolved_import_extractor(value: NickelValue) -> FileId {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::ResolvedImport(file_id) = term.0 {
+        if let Term::ResolvedImport(file_id) = term {
             file_id
         } else {
             unreachable!()
@@ -806,7 +806,7 @@ impl ValueLens<ParseError> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::ParseError].
     pub(super) unsafe fn term_parse_error_lens(value: NickelValue) -> Self {
         Self {
@@ -817,9 +817,9 @@ impl ValueLens<ParseError> {
 
     /// Extractor for [crate::term::Term::ParseError].
     fn term_parse_error_extractor(value: NickelValue) -> ParseError {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::ParseError(err) = term.0 {
+        if let Term::ParseError(err) = term {
             err
         } else {
             unreachable!()
@@ -832,7 +832,7 @@ impl ValueLens<EvalErrorData> {
     ///
     /// # Safety
     ///
-    /// `value` must be a value block with tag [super::BodyTag::Term], and the inner term must
+    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::RuntimeError].
     pub(super) unsafe fn term_runtime_error_lens(value: NickelValue) -> Self {
         Self {
@@ -843,9 +843,9 @@ impl ValueLens<EvalErrorData> {
 
     /// Extractor for [crate::term::Term::RuntimeError].
     fn term_runtime_error_extractor(value: NickelValue) -> EvalErrorData {
-        let term = ValueLens::<TermBody>::body_extractor(value);
+        let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::RuntimeError(err) = term.0 {
+        if let Term::RuntimeError(err) = term {
             err
         } else {
             unreachable!()

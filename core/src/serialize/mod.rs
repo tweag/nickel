@@ -1,8 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     bytecode::value::{
-        ArrayBody, Container, EnumVariantData, InlineValue, NickelValue, NumberBody, RecordBody,
-        TermBody, ValueContentRef,
+        ArrayData, Container, EnumVariantData, InlineValue, NickelValue, ValueContentRef,
     },
     error::{ExportError, ExportErrorData, PointedExportErrorData},
     identifier::{Ident, LocIdent},
@@ -192,8 +191,8 @@ impl Serialize for NickelValue {
         match self.content_ref() {
             ValueContentRef::Null => serializer.serialize_none(),
             ValueContentRef::Bool(b) => serializer.serialize_bool(b),
-            ValueContentRef::Number(NumberBody(n)) => serialize_num(n, serializer),
-            ValueContentRef::String(s) => serializer.serialize_str(&s.0),
+            ValueContentRef::Number(n) => serialize_num(n, serializer),
+            ValueContentRef::String(s) => serializer.serialize_str(s),
             ValueContentRef::EnumVariant(EnumVariantData { tag, arg: None }) => {
                 serializer.serialize_str(tag.label())
             }
@@ -206,14 +205,14 @@ impl Serialize for NickelValue {
                 let map_ser = serializer.serialize_map(Some(0))?;
                 map_ser.end()
             }
-            ValueContentRef::Record(Container::Alloc(RecordBody(record))) => {
+            ValueContentRef::Record(Container::Alloc(record)) => {
                 serialize_record(record, serializer)
             }
             ValueContentRef::Array(Container::Empty) => {
                 let seq_ser = serializer.serialize_seq(Some(0))?;
                 seq_ser.end()
             }
-            ValueContentRef::Array(Container::Alloc(ArrayBody { array, .. })) => {
+            ValueContentRef::Array(Container::Alloc(ArrayData { array, .. })) => {
                 let mut seq_ser = serializer.serialize_seq(Some(array.len()))?;
                 for elt in array.iter() {
                     seq_ser.serialize_element(elt)?
@@ -466,7 +465,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
             ValueContentRef::EnumVariant(EnumVariantData { arg: Some(_), .. }) => {
                 Err(ExportErrorData::NonSerializable(value.clone()).into())
             }
-            ValueContentRef::Number(NumberBody(n)) => {
+            ValueContentRef::Number(n) => {
                 if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
                     Ok(())
                 } else {
@@ -477,7 +476,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                     .into())
                 }
             }
-            ValueContentRef::Record(Container::Alloc(RecordBody(record))) => {
+            ValueContentRef::Record(Container::Alloc(record)) => {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
@@ -494,8 +493,8 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                 })?;
                 Ok(())
             }
-            ValueContentRef::Array(Container::Alloc(array_body)) => {
-                array_body
+            ValueContentRef::Array(Container::Alloc(array_data)) => {
+                array_data
                     .array
                     .iter()
                     .enumerate()
@@ -507,7 +506,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
             }
             // Not sure if we should allow this. But supporting wrapped values might alleviate the
             // pre-processing substitution work to be done upfront.
-            ValueContentRef::Term(TermBody(term)) => {
+            ValueContentRef::Term(term) => {
                 if let Term::Value(nickel_val) = term {
                     do_validate(format, nickel_val)
                 } else {
@@ -586,7 +585,7 @@ where
                     .write_all(s.as_bytes())
                     .map_err(|err| ExportErrorData::Other(err.to_string()))
             }),
-        ExportFormat::Text => match value.as_string().map(|s| &s.0) {
+        ExportFormat::Text => match value.as_string() {
             Some(s) => writer
                 .write_all(s.as_bytes())
                 .map_err(|err| ExportErrorData::Other(err.to_string())),

@@ -20,9 +20,8 @@ use crate::nix_ffi;
 
 use crate::{
     bytecode::value::{
-        Array, ArrayBody, Container, EnumVariantData, InlineValue, LabelBody, NickelValue,
-        NumberBody, RecordBody, SealingKeyBody, StringBody, TermBody, TypeData, ValueContent,
-        ValueContentRef, ValueContentRefMut,
+        Array, ArrayData, Container, EnumVariantData, InlineValue, NickelValue, TypeData,
+        ValueContent, ValueContentRef, ValueContentRefMut,
     },
     cache::InputFormat,
     closurize::Closurize,
@@ -296,7 +295,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::Blame => match value.content() {
                 ValueContent::Label(lens) => {
-                    let label = lens.take().0;
+                    let label = lens.take();
 
                     Err(EvalErrorData::BlameError {
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
@@ -339,8 +338,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     None
                 };
 
-                if let Some(enum_body) = value.as_enum_variant()
-                    && enum_body.arg.is_none()
+                if let Some(enum_variant) = value.as_enum_variant()
+                    && enum_variant.arg.is_none()
                 {
                     let Closure {
                         value: cases_val,
@@ -352,7 +351,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     };
 
                     container
-                        .get(enum_body.tag)
+                        .get(enum_variant.tag)
                         .map(|field| Closure {
                             // The record containing the match cases, as well as the match primop
                             // itself, aren't accessible in the surface language. They are
@@ -368,7 +367,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .or(default)
                         .ok_or_else(|| EvalErrorData::NonExhaustiveEnumMatch {
                             expected: container.field_names(RecordOpKind::IgnoreEmptyOpt),
-                            found: NickelValue::enum_variant_posless(enum_body.tag, None)
+                            found: NickelValue::enum_variant_posless(enum_variant.tag, None)
                                 .with_pos_idx(pos),
                             pos: pos_op_inh,
                         })
@@ -380,7 +379,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::LabelFlipPol => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.polarity = label.polarity.flip();
                     Ok(NickelValue::label(label, pos_op_inh).into())
                 }
@@ -390,7 +389,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             UnaryOp::LabelPol => {
                 if let Some(label) = value.as_label() {
-                    Ok(NickelValue::from(label.0.polarity)
+                    Ok(NickelValue::from(label.polarity)
                         .with_pos_idx(pos_op_inh)
                         .into())
                 } else {
@@ -399,7 +398,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::LabelGoDom => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.path.push(ty_path::Elem::Domain);
                     Ok(NickelValue::label(label, pos_op_inh).into())
                 }
@@ -409,7 +408,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             UnaryOp::LabelGoCodom => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.path.push(ty_path::Elem::Codomain);
                     Ok(NickelValue::label(label, pos_op_inh).into())
                 }
@@ -419,7 +418,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             UnaryOp::LabelGoArray => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.path.push(ty_path::Elem::Array);
                     Ok(NickelValue::label(label, pos_op_inh).into())
                 }
@@ -429,7 +428,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             UnaryOp::LabelGoDict => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.path.push(ty_path::Elem::Dict);
                     Ok(NickelValue::label(label, pos_op_inh).into())
                 }
@@ -439,7 +438,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             },
             UnaryOp::RecordAccess(id) => {
                 match value.as_record() {
-                    Some(Container::Alloc(RecordBody(record))) => {
+                    Some(Container::Alloc(record)) => {
                         // We have to apply potentially pending contracts. Right now, this
                         // means that repeated field access will re-apply the contract again
                         // and again, which is not optimal. The same thing happens with array
@@ -517,7 +516,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let Some(container) = value.as_record() {
                     let mut values = container
                         .into_opt()
-                        .map(|r| r.0.iter_without_opts())
+                        .map(|r| r.iter_without_opts())
                         .into_iter()
                         .flatten()
                         .collect::<Result<Vec<_>, _>>()
@@ -543,19 +542,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 match value.content() {
                     ValueContent::Array(lens) => {
-                        let array_body = lens.take().unwrap_or_alloc();
+                        let array_data = lens.take().unwrap_or_alloc();
                         let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
 
                         // Array elements are closurized to preserve laziness of data
                         // structures. It maintains the invariant that any data structure only
                         // contain indices (that is, currently, variables).
-                        let ts = array_body
+                        let ts = array_data
                             .array
                             .into_iter()
                             .map(|t| {
                                 let t_with_ctrs = RuntimeContract::apply_all(
                                     t,
-                                    array_body.pending_contracts.iter().cloned(),
+                                    array_data.pending_contracts.iter().cloned(),
                                     pos,
                                 );
 
@@ -579,7 +578,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EvalErrorData::NotEnoughArgs(2, String::from("array/generate"), pos_op)
                 })?;
 
-                let Some(NumberBody(n)) = value.as_number() else {
+                let Some(n) = value.as_number() else {
                     return mk_type_error!("Number");
                 };
 
@@ -631,7 +630,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                     ValueContent::Record(lens) => {
                         //unwrap(): we checked the empty record case above
-                        let record = lens.take().unwrap_alloc().0;
+                        let record = lens.take().unwrap_alloc();
                         // While it's certainly possible to allow mapping over
                         // a record with a sealed tail, it's not entirely obvious
                         // how that should behave. It's also not clear that this
@@ -711,9 +710,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 match value.content_ref() {
-                    ValueContentRef::Record(Container::Alloc(body)) => {
-                        let defined = body
-                            .0
+                    ValueContentRef::Record(Container::Alloc(record)) => {
+                        let defined = record
                             // `iter_without_opts` takes care of applying pending contracts
                             .iter_without_opts()
                             .collect::<Result<Vec<_>, _>>()
@@ -836,14 +834,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringTrim => {
                 if let Some(s) = value.as_string() {
-                    Ok(NickelValue::string(s.0.trim(), pos_op_inh).into())
+                    Ok(NickelValue::string(s.trim(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringChars => {
                 if let Some(s) = value.as_string() {
-                    let ts = s.0.characters();
+                    let ts = s.characters();
                     Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
@@ -851,21 +849,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringUppercase => {
                 if let Some(s) = value.as_string() {
-                    Ok(NickelValue::string(s.0.to_uppercase(), pos_op_inh).into())
+                    Ok(NickelValue::string(s.to_uppercase(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringLowercase => {
                 if let Some(s) = value.as_string() {
-                    Ok(NickelValue::string(s.0.to_lowercase(), pos_op_inh).into())
+                    Ok(NickelValue::string(s.to_lowercase(), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringLength => {
                 if let Some(s) = value.as_string() {
-                    let length = s.0.graphemes(true).count();
+                    let length = s.graphemes(true).count();
                     Ok(NickelValue::number(length, pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
@@ -885,11 +883,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }),
             UnaryOp::NumberFromString => {
                 if let Some(s) = value.as_string() {
-                    let n = parse_number_sci(&s.0).map_err(|_| {
+                    let n = parse_number_sci(s).map_err(|_| {
                         EvalErrorData::Other(
                             format!(
                                 "number/from_string: invalid number literal `{}`",
-                                s.0.as_str()
+                                s.as_str()
                             ),
                             pos,
                         )
@@ -902,14 +900,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::EnumFromString => {
                 if let Some(s) = value.as_string() {
-                    Ok(NickelValue::enum_tag(LocIdent::from(&s.0), pos_op_inh).into())
+                    Ok(NickelValue::enum_tag(LocIdent::from(s), pos_op_inh).into())
                 } else {
                     mk_type_error!("String")
                 }
             }
             UnaryOp::StringIsMatch => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0)
+                    let re = regex::Regex::new(s)
                         .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringIsMatchCompiled(re.into()), pos_op_inh);
@@ -920,7 +918,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringFind => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0)
+                    let re = regex::Regex::new(s)
                         .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringFindCompiled(re.into()), pos_op_inh);
@@ -931,7 +929,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringFindAll => {
                 if let Some(s) = value.as_string() {
-                    let re = regex::Regex::new(&s.0)
+                    let re = regex::Regex::new(s)
                         .map_err(|err| EvalErrorData::Other(err.to_string(), pos_op))?;
 
                     let matcher = eta_expand(UnaryOp::StringFindAllCompiled(re.into()), pos_op_inh);
@@ -942,7 +940,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::StringIsMatchCompiled(regex) => {
                 if let Some(s) = value.as_string() {
-                    Ok(s.0.matches_regex(&regex).with_pos_idx(pos_op_inh).into())
+                    Ok(s.matches_regex(&regex).with_pos_idx(pos_op_inh).into())
                 } else {
                     mk_type_error!(op_name = "a compiled regular expression match", "String")
                 }
@@ -951,7 +949,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let Some(s) = value.as_string() {
                     use crate::term::string::RegexFindResult;
 
-                    let result = match s.0.find_regex(&regex) {
+                    let result = match s.find_regex(&regex) {
                         None => mk_record!(
                             ("matched", NickelValue::string_posless("")),
                             ("index", NickelValue::number_posless(-1)),
@@ -991,7 +989,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::StringFindAllCompiled(regex) => {
                 if let Some(s) = value.as_string() {
                     let result = NickelValue::array(
-                        Array::from_iter(s.0.find_all_regex(&regex).map(|found| {
+                        Array::from_iter(s.find_all_regex(&regex).map(|found| {
                             mk_record!(
                                 ("matched", NickelValue::string_posless(found.matched)),
                                 ("index", NickelValue::number_posless(found.index)),
@@ -1039,7 +1037,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 match value.content() {
                     ValueContent::Record(lens) if !lens.peek().is_empty_record() => {
                         //unwrap(): the guard of the pattern exclude empty records
-                        let record = lens.take().unwrap_alloc().0;
+                        let record = lens.take().unwrap_alloc();
                         let fields = record
                             .fields
                             .into_iter()
@@ -1074,7 +1072,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                     ValueContent::Array(lens) if !lens.peek().is_empty_array() => {
                         //unwrap(): the guard of the pattern exclude empty arrays
-                        let ArrayBody {
+                        let ArrayData {
                             array: ts,
                             pending_contracts,
                         } = lens.take().unwrap_alloc();
@@ -1150,7 +1148,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Record", value = lens.restore());
                 };
 
-                let record = lens.take().unwrap_or_alloc().0;
+                let record = lens.take().unwrap_or_alloc();
                 let mut result = RecordData::empty();
                 result.sealed_tail = record.sealed_tail;
 
@@ -1161,7 +1159,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::RecordFreeze => {
                 // If the record is already frozen, there's nothing to do.
-                if matches!(value.as_record(), Some(Container::Alloc(RecordBody(record))) if record.attrs.frozen)
+                if matches!(value.as_record(), Some(Container::Alloc(record)) if record.attrs.frozen)
                 {
                     // A frozen record shouldn't have a polymorphic tail
                     debug_assert!(
@@ -1171,7 +1169,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .as_record()
                             .unwrap()
                             .unwrap_alloc()
-                            .0
                             .sealed_tail
                             .is_none()
                     );
@@ -1187,7 +1184,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 match value.content() {
                     ValueContent::Record(lens) => {
                         //unwrap(): we already checked for empty record above (and return early)
-                        let record = lens.take().unwrap_alloc().0;
+                        let record = lens.take().unwrap_alloc();
 
                         // It's not clear what the semantics of freezing a record with a sealed tail
                         // would be, as their might be dependencies between the sealed part and the
@@ -1240,7 +1237,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::Trace => {
                 if let Some(s) = value.as_string() {
-                    let _ = writeln!(self.context.trace, "std.trace: {}", s.0);
+                    let _ = writeln!(self.context.trace, "std.trace: {}", s);
                     Ok(())
                 } else {
                     mk_type_error!("String")
@@ -1253,7 +1250,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::LabelPushDiag => match value.content() {
                 ValueContent::Label(lens) => {
-                    let mut label = lens.take().0;
+                    let mut label = lens.take();
                     label.push_diagnostic();
                     Ok(Closure {
                         value: NickelValue::label(label, pos),
@@ -1304,7 +1301,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::EnumMakeVariant => {
-                let Some(StringBody(tag)) = value.as_string() else {
+                let Some(tag) = value.as_string() else {
                     return mk_type_error!("String");
                 };
 
@@ -1345,13 +1342,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let container = lens.take().into_opt();
 
                         for (id, field) in
-                            container.map(|record| record.0.fields).unwrap_or_default()
+                            container.map(|record| record.fields).unwrap_or_default()
                         {
                             debug_assert!(field.metadata.is_empty());
 
                             if let Some(value) = field.value {
                                 if let Some(idx) = value.as_thunk() {
-                                    cont.env.insert(id.ident(), idx.0.clone());
+                                    cont.env.insert(id.ident(), idx.clone());
                                 } else {
                                     cont.env.insert(
                                         id.ident(),
@@ -1379,7 +1376,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::ContractCustom => {
                 let contract =
-                    if let Some(TermBody(Term::Fun(..) | Term::Match(_))) = value.as_term() {
+                    if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
                         value.closurize(&mut self.context.cache, env)
                     } else {
                         return mk_type_error!("Function or MatchExpression");
@@ -1497,7 +1494,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         Op: Fn(f64) -> f64,
     {
         if let Some(n) = body.as_number() {
-            let n = &n.0;
             let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                 EvalErrorData::Other(
@@ -1593,7 +1589,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(mk_fun!(
                     "x",
                     NickelValue::term(
-                        Term::Sealed(key.0, mk_term::var("x"), label.0.clone()),
+                        Term::Sealed(*key, mk_term::var("x"), label.clone()),
                         pos_op_inh
                     )
                 )
@@ -1635,9 +1631,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                let n1 = &n1.0;
-                let n2 = &n2.0;
-
                 if n2 == &Number::ZERO {
                     Err(EvalErrorData::Other(
                         String::from("division by zero"),
@@ -1655,9 +1648,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let Some(n2) = value2.as_number() else {
                     return mk_type_error!("Number", 2, value2);
                 };
-
-                let n1 = &n1.0;
-                let n2 = &n2.0;
 
                 if n2 == &Number::ZERO {
                     return Err(EvalErrorData::Other(
@@ -1680,8 +1670,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                let n1 = &n1.0;
-                let n2 = &n2.0;
                 let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
                 let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
 
@@ -1709,8 +1697,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                let n1 = &n1.0;
-                let n2 = &n2.0;
                 let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
 
                 let result_as_f64 = if n2 == &2 {
@@ -1743,9 +1729,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let Some(n2) = value2.as_number() else {
                     return mk_type_error!("Number", 2, value2);
                 };
-
-                let n1 = &n1.0;
-                let n2 = &n2.0;
 
                 // Malachite's Rationals don't support exponents larger than `u64`. Anyway,
                 // the result of such an operation would be huge and impractical to
@@ -1787,7 +1770,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("String", 2, value2);
                 };
 
-                Ok(NickelValue::string(format!("{}{}", &s1.0, &s2.0), pos_op_inh).into())
+                Ok(NickelValue::string(format!("{}{}", s1, s2), pos_op_inh).into())
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
                 // Performing only one match `if let Term::Type` and putting the call to
@@ -1835,7 +1818,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 match value2.content() {
                     ValueContent::Label(lens) => {
-                        label = lens.take().0;
+                        label = lens.take();
                     }
                     lens => {
                         return mk_type_error!("Label", 2, lens.restore());
@@ -1934,7 +1917,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We convert the contract (which can be a custom contract, a record, a naked
                 // function, etc.) to a form that can be applied to a label and a value.
                 let functoid = match value1.content_ref() {
-                    ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match { .. })) => {
+                    ValueContentRef::Term(Term::Fun(..) | Term::Match { .. }) => {
                         // Warn on naked function contracts, but not if they came from the
                         // stdlib. Some stdlib functions return naked function contracts.
                         if let Some(pos) = self.context.pos_table.get(pos1).as_opt_ref() {
@@ -1966,7 +1949,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     }
                     ValueContentRef::CustomContract(ctr) => Closure {
-                        value: ctr.0.clone(),
+                        value: ctr.clone(),
                         env: env1,
                     },
                     ValueContentRef::Record(..) => {
@@ -1999,7 +1982,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     &env1,
                 );
 
-                let Some(LabelBody(label)) = value2.as_label() else {
+                let Some(label) = value2.as_label() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
@@ -2007,7 +1990,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 match value1.as_record() {
                     Some(Container::Empty) => Ok(NickelValue::label(label, pos2).into()),
-                    Some(Container::Alloc(RecordBody(record_data))) => {
+                    Some(Container::Alloc(record_data)) => {
                         // If the contract returned a label as part of its error
                         // data, blame that one instead.
                         if let Some(user_label) = record_data
@@ -2016,7 +1999,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .and_then(|field| field.value.as_ref())
                             .and_then(NickelValue::as_label)
                         {
-                            label = user_label.0.clone();
+                            label = user_label.clone();
                         }
 
                         if let Some(msg) = record_data
@@ -2025,7 +2008,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .and_then(|field| field.value.as_ref())
                             .and_then(NickelValue::as_string)
                         {
-                            label = label.with_diagnostic_message(msg.0.clone().into_inner());
+                            label = label.with_diagnostic_message(msg.clone().into_inner());
                         }
 
                         if let Some(notes) = record_data
@@ -2040,7 +2023,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 .iter()
                                 .map(|element| {
                                     if let Some(s) = element.as_string() {
-                                        Ok(s.0.clone().into_inner())
+                                        Ok(s.clone().into_inner())
                                     } else {
                                         mk_type_error!("String (notes)", 1, element.clone())
                                     }
@@ -2067,8 +2050,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // and proceed with the unsealed term in the happy path, or on the opposite
                     // drop the sealed term and proceed with the error on the stack otherwise.
                     Ok(
-                        if let Some(TermBody(Term::Sealed(s2, inner, _))) = value2.as_term() {
-                            if s1.0 == *s2 {
+                        if let Some(Term::Sealed(s2, inner, _)) = value2.as_term() {
+                            if s1 == s2 {
                                 Closure {
                                     value: mk_fun!(LocIdent::fresh(), inner.clone()),
                                     env: env2,
@@ -2166,17 +2149,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                let mut label = label.0.clone();
+                let mut label = label.clone();
                 label
                     .path
-                    .push(ty_path::Elem::Field(field.0.clone().into_inner().into()));
+                    .push(ty_path::Elem::Field(field.clone().into_inner().into()));
                 Ok(NickelValue::label(label, pos_op_inh).into())
             }
             BinaryOp::RecordGet => {
                 // This error should be impossible to trigger. The parser
                 // prevents a dynamic field access where the field name is not syntactically
                 // a string.
-                let Some(StringBody(id)) = value1.as_string() else {
+                let Some(id) = value1.as_string() else {
                     return mk_type_error!("String", 1, value1);
                 };
 
@@ -2192,7 +2175,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let ident = LocIdent::from(id);
 
-                let Container::Alloc(RecordBody(record)) = container else {
+                let Container::Alloc(record) = container else {
                     return Err(EvalErrorData::FieldMissing {
                         id: ident,
                         field_names: Vec::new(),
@@ -2255,7 +2238,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .to_string()
                 };
 
-                let Some(StringBody(id)) = value1.as_string() else {
+                let Some(id) = value1.as_string() else {
                     return mk_type_error!(op_name = op_name(), "String", 1, value1);
                 };
 
@@ -2267,7 +2250,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     value2 = NickelValue::empty_record_block(pos2);
                 }
 
-                let ValueContentRefMut::Record(Container::Alloc(RecordBody(record))) =
+                let ValueContentRefMut::Record(Container::Alloc(record)) =
                     value2.content_make_mut()
                 else {
                     // Theoretically, we could be in the case `Record(Container::Empty)` here, but
@@ -2321,7 +2304,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             BinaryOp::RecordRemove(op_kind) => {
-                let Some(StringBody(id)) = value1.as_string() else {
+                let Some(id) = value1.as_string() else {
                     return mk_type_error!("String", 1, value1);
                 };
 
@@ -2333,7 +2316,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     value2 = NickelValue::empty_record_block(pos2);
                 }
 
-                let ValueContentRefMut::Record(Container::Alloc(RecordBody(record))) =
+                let ValueContentRefMut::Record(Container::Alloc(record)) =
                     value2.content_make_mut()
                 else {
                     // Theoretically, we could be in the case `Record(Container::Empty)` here, but
@@ -2382,7 +2365,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             BinaryOp::RecordHasField(op_kind) => {
-                let Some(StringBody(id)) = value1.as_string() else {
+                let Some(id) = value1.as_string() else {
                     return mk_type_error!("String", 1, value1);
                 };
 
@@ -2398,7 +2381,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ).into())
             }
             BinaryOp::RecordFieldIsDefined(op_kind) => {
-                let Some(StringBody(id)) = value1.as_string() else {
+                let Some(id) = value1.as_string() else {
                     return mk_type_error!("String", 1, value1);
                 };
 
@@ -2487,7 +2470,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Array", 1, value1);
                 };
 
-                let Some(NumberBody(n)) = value2.as_number() else {
+                let Some(n) = value2.as_number() else {
                     return mk_type_error!("Number", 2, value2);
                 };
 
@@ -2554,7 +2537,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_err_fst();
                 }
 
-                let Some(StringBody(s)) = value2.as_string() else {
+                let Some(s) = value2.as_string() else {
                     return mk_type_error!("String", 2, value2);
                 };
 
@@ -2630,7 +2613,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_err_fst();
                 }
 
-                let Some(StringBody(s)) = value2.as_string() else {
+                let Some(s) = value2.as_string() else {
                     return mk_type_error!("String", 2, value2);
                 };
 
@@ -2732,7 +2715,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 } = ctr;
 
                 let label = match value1.content() {
-                    ValueContent::Label(lens) => lens.take().0,
+                    ValueContent::Label(lens) => lens.take(),
                     lens => return mk_type_error!("Label", 1, lens.restore()),
                 };
 
@@ -2783,7 +2766,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )
                 })?;
 
-                let Some(LabelBody(label)) = value1.as_label() else {
+                let Some(label) = value1.as_label() else {
                     return mk_type_error!("Label", 1, value1);
                 };
 
@@ -2792,7 +2775,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     lens => return mk_type_error!("Record", 2, lens.restore()),
                 };
 
-                let Container::Alloc(RecordBody(mut record_data)) = container else {
+                let Container::Alloc(mut record_data) = container else {
                     return Ok(NickelValue::empty_record().with_pos_idx(pos2).into());
                 };
 
@@ -2838,11 +2821,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::term(reverted, pos2).into())
             }
             BinaryOp::LabelWithMessage => {
-                let Some(StringBody(message)) = value1.as_string() else {
+                let Some(message) = value1.as_string() else {
                     return mk_type_error!("String", 1, value1);
                 };
 
-                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
@@ -2865,14 +2848,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Array", 1, value1);
                 };
 
-                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
                 let notes = array_data
                     .iter()
                     .map(|element| {
-                        if let Some(StringBody(s)) = element.as_string() {
+                        if let Some(s) = element.as_string() {
                             Ok(s.clone().into_inner())
                         } else {
                             mk_type_error!("String", 1, element.clone())
@@ -2888,11 +2871,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("String", 1, value1);
                 };
 
-                let ValueContentRefMut::Label(LabelBody(label)) = value2.content_make_mut() else {
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                label.append_diagnostic_note(&note.0);
+                label.append_diagnostic_note(note);
                 Ok(value2.into())
             }
             BinaryOp::LabelLookupTypeVar => {
@@ -2900,24 +2883,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("SealingKey", 1, value1);
                 };
 
-                let Some(LabelBody(label)) = value2.as_label() else {
+                let Some(label) = value2.as_label() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
                 Ok(
-                    NickelValue::from(label.type_environment.get(&key.0).unwrap())
+                    NickelValue::from(label.type_environment.get(key).unwrap())
                         .with_pos_idx(pos_op_inh)
                         .into(),
                 )
             }
             BinaryOp::RecordSplitPair => {
                 let record1 = match value1.content() {
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc().0,
+                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
                     lens => return mk_type_error!("Record", 1, lens.restore()),
                 };
 
                 let record2 = match value2.content() {
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc().0,
+                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
                     lens => return mk_type_error!("Record", 2, lens.restore()),
                 };
 
@@ -2998,8 +2981,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let (record1, record2) = match (container1, container2) {
                     (
-                        Container::Alloc(RecordBody(record1)),
-                        Container::Alloc(RecordBody(record2)),
+                        Container::Alloc(record1),
+                        Container::Alloc(record2),
                     ) => (record1, record2),
                     (Container::Empty, _) => {
                         return Ok(Closure {
@@ -3135,9 +3118,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             });
         };
 
-        let n1 = &n1.0;
-        let n2 = &n2.0;
-
         Ok(f(n1, n2).into())
     }
 
@@ -3154,7 +3134,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     where
         F: Fn(&NickelString, &NickelString) -> NickelValue,
     {
-        let Some(StringBody(s1)) = value1.as_string() else {
+        let Some(s1) = value1.as_string() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "String".to_owned(),
@@ -3165,7 +3145,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             });
         };
 
-        let Some(StringBody(s2)) = value2.as_string() else {
+        let Some(s2) = value2.as_string() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
                 primop: op_name,
                 expected: "String".to_owned(),
@@ -3215,15 +3195,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (arg3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
-                let Some(StringBody(s)) = arg1.as_string() else {
+                let Some(s) = arg1.as_string() else {
                     return mk_type_error("String", 1, arg_pos1, arg1);
                 };
 
-                let Some(StringBody(from)) = arg2.as_string() else {
+                let Some(from) = arg2.as_string() else {
                     return mk_type_error("String", 2, arg_pos2, arg2);
                 };
 
-                let Some(StringBody(to)) = arg3.as_string() else {
+                let Some(to) = arg3.as_string() else {
                     return mk_type_error("String", 3, arg_pos3, arg3);
                 };
 
@@ -3245,15 +3225,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let (arg3, arg_pos3) = args_wo_env.next().unwrap();
                 debug_assert!(args_wo_env.next().is_none());
 
-                let Some(StringBody(s)) = arg1.as_string() else {
+                let Some(s) = arg1.as_string() else {
                     return mk_type_error("String", 1, arg_pos1, arg1);
                 };
 
-                let Some(NumberBody(start)) = arg2.as_number() else {
+                let Some(start) = arg2.as_number() else {
                     return mk_type_error("Number", 2, arg_pos2, arg2);
                 };
 
-                let Some(NumberBody(end)) = arg3.as_number() else {
+                let Some(end) = arg3.as_number() else {
                     return mk_type_error("Number", 3, arg_pos3, arg3);
                 };
 
@@ -3290,7 +3270,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args_iter.next().is_none());
 
-                let Some(LabelBody(label)) = arg1.as_label() else {
+                let Some(label) = arg1.as_label() else {
                     return Err(EvalErrorData::InternalError(
                         format!(
                             "The {n_op} operator was expecting \
@@ -3346,11 +3326,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args.next().is_none());
 
-                let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
+                let Some(s) = arg1.as_sealing_key() else {
                     return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
-                let Some(LabelBody(label)) = arg2.as_label() else {
+                let Some(label) = arg2.as_label() else {
                     return mk_type_error("Label", 2, arg_pos2, arg2);
                 };
 
@@ -3360,7 +3340,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg3 = NickelValue::empty_record_block(arg3.pos_idx());
                 }
 
-                let ValueContentRefMut::Record(Container::Alloc(RecordBody(r))) =
+                let ValueContentRefMut::Record(Container::Alloc(r)) =
                     arg3.content_make_mut()
                 else {
                     return mk_type_error("Record", 3, arg_pos3, arg3);
@@ -3370,7 +3350,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // Even if the record to seal is empty, the correctness of polymorphic contracts
                     // relies on the symmetry of sealing/unsealing operations. It's wiser to always
                     // seal a tail, even when empty.
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc().0,
+                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
                     lens => return mk_type_error("Record", 4, arg_pos4, lens.restore()),
                 };
 
@@ -3415,11 +3395,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args.next().is_none());
 
-                let Some(SealingKeyBody(s)) = arg1.as_sealing_key() else {
+                let Some(s) = arg1.as_sealing_key() else {
                     return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
-                let Some(LabelBody(label)) = arg2.as_label() else {
+                let Some(label) = arg2.as_label() else {
                     return mk_type_error("Label", 2, arg_pos2, arg2);
                 };
 
@@ -3429,7 +3409,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 container
                     .into_opt()
-                    .and_then(|record| record.0.sealed_tail.as_ref())
+                    .and_then(|record| record.sealed_tail.as_ref())
                     .and_then(|tail| tail.unseal(s).cloned())
                     .ok_or_else(|| EvalErrorData::BlameError {
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
@@ -3469,7 +3449,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args.next().is_none());
 
-                let Some(SealingKeyBody(key)) = arg1.as_sealing_key() else {
+                let Some(key) = arg1.as_sealing_key() else {
                     return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
@@ -3477,7 +3457,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("Polarity", 2, arg_pos2, arg2);
                 };
 
-                let ValueContentRefMut::Label(LabelBody(label)) = arg3.content_make_mut() else {
+                let ValueContentRefMut::Label(label) = arg3.content_make_mut() else {
                     return mk_type_error("Label", 3, arg_pos3, arg3);
                 };
 
@@ -3518,11 +3498,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args.next().is_none());
 
-                let Some(NumberBody(start)) = arg1.as_number() else {
+                let Some(start) = arg1.as_number() else {
                     return mk_type_error("Number", 1, arg_pos1, arg1);
                 };
 
-                let Some(NumberBody(end)) = arg2.as_number() else {
+                let Some(end) = arg2.as_number() else {
                     return mk_type_error("Number", 2, arg_pos2, arg2);
                 };
 
@@ -3532,7 +3512,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg3 = NickelValue::empty_array_block(arg3.pos_idx());
                 }
 
-                let ValueContentRefMut::Array(Container::Alloc(ArrayBody { array, .. })) =
+                let ValueContentRefMut::Array(Container::Alloc(ArrayData { array, .. })) =
                     arg3.content_make_mut()
                 else {
                     return mk_type_error("Array", 3, arg_pos3, arg3);
@@ -3595,7 +3575,7 @@ fn type_tag(v: &NickelValue) -> &'static str {
         ValueContentRef::Array(_) => "Array",
         ValueContentRef::Record(_) => "Record",
         ValueContentRef::String(_) => "String",
-        ValueContentRef::Term(term_body) => match term_body.0 {
+        ValueContentRef::Term(term) => match term {
             Term::RecRecord(..) => "Record",
             Term::Fun(..) | Term::Match { .. } => "Function",
             _ => "Other",
@@ -3692,18 +3672,18 @@ fn eq<C: Cache>(
     match (value1.content_ref(), value2.content_ref()) {
         (ValueContentRef::Null, ValueContentRef::Null) => Ok(EqResult::Bool(true)),
         (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => Ok(EqResult::Bool(b1 == b2)),
-        (ValueContentRef::Number(NumberBody(n1)), ValueContentRef::Number(NumberBody(n2))) => {
+        (ValueContentRef::Number(n1), ValueContentRef::Number(n2)) => {
             Ok(EqResult::Bool(n1 == n2))
         }
-        (ValueContentRef::String(StringBody(s1)), ValueContentRef::String(StringBody(s2))) => {
+        (ValueContentRef::String(s1), ValueContentRef::String(s2)) => {
             Ok(EqResult::Bool(s1 == s2))
         }
-        (ValueContentRef::Label(LabelBody(l1)), ValueContentRef::Label(LabelBody(l2))) => {
+        (ValueContentRef::Label(l1), ValueContentRef::Label(l2)) => {
             Ok(EqResult::Bool(l1 == l2))
         }
         (
-            ValueContentRef::SealingKey(SealingKeyBody(k1)),
-            ValueContentRef::SealingKey(SealingKeyBody(k2)),
+            ValueContentRef::SealingKey(k1),
+            ValueContentRef::SealingKey(k2),
         ) => Ok(EqResult::Bool(k1 == k2)),
         (
             ValueContentRef::EnumVariant(EnumVariantData {
@@ -3740,8 +3720,8 @@ fn eq<C: Cache>(
             Ok(EqResult::Bool(true))
         }
         (
-            ValueContentRef::Record(Container::Alloc(RecordBody(r1))),
-            ValueContentRef::Record(Container::Alloc(RecordBody(r2))),
+            ValueContentRef::Record(Container::Alloc(r1)),
+            ValueContentRef::Record(Container::Alloc(r2)),
         ) => {
             let merge::split::SplitResult {
                 left,
@@ -3881,8 +3861,8 @@ fn eq<C: Cache>(
         (ValueContentRef::ForeignId(_), ValueContentRef::ForeignId(_))
         | (ValueContentRef::CustomContract(_), ValueContentRef::CustomContract(_))
         | (
-            ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..))),
-            ValueContentRef::Term(TermBody(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..))),
+            ValueContentRef::Term(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..)),
+            ValueContentRef::Term(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..)),
         ) => Err(EvalErrorData::IncomparableValues {
             eq_pos: pos_op,
             left: value1,

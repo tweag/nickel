@@ -422,7 +422,7 @@ fn foreign_id() {
     let container = &evaled.as_record().unwrap();
 
     let field = container.get("b".into()).unwrap();
-    assert_matches!(field.value.as_ref().unwrap().as_foreign_id().unwrap().0, 42);
+    assert_matches!(field.value.as_ref().unwrap().as_foreign_id().unwrap(), 42);
 
     // Foreign ids cannot be compared for equality.
     let t_eq = mk_term::op2(

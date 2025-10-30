@@ -23,7 +23,7 @@ use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use nickel_lang_core::{
-    bytecode::value::{self, ArrayBody, Container, NickelValue, RecordBody},
+    bytecode::value::{self, ArrayData, Container, NickelValue},
     deserialize::RustDeserializationError as DeserializationError,
     error::{IntoDiagnostics, NullReporter, PointedExportErrorData, report::DiagnosticsWrapper},
     eval::{Closure, Environment, cache::CacheImpl},
@@ -338,7 +338,7 @@ pub struct Expr {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Record<'a> {
-    data: Container<&'a RecordBody>,
+    data: Container<&'a RecordData>,
 }
 
 /// An iterator over names and values in a [`Record`].
@@ -351,7 +351,7 @@ pub struct RecordIter<'a> {
 /// This is a reference internally, and borrows from data owned by an [`Expr`].
 #[derive(Clone)]
 pub struct Array<'a> {
-    array: Container<&'a ArrayBody>,
+    array: Container<&'a ArrayData>,
 }
 
 /// An iterator over elements in an [`Array`].
@@ -440,7 +440,7 @@ impl Expr {
 
     /// Get the number value of this expression, if it is a number.
     pub fn as_number(&self) -> Option<Number<'_>> {
-        self.value.as_number().map(|num| Number { num: &num.0 })
+        self.value.as_number().map(|num| Number { num })
     }
 
     /// If this expression is an integer within the range of an `i64`, return it.
@@ -455,7 +455,7 @@ impl Expr {
 
     /// If this expression is a string, return it.
     pub fn as_str(&self) -> Option<&str> {
-        self.value.as_string().map(|s| s.0.as_str())
+        self.value.as_string().map(|s| s.as_str())
     }
 
     /// Is this expression a string?
@@ -577,7 +577,7 @@ impl Record<'_> {
     /// shallowly evaluated records may have fields with no value.
     pub fn key_value_by_index(&self, idx: usize) -> Option<(&str, Option<Expr>)> {
         self.data.into_opt().and_then(|data| {
-            data.0.fields.get_index(idx).map(|(key, fld)| {
+            data.fields.get_index(idx).map(|(key, fld)| {
                 (
                     key.label(),
                     fld.value.as_ref().map(|rt| Expr { value: rt.clone() }),
@@ -598,7 +598,7 @@ impl<'a> IntoIterator for Record<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         RecordIter {
-            inner: self.data.into_opt().map(|data| data.0.fields.iter()),
+            inner: self.data.into_opt().map(|data| data.fields.iter()),
         }
     }
 }

@@ -74,7 +74,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
     if let ValueContent::Term(TermContent::Closurize(lens)) = result.content() {
         if let ValueContent::Record(r_lens) = lens.take().content() {
             NickelValue::term_posless(RecRecord(
-                r_lens.take().unwrap_or_alloc().0,
+                r_lens.take().unwrap_or_alloc(),
                 Vec::new(),
                 Vec::new(),
                 None,

@@ -23,7 +23,7 @@
 use crate::{
     bytecode::{
         ast::{AstAlloc, compat::ToMainline},
-        value::{Container, NickelValue, RecordBody, ValueContent},
+        value::{Container, NickelValue, ValueContent},
     },
     cache::*,
     closurize::Closurize as _,
@@ -1019,7 +1019,7 @@ impl<EC: EvalCache> Program<EC> {
             if let Some(thunk) = curr_thunk {
                 // If the thunk is already locked, it's the thunk of some parent field, and we stop
                 // here to avoid infinite recursion.
-                if !thunk.0.lock() {
+                if !thunk.lock() {
                     return Ok(term);
                 }
             }
@@ -1029,7 +1029,7 @@ impl<EC: EvalCache> Program<EC> {
             // Once we're done evaluating all the children, or if there was an error, we unlock the
             // current thunk
             if let Some(thunk) = curr_thunk {
-                thunk.0.unlock();
+                thunk.unlock();
             }
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
@@ -1066,7 +1066,7 @@ impl<EC: EvalCache> Program<EC> {
 
             match evaled.value.content() {
                 ValueContent::Record(lens) => {
-                    let Container::Alloc(RecordBody(data)) = lens.take() else {
+                    let Container::Alloc(data) = lens.take() else {
                         //unwrap(): will go away
                         return Ok(NickelValue::empty_record().with_pos_idx(pos_idx));
                     };
@@ -1183,7 +1183,7 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        bytecode::value::{Container, NickelValue, RecordBody, TermBody, ValueContentRef},
+        bytecode::value::{Container, NickelValue, ValueContentRef},
         error::{Error, ExportError, ExportErrorData, IOError},
         position::PosTable,
         term::Term,
@@ -1234,8 +1234,8 @@ mod doc {
                 ValueContentRef::Record(Container::Empty) => Some(Self {
                     fields: HashMap::new(),
                 }),
-                ValueContentRef::Record(Container::Alloc(RecordBody(record)))
-                | ValueContentRef::Term(TermBody(Term::RecRecord(record, ..))) => {
+                ValueContentRef::Record(Container::Alloc(record))
+                | ValueContentRef::Term(Term::RecRecord(record, ..)) => {
                     let fields = record
                         .fields
                         .iter()

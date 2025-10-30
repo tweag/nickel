@@ -1,5 +1,5 @@
 use nickel_lang_core::{
-    bytecode::value::{TermBody, ValueContent, lens::TermContent},
+    bytecode::value::{ValueContent, lens::TermContent},
     identifier::Ident,
     position::PosTable,
     term::{IndexMap, Term, record::FieldDeps},

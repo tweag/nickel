@@ -7,7 +7,7 @@ use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 use comrak::{Arena, ComrakOptions, arena_tree::NodeEdge, nodes::AstNode};
 use nickel_lang_core::{
     bytecode::value::{
-        Container, NickelValue, RecordBody, TermBody, ValueContent, ValueContentRef,
+        Container, NickelValue, ValueContent, ValueContentRef,
         lens::TermContent,
     },
     cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
@@ -172,8 +172,8 @@ fn run_tests(
     color: ColorOpt,
 ) {
     match spine.content_ref() {
-        ValueContentRef::Record(Container::Alloc(RecordBody(data)))
-        | ValueContentRef::Term(TermBody(Term::RecRecord(data, ..))) => {
+        ValueContentRef::Record(Container::Alloc(data))
+        | ValueContentRef::Term(Term::RecRecord(data, ..)) => {
             for (id, field) in &data.fields {
                 if let Some(entry) = registry.tests.get(&id.ident()) {
                     let Some(val) = field.value.as_ref() else {
@@ -510,7 +510,7 @@ fn doctest_transform(
                 record_with_doctests(record_data, Some((includes, dyn_fields)), pos_idx)?
             }
             // unwrap(): we exclude the inline empty record case, which ensures that `into_opt` is `Some`
-            ValueContent::Record(lens) if !lens.peek().is_empty_record() => record_with_doctests(lens.take().into_opt().unwrap().0, None, pos_idx)?,
+            ValueContent::Record(lens) if !lens.peek().is_empty_record() => record_with_doctests(lens.take().into_opt().unwrap(), None, pos_idx)?,
             lens => lens.restore(),
         };
 

@@ -2,7 +2,7 @@
 use serde::Serialize;
 
 use crate::{
-    bytecode::value::{NickelValue, RecordBody, TermBody, ValueContentRef, Container},
+    bytecode::value::{NickelValue, ValueContentRef, Container},
     identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
     term::{
@@ -214,12 +214,12 @@ fn render_query_result<R: QueryPrinter>(
         writeln!(out)?;
 
         match value.content_ref() {
-            ValueContentRef::Record(Container::Alloc(RecordBody(record))) if !record.fields.is_empty() => {
+            ValueContentRef::Record(Container::Alloc(record)) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter().map(LocIdent::ident))
             }
-            ValueContentRef::Term(TermBody(Term::RecRecord(record, includes, dyn_fields, ..)))
+            ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..))
                 if !record.fields.is_empty() =>
             {
                 let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
@@ -229,7 +229,7 @@ fn render_query_result<R: QueryPrinter>(
                 fields.extend(dyn_fields.iter().map(|_| dynamic));
                 renderer.write_fields(out, fields.into_iter())
             }
-            ValueContentRef::Record(..) | ValueContentRef::Term(TermBody(Term::RecRecord(..))) => {
+            ValueContentRef::Record(..) | ValueContentRef::Term(Term::RecRecord(..)) => {
                 renderer.write_metadata(out, "value", "{}")
             }
             _ => Ok(()),

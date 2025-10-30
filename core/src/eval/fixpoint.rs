@@ -1,7 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
 use crate::{
-    bytecode::value::ThunkBody,
     position::{PosIdx, PosTable, TermPos},
 };
 
@@ -13,7 +12,7 @@ use crate::{
 /// a general [crate::bytecode::value::NickelValue] instead of a [crate::term::record::Field]. In
 /// practice, the patched expression is either the value of a field or one of its pending contract.
 fn patch_value<C: Cache>(cache: &mut C, value: &mut NickelValue, rec_env: &[(Ident, CacheIndex)]) {
-    if let ValueContentRefMut::Thunk(ThunkBody(idx)) = value.content_make_mut() {
+    if let ValueContentRefMut::Thunk(idx) = value.content_make_mut() {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
         cache.build_cached(idx, rec_env);
     } else {
@@ -52,18 +51,14 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
-                let idx = if let Some(ThunkBody(idx)) = value.as_thunk() {
+                let idx = if let Some(idx) = value.as_thunk() {
                     idx.clone()
                 } else {
-                    if !value.is_constant() {
-                        eprintln!("/!\\ Unclosurized field {id} with value {value}");
-                        eprintln!("{:?}", value);
-                    }
                     // If we are in this branch, `value` must be a constant after closurization
-                    // (the evaluation of a recursive record starts by closurizing all fields
-                    // and contracts). Constants don't need an environment, which is why it is
-                    // dropped.
+                    // (the evaluation of a recursive record starts by closurizing all fields and
+                    // contracts). 
                     debug_assert!(value.is_constant());
+                    // Constants don't need an environment: they contain no variable.
                     let closure: Closure = value.clone().into();
 
                     cache.add(closure, BindingType::Normal)

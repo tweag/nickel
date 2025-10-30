@@ -43,7 +43,7 @@ use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
     bytecode::value::{
-        Container, EnumVariantData, NickelValue, RecordBody, TermBody, ValueContentRef,
+        Container, EnumVariantData, NickelValue, ValueContentRef,
     },
     identifier::LocIdent,
     term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
@@ -166,11 +166,11 @@ fn contract_eq_bounded(
             map_eq(
                 contract_eq_fields,
                 state,
-                &r1.0.fields,
+                &r1.fields,
                 env1,
-                &r2.0.fields,
+                &r2.fields,
                 env2,
-            ) && r1.0.attrs.open == r2.0.attrs.open
+            ) && r1.attrs.open == r2.attrs.open
         }
         (ValueContentRef::Array(Container::Empty), ValueContentRef::Array(Container::Empty)) => {
             true
@@ -192,11 +192,11 @@ fn contract_eq_bounded(
         // Contract is just a caching mechanism. `typ` should be the source of truth for equality
         // (and it's probably easier to prove that type are equal rather than their generated
         // contract version).
-        (ValueContentRef::Type(body1), ValueContentRef::Type(body2)) => {
-            type_eq_bounded(state, &body1.typ, env1, &body2.typ, env2)
+        (ValueContentRef::Type(type_data1), ValueContentRef::Type(type_data2)) => {
+            type_eq_bounded(state, &type_data1.typ, env1, &type_data2.typ, env2)
         }
         (ValueContentRef::Term(term1), ValueContentRef::Term(term2)) => {
-            match (&term1.0, &term2.0) {
+            match (&term1, &term2) {
                 // We only compare string chunks when they represent a plain string (they don't contain any
                 // interpolated expression), as static string may be currently parsed as such. We return
                 // false for anything more complex.
@@ -331,7 +331,7 @@ fn contract_eq_bounded(
             }
         }
         (ValueContentRef::Thunk(id1), ValueContentRef::Thunk(id2))
-            if Thunk::ptr_eq(&id1.0, &id2.0) =>
+            if Thunk::ptr_eq(id1, id2) =>
         {
             true
         }
@@ -348,8 +348,8 @@ fn contract_eq_bounded(
             // not observable by the rest of the evaluator, but we do have to consider it here. We
             // make use of `borrow_orig` built for this purpose, to get the original closure in
             // this case instead of panicking as `borrow()` would.
-            let closure1 = thunk1.0.borrow_orig();
-            let closure2 = thunk2.0.borrow_orig();
+            let closure1 = thunk1.borrow_orig();
+            let closure2 = thunk2.borrow_orig();
 
             contract_eq_bounded(
                 state,
@@ -360,22 +360,22 @@ fn contract_eq_bounded(
             )
         }
         (ValueContentRef::Thunk(thunk), _) => {
-            let closure = thunk.0.borrow_orig();
+            let closure = thunk.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
         }
         (_, ValueContentRef::Thunk(thunk)) => {
-            let closure = thunk.0.borrow_orig();
+            let closure = thunk.borrow_orig();
 
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
         (
-            ValueContentRef::Term(TermBody(Term::RecRecord(r, includes, dyn_fields, _, _))),
+            ValueContentRef::Term(Term::RecRecord(r, includes, dyn_fields, _, _)),
             ValueContentRef::Record(Container::Empty),
         )
         | (
             ValueContentRef::Record(Container::Empty),
-            ValueContentRef::Term(TermBody(Term::RecRecord(r, includes, dyn_fields, _, _))),
+            ValueContentRef::Term(Term::RecRecord(r, includes, dyn_fields, _, _)),
         ) => {
             dyn_fields.is_empty()
                 && includes.is_empty()
@@ -385,12 +385,12 @@ fn contract_eq_bounded(
                 && !r.attrs.open
         }
         (
-            ValueContentRef::Term(TermBody(Term::RecRecord(r1, includes, dyn_fields, _, _))),
-            ValueContentRef::Record(Container::Alloc(RecordBody(r2))),
+            ValueContentRef::Term(Term::RecRecord(r1, includes, dyn_fields, _, _)),
+            ValueContentRef::Record(Container::Alloc(r2)),
         )
         | (
-            ValueContentRef::Record(Container::Alloc(RecordBody(r1))),
-            ValueContentRef::Term(TermBody(Term::RecRecord(r2, includes, dyn_fields, _, _))),
+            ValueContentRef::Record(Container::Alloc(r1)),
+            ValueContentRef::Term(Term::RecRecord(r2, includes, dyn_fields, _, _)),
         ) => {
             dyn_fields.is_empty()
                 && includes.is_empty()
