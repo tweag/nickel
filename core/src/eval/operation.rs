@@ -771,7 +771,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 match value.content_ref() {
-                    ValueContentRef::Record(Container::Alloc(record)) => {
+                    ValueContentRef::Record(Container::Alloc(record))
+                        if !record.fields.is_empty() =>
+                    {
                         let defined = record
                             // `iter_without_opts` takes care of applying pending contracts
                             .iter_without_opts()
@@ -787,7 +789,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         })
                     }
-                    ValueContentRef::Array(Container::Alloc(array_data)) => {
+                    ValueContentRef::Array(Container::Alloc(array_data))
+                        if !array_data.array.is_empty() =>
+                    {
                         let terms = seq_terms(
                             array_data.array.iter().map(|t| {
                                 RuntimeContract::apply_all(
