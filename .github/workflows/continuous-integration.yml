@@ -70,3 +70,13 @@ jobs:
 
       - name: Test
         run: cargo test --package nickel-lang-*
+
+      - name: Build C API
+        shell: bash
+        run: |
+          cargo build --package nickel-lang --features=capi --release
+          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz -o llvm.tar.xz
+          mkdir llvm
+          tar xJvf llvm.tar.xz --strip-components=1 -C llvm
+          export PATH="$PWD/llvm/bin:$PATH"
+          bash ./scripts/shrink_archive.sh -o test.lib target/release/nickel_lang.lib
