@@ -13,7 +13,7 @@
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::{Array, ArrayData, NickelValue, ValueContentRef, Container},
+    bytecode::value::{Array, ArrayData, Container, NickelValue, ValueContentRef},
     eval::{Closure, Environment, cache::Cache},
     term::{
         BindingType, RuntimeContract, Term,
@@ -253,13 +253,11 @@ impl Closurize for RecordData {
 
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {
-        ValueContentRef::Term(term) => match term {
-            | Term::Var(_)
+        ValueContentRef::Term(Term::Var(_)
             | Term::Fun(_, _)
             // match acts like a function, and is a WHNF
-            | Term::Match(_) => false,
-            _ => true,
-        },
+            | Term::Match(_)) => false,
+        ValueContentRef::Term(_) => true,
         ValueContentRef::Null
         | ValueContentRef::Bool(_)
         | ValueContentRef::Array(Container::Empty)

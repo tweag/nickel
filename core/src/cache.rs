@@ -27,7 +27,7 @@ use crate::{
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self},
     transform::{Wildcards, import_resolution},
-    traverse::{Traverse, TraverseOrder},
+    traverse::TraverseOrder,
     typ::UnboundTypeVariableError,
     typecheck::{self, HasApparentType, TypecheckMode, typecheck},
     {eval, parser, transform},

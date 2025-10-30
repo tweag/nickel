@@ -11,6 +11,7 @@
 //!   we'll *never* break them, just that stability is a priority.
 //! - Embeddability: our interfaces are designed to be usable from
 //!   other languages.
+#![allow(clippy::result_large_err)]
 
 use std::{
     ffi::OsString,

@@ -174,6 +174,23 @@ impl ValueLens<bool> {
     }
 }
 
+// Those aliases are there to appease clippy, but what we should really do is to define a proper
+// `LetData` structure instead and use it the corresponding term variant.
+
+pub type LetData = (
+    SmallVec<[(LocIdent, NickelValue); 4]>,
+    NickelValue,
+    LetAttrs,
+);
+pub type LetPatternData = (SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs);
+pub type RecRecordData = (
+    RecordData,
+    Vec<Include>,
+    Vec<(NickelValue, Field)>,
+    Option<RecordDeps>,
+    bool,
+);
+
 /// Counterpart of [super::ValueContent] for [crate::term::Term] representing the inner term stored in a block
 /// value. This makes it possible to conditionally take data out depending not only on the type of
 /// the block, but on the specific constructor of the term inside that block as well.
@@ -185,25 +202,11 @@ pub enum TermContent {
     StrChunks(ValueLens<Vec<StrChunk<NickelValue>>>),
     Fun(ValueLens<(LocIdent, NickelValue)>),
     FunPattern(ValueLens<(Pattern, NickelValue)>),
-    Let(
-        ValueLens<(
-            SmallVec<[(LocIdent, NickelValue); 4]>,
-            NickelValue,
-            LetAttrs,
-        )>,
-    ),
-    LetPattern(ValueLens<(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs)>),
+    Let(ValueLens<LetData>),
+    LetPattern(ValueLens<LetPatternData>),
     App(ValueLens<(NickelValue, NickelValue)>),
     Var(ValueLens<LocIdent>),
-    RecRecord(
-        ValueLens<(
-            RecordData,
-            Vec<Include>,
-            Vec<(NickelValue, Field)>,
-            Option<RecordDeps>,
-            bool,
-        )>,
-    ),
+    RecRecord(ValueLens<RecRecordData>),
     Closurize(ValueLens<NickelValue>),
     Match(ValueLens<MatchData>),
     Op1(ValueLens<(UnaryOp, NickelValue)>),
@@ -434,11 +437,7 @@ impl ValueLens<(Pattern, NickelValue)> {
 }
 
 impl
-    ValueLens<(
-        SmallVec<[(LocIdent, NickelValue); 4]>,
-        NickelValue,
-        LetAttrs,
-    )>
+    ValueLens<LetData>
 {
     /// Creates a new lens extracting [crate::term::Term::Let].
     ///
@@ -456,11 +455,7 @@ impl
     /// Extractor for [crate::term::Term::Let].
     fn term_let_extractor(
         value: NickelValue,
-    ) -> (
-        SmallVec<[(LocIdent, NickelValue); 4]>,
-        NickelValue,
-        LetAttrs,
-    ) {
+    ) -> LetData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::Let(bindings, body, attrs) = term {
@@ -471,7 +466,7 @@ impl
     }
 }
 
-impl ValueLens<(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs)> {
+impl ValueLens<LetPatternData> {
     /// Creates a new lens extracting [crate::term::Term::LetPattern].
     ///
     /// # Safety
@@ -488,7 +483,7 @@ impl ValueLens<(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs)> {
     /// Extractor for [crate::term::Term::LetPattern].
     fn term_let_pat_extractor(
         value: NickelValue,
-    ) -> (SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs) {
+    ) -> LetPatternData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::LetPattern(bindings, body, attrs) = term {
@@ -552,13 +547,7 @@ impl ValueLens<LocIdent> {
 }
 
 impl
-    ValueLens<(
-        RecordData,
-        Vec<Include>,
-        Vec<(NickelValue, Field)>,
-        Option<RecordDeps>,
-        bool,
-    )>
+    ValueLens<RecRecordData>
 {
     /// Creates a new lens extracting [crate::term::Term::RecRecord].
     ///
@@ -576,13 +565,7 @@ impl
     /// Extractor for [crate::term::Term::RecRecord].
     fn term_rec_record_extractor(
         value: NickelValue,
-    ) -> (
-        RecordData,
-        Vec<Include>,
-        Vec<(NickelValue, Field)>,
-        Option<RecordDeps>,
-        bool,
-    ) {
+    ) -> RecRecordData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::RecRecord(data, includes, fields, deps, bool) = term {

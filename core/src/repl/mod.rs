@@ -7,11 +7,13 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::{ast::{typ::Type, alloc::AstAlloc}, value::NickelValue},
+    bytecode::{
+        ast::{alloc::AstAlloc, typ::Type},
+        value::NickelValue,
+    },
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{
-        Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors,
-        ReplError,
+        Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors, ReplError,
     },
     eval::{self, Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
     files::FileId,
@@ -217,7 +219,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         self.vm_ctxt
             .import_resolver
-            .add_repl_bindings(&mut self.vm_ctxt.pos_table, &value)
+            .add_repl_bindings(&self.vm_ctxt.pos_table, &value)
             .map_err(|NotARecord| {
                 Error::EvalError(EvalError {
                     error: EvalErrorData::Other(String::from("load: expected a record"), pos),
@@ -275,7 +277,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .vm_ctxt
             .import_resolver
             .replace_string(SourcePath::ReplQuery, target.label().into());
-        self.vm_ctxt.import_resolver.prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
+        self.vm_ctxt
+            .import_resolver
+            .prepare_repl(&mut self.vm_ctxt.pos_table, file_id)?;
 
         let result = {
             let value = self

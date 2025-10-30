@@ -129,7 +129,7 @@ fn contract_eq_bounded(
 
     match (t1.content_ref(), t2.content_ref()) {
         (ValueContentRef::Null, ValueContentRef::Null) => true,
-        (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => true,
+        (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => b1 == b2,
         (ValueContentRef::EnumVariant(enum1), ValueContentRef::EnumVariant(enum2)) => {
             match (enum1, enum2) {
                 (

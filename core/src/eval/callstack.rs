@@ -142,28 +142,16 @@ impl CallStack {
             let src_id = match elem {
                 StackElem::Var { id, .. } if id.is_generated() => None,
                 StackElem::Var { pos, .. }
-                | StackElem::Fun(pos)
                 | StackElem::Field {
                     pos_access: pos, ..
-                }
-                | StackElem::App(pos) => {
+                } => pos_table.get(*pos).into_opt().map(|span| span.src_id),
+                StackElem::Fun(pos) | StackElem::App(pos) => {
                     if let TermPos::Original(RawSpan { src_id, .. }) = pos_table.get(*pos) {
                         Some(src_id)
                     } else {
                         None
                     }
                 }
-                StackElem::Var { pos, .. }
-                | StackElem::Field {
-                    pos_access: pos, ..
-                } => {
-                    if let TermPos::Inherited(RawSpan { src_id, .. }) = pos_table.get(*pos) {
-                        Some(src_id)
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
             };
 
             src_id.is_some_and(|src_id| !files.is_stdlib(src_id))

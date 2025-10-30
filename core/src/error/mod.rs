@@ -1120,7 +1120,7 @@ pub trait IntoDiagnostics {
 
 // Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
 impl IntoDiagnostics for Diagnostic<FileId> {
-    fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
+    fn into_diagnostics(self, _files: &mut Files) -> Vec<Diagnostic<FileId>> {
         vec![self]
     }
 }

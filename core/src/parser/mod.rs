@@ -334,7 +334,7 @@ impl ErrorTolerantParserCompat<(Vec<LocIdent>, NickelValue, RawSpan)>
 impl ErrorTolerantParserCompat<Vec<LocIdent>> for grammar::StaticFieldPathParser {
     fn parse_tolerant_compat(
         &self,
-        pos_table: &mut PosTable,
+        _pos_table: &mut PosTable,
         file_id: FileId,
         lexer: lexer::Lexer,
     ) -> Result<(Vec<LocIdent>, ParseErrors), ParseError> {
@@ -343,7 +343,7 @@ impl ErrorTolerantParserCompat<Vec<LocIdent>> for grammar::StaticFieldPathParser
 
     fn parse_strict_compat(
         &self,
-        pos_table: &mut PosTable,
+        _pos_table: &mut PosTable,
         file_id: FileId,
         lexer: lexer::Lexer,
     ) -> Result<Vec<LocIdent>, ParseErrors> {

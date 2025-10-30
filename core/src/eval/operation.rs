@@ -20,8 +20,8 @@ use crate::nix_ffi;
 
 use crate::{
     bytecode::value::{
-        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData,
-        ValueContent, ValueContentRef, ValueContentRefMut,
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
+        ValueContentRef, ValueContentRefMut,
     },
     cache::InputFormat,
     closurize::Closurize,
@@ -100,6 +100,47 @@ pub enum OperationCont {
     },
 }
 
+/// All the data required to evaluate a unary operation.
+struct Op1EvalData {
+    /// The unary operation to apply.
+    op: UnaryOp,
+    /// The evaluated argument.
+    arg: Closure,
+    /// The position of the original expression of the argument, when it was put on the stack for
+    /// evaluation.
+    orig_pos_arg: PosIdx,
+    /// The position of the primop application.
+    pos_op: PosIdx,
+}
+
+/// All the data required to evaluate a binary operation.
+struct Op2EvalData {
+    /// The binary operation to apply.
+    op: BinaryOp,
+    /// The first argument evaluated.
+    arg1: Closure,
+    /// The second argument evaluated.
+    arg2: Closure,
+    /// The position of the original expression of the first argument, when it was put on the stack
+    /// for evaluation.
+    orig_pos_arg1: PosIdx,
+    /// The position of the original expression of the second argument, when it was put on the
+    /// stack for evaluation.
+    orig_pos_arg2: PosIdx,
+    /// The position of the primop application.
+    pos_op: PosIdx,
+}
+
+struct OpNEvalData {
+    /// The n-ary operation to apply.
+    op: NAryOp,
+    /// The arguments evluated, together with the position of their original expression, when it
+    /// was put on the stack for evaluation.
+    args: Vec<(Closure, PosIdx)>,
+    /// The position of the primop application.
+    pos_op: PosIdx,
+}
+
 /// A string represention of the type of the first argument of serialization-related primitive
 /// operations. This is a Nickel enum of the supported serialization formats.
 static ENUM_FORMAT: &str = "[| 'Json, 'Yaml, 'Toml |]";
@@ -125,9 +166,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
         self.call_stack.truncate(cs_len);
         match cont {
-            OperationCont::Op1(u_op, arg_pos_idx) => {
-                self.process_unary_operation(u_op, clos, arg_pos_idx, pos_idx)
-            }
+            OperationCont::Op1(op, orig_pos_arg) => self.process_unary_operation(Op1EvalData {
+                op,
+                arg: clos,
+                orig_pos_arg,
+                pos_op: pos_idx,
+            }),
             OperationCont::Op2First(b_op, mut snd_clos, fst_pos_idx) => {
                 std::mem::swap(&mut clos, &mut snd_clos);
                 self.stack.push_op_cont(
@@ -137,8 +181,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 );
                 Ok(clos)
             }
-            OperationCont::Op2Second(b_op, fst_clos, fst_pos_idx, snd_pos_idx) => self
-                .process_binary_operation(b_op, fst_clos, fst_pos_idx, clos, snd_pos_idx, pos_idx),
+            OperationCont::Op2Second(op, arg1, orig_pos_arg1, orig_pos_arg2) => self
+                .process_binary_operation(Op2EvalData {
+                    op,
+                    arg1,
+                    orig_pos_arg1,
+                    arg2: clos,
+                    orig_pos_arg2,
+                    pos_op: pos_idx,
+                }),
             OperationCont::OpN {
                 op,
                 mut evaluated,
@@ -162,7 +213,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     Ok(next)
                 } else {
-                    self.process_nary_operation(op, evaluated, pos_idx)
+                    self.process_nary_operation(OpNEvalData {
+                        op,
+                        args: evaluated,
+                        pos_op: pos_idx,
+                    })
                 }
             }
         }
@@ -174,16 +229,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// operation position, that may be needed for error reporting.
     fn process_unary_operation(
         &mut self,
-        u_op: UnaryOp,
-        clos: Closure,
-        pos_arg: PosIdx,
-        pos_op: PosIdx,
+        eval_data: Op1EvalData,
+        // u_op: UnaryOp,
+        // clos: Closure,
+        // pos_arg: PosIdx,
+        // pos_op: PosIdx,
     ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{u_op}"));
 
-        let Closure { value, env } = clos;
+        let Op1EvalData {
+            orig_pos_arg,
+            arg: Closure { value, env },
+            pos_op,
+            op,
+        } = eval_data;
         let pos = value.pos_idx();
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
@@ -193,15 +254,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Err(EvalErrorData::UnaryPrimopTypeError {
                     primop: String::from($op_name),
                     expected: String::from($expected),
-                    pos_arg,
+                    pos_arg: orig_pos_arg,
                     arg_evaluated: $value,
                 })
             };
             ($expected:expr) => {
-                mk_type_error!(op_name = u_op.to_string(), $expected)
+                mk_type_error!(op_name = op.to_string(), $expected)
             };
             ($expected:expr, value=$value:expr) => {
-                mk_type_error!(op_name = u_op.to_string(), $expected, value = $value)
+                mk_type_error!(op_name = op.to_string(), $expected, value = $value)
             };
             ($expected:expr, value=$value:expr) => {};
             ($expected:expr, $arg_number:expr) => {
@@ -209,17 +270,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             };
             ($expected:expr, $arg_number:expr, value=$value:expr) => {
                 Err(EvalErrorData::NAryPrimopTypeError {
-                    primop: u_op.to_string(),
+                    primop: op.to_string(),
                     expected: String::from($expected),
                     arg_number: $arg_number,
-                    pos_arg,
+                    pos_arg: orig_pos_arg,
                     arg_evaluated: $value,
                     pos_op,
                 })
             };
         }
 
-        match u_op {
+        match op {
             UnaryOp::IfThenElse => {
                 if let Some(b) = value.as_bool() {
                     let (fst, ..) = self
@@ -239,7 +300,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         message: String::from(
                             "the condition in an if expression must have type Bool",
                         ),
-                        orig_pos: pos_arg,
+                        orig_pos: orig_pos_arg,
                         term: value,
                     })
                 }
@@ -488,7 +549,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Err(EvalErrorData::TypeError {
                             expected: String::from("Record"),
                             message: String::from("field access only makes sense for records"),
-                            orig_pos: pos_arg,
+                            orig_pos: orig_pos_arg,
                             term: value,
                         })
                     }
@@ -729,7 +790,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ValueContentRef::Array(Container::Alloc(array_data)) => {
                         let terms = seq_terms(
                             array_data.array.iter().map(|t| {
-                                
                                 RuntimeContract::apply_all(
                                     t.clone(),
                                     array_data.pending_contracts.iter().cloned(),
@@ -1285,7 +1345,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     Err(EvalErrorData::TypeError {
                         expected: String::from("String"),
                         message: String::from("eval_nix takes a string of nix code as an argument"),
-                        orig_pos: pos_arg,
+                        orig_pos: orig_pos_arg,
                         term: value,
                     })
                 }
@@ -1341,8 +1401,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ValueContent::Record(lens) => {
                         let container = lens.take().into_opt();
 
-                        for (id, field) in
-                            container.map(|record| record.fields).unwrap_or_default()
+                        for (id, field) in container.map(|record| record.fields).unwrap_or_default()
                         {
                             debug_assert!(field.metadata.is_empty());
 
@@ -1375,12 +1434,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ContractCustom => {
-                let contract =
-                    if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
-                        value.closurize(&mut self.context.cache, env)
-                    } else {
-                        return mk_type_error!("Function or MatchExpression");
-                    };
+                let contract = if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
+                    value.closurize(&mut self.context.cache, env)
+                } else {
+                    return mk_type_error!("Function or MatchExpression");
+                };
 
                 Ok(NickelValue::custom_contract(contract, pos_op_inh).into())
             }
@@ -1411,7 +1469,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // `%contract/blame% (%label/with_error_data% (%force% [.]) label)` and
                         // then continue with `err_data`.
                         self.stack.push_op_cont(
-                            OperationCont::Op1(UnaryOp::Blame, pos_arg),
+                            OperationCont::Op1(UnaryOp::Blame, orig_pos_arg),
                             self.call_stack.len(),
                             pos_op_inh,
                         );
@@ -1429,7 +1487,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 UnaryOp::Force {
                                     ignore_not_exported: false,
                                 },
-                                pos_arg,
+                                orig_pos_arg,
                             ),
                             self.call_stack.len(),
                             pos_op_inh,
@@ -1452,55 +1510,91 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 // The stack should already contain the default label to attach, so push
                 // the (potential) error data.
-                self.stack.push_arg(Closure { value, env }, pos_arg);
+                self.stack.push_arg(Closure { value, env }, orig_pos_arg);
 
                 Ok(Closure {
                     value: internals::add_default_check_label(),
                     env: Environment::new(),
                 })
             }
-            UnaryOp::NumberArcCos => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/arccos", f64::acos)
-            }
-            UnaryOp::NumberArcSin => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/arcsin", f64::asin)
-            }
-            UnaryOp::NumberArcTan => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/arctan", f64::atan)
-            }
-            UnaryOp::NumberCos => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/cos", f64::cos)
-            }
-            UnaryOp::NumberSin => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/sin", f64::sin)
-            }
-            UnaryOp::NumberTan => {
-                self.unary_number_op(value, pos_arg, pos_op, "number/tan", f64::tan)
-            }
+            UnaryOp::NumberArcCos => self.unary_number_op(
+                f64::acos,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
+            UnaryOp::NumberArcSin => self.unary_number_op(
+                f64::asin,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
+            UnaryOp::NumberArcTan => self.unary_number_op(
+                f64::atan,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
+            UnaryOp::NumberCos => self.unary_number_op(
+                f64::cos,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
+            UnaryOp::NumberSin => self.unary_number_op(
+                f64::sin,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
+            UnaryOp::NumberTan => self.unary_number_op(
+                f64::tan,
+                Op1EvalData {
+                    op,
+                    arg: Closure { value, env },
+                    orig_pos_arg,
+                    pos_op,
+                },
+            ),
             UnaryOp::RecDefault => unimplemented!(),
             UnaryOp::RecForce => unimplemented!(),
         }
     }
 
-    fn unary_number_op<Op>(
-        &mut self,
-        body: NickelValue,
-        pos_arg: PosIdx,
-        pos_op: PosIdx,
-        op_name: &str,
-        op: Op,
-    ) -> Result<Closure, EvalErrorData>
+    fn unary_number_op<F>(&mut self, f: F, eval_data: Op1EvalData) -> Result<Closure, EvalErrorData>
     where
-        Op: Fn(f64) -> f64,
+        F: Fn(f64) -> f64,
     {
-        if let Some(n) = body.as_number() {
-            let result_as_f64 = op(f64::rounding_from(n, RoundingMode::Nearest).0);
+        let Op1EvalData {
+            op,
+            arg: Closure { value, env: _ },
+            orig_pos_arg,
+            pos_op,
+        } = eval_data;
+
+        if let Some(n) = value.as_number() {
+            let result_as_f64 = f(f64::rounding_from(n, RoundingMode::Nearest).0);
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                 EvalErrorData::Other(
                     format!(
                         "invalid arithmetic operation: \
-                        {op_name}({n}) returned {result_as_f64}, \
-                        but {result_as_f64} isn't representable in Nickel"
+                        {op}({n}) returned {result_as_f64}, \
+                        but {result_as_f64} isn't representable in Nickel",
                     ),
                     pos_op,
                 )
@@ -1512,38 +1606,39 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             )
         } else {
             Err(EvalErrorData::UnaryPrimopTypeError {
-                primop: String::from(op_name),
+                primop: op.to_string(),
                 expected: String::from("Number"),
-                pos_arg,
-                arg_evaluated: body,
+                pos_arg: orig_pos_arg,
+                arg_evaluated: value,
             })
         }
     }
 
     /// Evaluate a binary operation.
     ///
-    /// Both arguments are expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
-    /// operation position, that may be needed for error reporting.
+    /// Both arguments are expected to be evaluated (in WHNF).
     fn process_binary_operation(
         &mut self,
-        b_op: BinaryOp,
-        fst_clos: Closure,
-        orig_arg_pos1: PosIdx,
-        clos: Closure,
-        orig_arg_pos2: PosIdx,
-        pos_op: PosIdx,
+        eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{b_op}"));
 
-        let Closure {
-            value: mut value1,
-            env: env1,
-        } = fst_clos;
-
-        let Closure {
-            value: mut value2,
-            env: env2,
-        } = clos;
+        let Op2EvalData {
+            op,
+            arg1:
+                Closure {
+                    value: mut value1,
+                    env: env1,
+                },
+            arg2:
+                Closure {
+                    value: mut value2,
+                    env: env2,
+                },
+            orig_pos_arg1,
+            orig_pos_arg2,
+            pos_op,
+        } = eval_data;
 
         let pos1 = value1.pos_idx();
         let pos2 = value2.pos_idx();
@@ -1557,8 +1652,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg_number: $arg_number,
                     pos_arg: {
                         match $arg_number {
-                            1 => orig_arg_pos1,
-                            2 => orig_arg_pos2,
+                            1 => orig_pos_arg1,
+                            2 => orig_pos_arg2,
                             _ => unimplemented!(),
                         }
                     },
@@ -1568,7 +1663,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             };
             ($expected:expr, $arg_number:expr, $arg_evaled:expr) => {
                 mk_type_error!(
-                    op_name = b_op.to_string(),
+                    op_name = op.to_string(),
                     $expected,
                     $arg_number,
                     $arg_evaled
@@ -1576,7 +1671,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             };
         }
 
-        match b_op {
+        match op {
             BinaryOp::Seal => {
                 let Some(key) = value1.as_sealing_key() else {
                     return mk_type_error!("SealingKey", 1, value1);
@@ -1597,30 +1692,54 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::Plus => self.binary_number_op(
                 |n1, n2| n1 + n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::Sub => self.binary_number_op(
                 |n1, n2| n1 - n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::Mult => self.binary_number_op(
                 |n1, n2| n1 * n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::Div => {
                 let Some(n1) = value1.as_number() else {
@@ -1797,12 +1916,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // proceed to evaluate `<typ.contract()>`
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            b_op,
+                            op,
                             Closure {
                                 value: value2,
                                 env: env2,
                             },
-                            orig_arg_pos1,
+                            orig_pos_arg1,
                         ),
                         self.call_stack.len(),
                         pos_op_inh,
@@ -1870,7 +1989,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let (
                     ValueContentRef::CustomContract(_) | ValueContentRef::Record(_),
                     BinaryOp::ContractApply,
-                ) = (value1.content_ref(), &b_op)
+                ) = (value1.content_ref(), &op)
                 {
                     self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
@@ -1890,7 +2009,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 //
                 // Prepare the stack to represent the evaluation context
                 // `%contract/attach_default_label% [.] label`
-                if let BinaryOp::ContractCheck = &b_op {
+                if let BinaryOp::ContractCheck = &op {
                     self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
                     self.stack.push_op_cont(
@@ -1929,7 +2048,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             }
                         }
 
-                        if let BinaryOp::ContractApply = b_op {
+                        if let BinaryOp::ContractApply = op {
                             Closure {
                                 value: value1,
                                 env: env1,
@@ -1942,7 +2061,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     value: value1,
                                     env: env1,
                                 },
-                                orig_arg_pos1,
+                                orig_pos_arg1,
                             );
 
                             internals::naked_to_custom().into()
@@ -1960,7 +2079,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 value: value1,
                                 env: env1,
                             },
-                            orig_arg_pos1,
+                            orig_pos_arg1,
                         );
 
                         internals::record_contract().into()
@@ -2049,20 +2168,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // Since the stack is set up as `[.] blame_expr`, this does ignore the error
                     // and proceed with the unsealed term in the happy path, or on the opposite
                     // drop the sealed term and proceed with the error on the stack otherwise.
-                    Ok(
-                        if let Some(Term::Sealed(s2, inner, _)) = value2.as_term() {
-                            if s1 == s2 {
-                                Closure {
-                                    value: mk_fun!(LocIdent::fresh(), inner.clone()),
-                                    env: env2,
-                                }
-                            } else {
-                                mk_term::id().into()
+                    Ok(if let Some(Term::Sealed(s2, inner, _)) = value2.as_term() {
+                        if s1 == s2 {
+                            Closure {
+                                value: mk_fun!(LocIdent::fresh(), inner.clone()),
+                                env: env2,
                             }
                         } else {
                             mk_term::id().into()
-                        },
-                    )
+                        }
+                    } else {
+                        mk_term::id().into()
+                    })
                 } else {
                     mk_type_error!("SealingKey", 1, value1)
                 }
@@ -2106,39 +2223,71 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::LessThan => self.binary_number_cmp(
                 |n1, n2| n1 < n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::LessOrEq => self.binary_number_cmp(
                 |n1, n2| n1 <= n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::GreaterThan => self.binary_number_cmp(
                 |n1, n2| n1 > n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::GreaterOrEq => self.binary_number_cmp(
                 |n1, n2| n1 >= n2,
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::LabelGoField => {
                 let Some(field) = value1.as_string() else {
@@ -2168,7 +2317,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return Err(EvalErrorData::TypeError {
                         expected: String::from("Record"),
                         message: String::from("field access only makes sense for records"),
-                        orig_pos: orig_arg_pos2,
+                        orig_pos: orig_pos_arg2,
                         term: value2,
                     });
                 };
@@ -2661,21 +2810,37 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             BinaryOp::StringSplit => self.binary_string_fn(
                 |input, sep| NickelValue::array(input.split(sep), Vec::new(), pos_op_inh),
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::StringContains => self.binary_string_fn(
                 |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inh),
-                value1,
-                orig_arg_pos1,
-                value2,
-                orig_arg_pos2,
-                pos_op_inh,
-                b_op.to_string(),
+                Op2EvalData {
+                    op,
+                    arg1: Closure {
+                        value: value1,
+                        env: env1,
+                    },
+                    arg2: Closure {
+                        value: value2,
+                        env: env2,
+                    },
+                    orig_pos_arg1,
+                    orig_pos_arg2,
+                    pos_op,
+                },
             ),
             BinaryOp::StringCompare => {
                 let as_term_pos = self.context.pos_table.get(pos_op_inh);
@@ -2696,12 +2861,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos_op_inh,
                         )
                     },
-                    value1,
-                    orig_arg_pos1,
-                    value2,
-                    orig_arg_pos2,
-                    pos_op_inh,
-                    b_op.to_string(),
+                    Op2EvalData {
+                        op,
+                        arg1: Closure {
+                            value: value1,
+                            env: env1,
+                        },
+                        arg2: Closure {
+                            value: value2,
+                            env: env2,
+                        },
+                        orig_pos_arg1,
+                        orig_pos_arg2,
+                        pos_op,
+                    },
                 )
             }
             BinaryOp::ContractArrayLazyApp => {
@@ -2887,11 +3060,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(
-                    NickelValue::from(label.type_environment.get(key).unwrap())
-                        .with_pos_idx(pos_op_inh)
-                        .into(),
-                )
+                Ok(NickelValue::from(label.type_environment.get(key).unwrap())
+                    .with_pos_idx(pos_op_inh)
+                    .into())
             }
             BinaryOp::RecordSplitPair => {
                 let record1 = match value1.content() {
@@ -2946,22 +3117,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::record(
                     RecordData {
                         fields: IndexMap::from([
-                            (
-                                LocIdent::from("left_only"),
-                                Field::from(left_only),
-                            ),
-                            (
-                                LocIdent::from("left_center"),
-                                Field::from(left_center),
-                            ),
-                            (
-                                LocIdent::from("right_center"),
-                                Field::from(right_center),
-                            ),
-                            (
-                                LocIdent::from("right_only"),
-                                Field::from(right_only),
-                            ),
+                            (LocIdent::from("left_only"), Field::from(left_only)),
+                            (LocIdent::from("left_center"), Field::from(left_center)),
+                            (LocIdent::from("right_center"), Field::from(right_center)),
+                            (LocIdent::from("right_only"), Field::from(right_only)),
                         ]),
                         attrs: RecordAttrs::default(),
                         sealed_tail: None,
@@ -2980,10 +3139,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let (record1, record2) = match (container1, container2) {
-                    (
-                        Container::Alloc(record1),
-                        Container::Alloc(record2),
-                    ) => (record1, record2),
+                    (Container::Alloc(record1), Container::Alloc(record2)) => (record1, record2),
                     (Container::Empty, _) => {
                         return Ok(Closure {
                             value: value2.with_pos_idx(pos_op_inh),
@@ -3031,74 +3187,64 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
     }
 
-    fn binary_number_cmp<Op>(
+    fn binary_number_cmp<F>(
         &mut self,
-        op: Op,
-        value1: NickelValue,
-        pos1: PosIdx,
-        value2: NickelValue,
-        pos2: PosIdx,
-        pos_op: PosIdx,
-        op_name: String,
+        f: F,
+        eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData>
     where
-        Op: Fn(&Number, &Number) -> bool,
+        F: Fn(&Number, &Number) -> bool,
     {
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
 
         self.binary_number_fn(
-            |n1, n2| NickelValue::bool_value(op(n1, n2), pos_op_inh),
-            value1,
-            pos1,
-            value2,
-            pos2,
-            pos_op,
-            op_name,
+            |n1, n2| NickelValue::bool_value(f(n1, n2), pos_op_inh),
+            eval_data,
         )
     }
 
-    fn binary_number_op<Op>(
+    fn binary_number_op<F>(
         &mut self,
-        op: Op,
-        value1: NickelValue,
-        orig_pos_arg1: PosIdx,
-        value2: NickelValue,
-        orig_pos_arg2: PosIdx,
-        pos_op: PosIdx,
-        op_name: String,
+        f: F,
+        eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData>
     where
-        Op: Fn(&Number, &Number) -> Number,
+        F: Fn(&Number, &Number) -> Number,
     {
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
 
         self.binary_number_fn(
-            |n1, n2| NickelValue::number(op(n1, n2), pos_op_inh),
-            value1,
-            orig_pos_arg1,
-            value2,
-            orig_pos_arg2,
-            pos_op,
-            op_name,
+            |n1, n2| NickelValue::number(f(n1, n2), pos_op_inh),
+            eval_data,
         )
     }
 
     fn binary_number_fn<F>(
         &mut self,
         f: F,
-        value1: NickelValue,
-        orig_pos_arg1: PosIdx,
-        value2: NickelValue,
-        orig_pos_arg2: PosIdx,
-        pos_op: PosIdx,
-        op_name: String,
+        eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData>
     where
         F: Fn(&Number, &Number) -> NickelValue,
     {
+        let Op2EvalData {
+            op,
+            arg1: Closure {
+                value: value1,
+                env: _,
+            },
+            arg2: Closure {
+                value: value2,
+                env: _,
+            },
+            orig_pos_arg1,
+            orig_pos_arg2,
+            pos_op,
+        } = eval_data;
+
         let Some(n1) = value1.as_number() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
-                primop: op_name,
+                primop: op.to_string(),
                 expected: "Number".to_owned(),
                 arg_number: 1,
                 pos_arg: orig_pos_arg1,
@@ -3109,7 +3255,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let Some(n2) = value2.as_number() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
-                primop: op_name,
+                primop: op.to_string(),
                 expected: "Number".to_owned(),
                 arg_number: 2,
                 pos_arg: orig_pos_arg2,
@@ -3124,19 +3270,29 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn binary_string_fn<F>(
         &mut self,
         f: F,
-        value1: NickelValue,
-        orig_pos_arg1: PosIdx,
-        value2: NickelValue,
-        orig_pos_arg2: PosIdx,
-        pos_op: PosIdx,
-        op_name: String,
+        eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData>
     where
         F: Fn(&NickelString, &NickelString) -> NickelValue,
     {
+        let Op2EvalData {
+            op,
+            arg1: Closure {
+                value: value1,
+                env: _,
+            },
+            arg2: Closure {
+                value: value2,
+                env: _,
+            },
+            orig_pos_arg1,
+            orig_pos_arg2,
+            pos_op,
+        } = eval_data;
+
         let Some(s1) = value1.as_string() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
-                primop: op_name,
+                primop: op.to_string(),
                 expected: "String".to_owned(),
                 arg_number: 1,
                 pos_arg: orig_pos_arg1,
@@ -3147,7 +3303,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let Some(s2) = value2.as_string() else {
             return Err(EvalErrorData::NAryPrimopTypeError {
-                primop: op_name,
+                primop: op.to_string(),
                 expected: "String".to_owned(),
                 arg_number: 2,
                 pos_arg: orig_pos_arg2,
@@ -3161,22 +3317,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
     /// Evaluate a n-ary operation.
     ///
-    /// Arguments are expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
-    /// operation position, that may be needed for error reporting.
-    fn process_nary_operation(
-        &mut self,
-        n_op: NAryOp,
-        args: Vec<(Closure, PosIdx)>,
-        pos_op: PosIdx,
-    ) -> Result<Closure, EvalErrorData> {
+    /// Arguments are expected to be evaluated (in WHNF).
+    fn process_nary_operation(&mut self, eval_data: OpNEvalData) -> Result<Closure, EvalErrorData> {
         increment!(format!("primop:{n_op}"));
 
+        let OpNEvalData { op, args, pos_op } = eval_data;
         let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         let mk_type_error =
             |expected: &str, arg_number: usize, pos_arg: PosIdx, arg_evaluated: NickelValue| {
                 Err(EvalErrorData::NAryPrimopTypeError {
-                    primop: n_op.to_string(),
+                    primop: op.to_string(),
                     expected: expected.to_owned(),
                     arg_number,
                     pos_arg,
@@ -3187,7 +3338,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         // Currently, for fixed arity primitive operators, the parser must ensure that they get
         // exactly the right number of argument: if it is not the case, this is a bug, and we panic.
-        match n_op {
+        match op {
             NAryOp::StringReplace | NAryOp::StringReplaceRegex => {
                 let mut args_wo_env = args.into_iter().map(|(arg, pos)| (arg.value, pos));
                 let (arg1, arg_pos1) = args_wo_env.next().unwrap();
@@ -3207,7 +3358,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("String", 3, arg_pos3, arg3);
                 };
 
-                let result = if let NAryOp::StringReplace = n_op {
+                let result = if let NAryOp::StringReplace = op {
                     s.replace(from.as_str(), to.as_str())
                 } else {
                     let re = regex::Regex::new(from)
@@ -3273,7 +3424,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let Some(label) = arg1.as_label() else {
                     return Err(EvalErrorData::InternalError(
                         format!(
-                            "The {n_op} operator was expecting \
+                            "The {op} operator was expecting \
                                 a first argument of type Label, got {}",
                             arg1.type_of().unwrap_or("<unevaluated>")
                         ),
@@ -3340,8 +3491,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     arg3 = NickelValue::empty_record_block(arg3.pos_idx());
                 }
 
-                let ValueContentRefMut::Record(Container::Alloc(r)) =
-                    arg3.content_make_mut()
+                let ValueContentRefMut::Record(Container::Alloc(r)) = arg3.content_make_mut()
                 else {
                     return mk_type_error("Record", 3, arg_pos3, arg3);
                 };
@@ -3521,7 +3671,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let Ok(start_as_usize) = usize::try_from(start) else {
                     return Err(EvalErrorData::Other(
                         format!(
-                            "{n_op} expects its first argument (start) to be a \
+                            "{op} expects its first argument (start) to be a \
                             positive integer smaller than {}, got {start}",
                             usize::MAX
                         ),
@@ -3532,7 +3682,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let Ok(end_as_usize) = usize::try_from(end) else {
                     return Err(EvalErrorData::Other(
                         format!(
-                            "{n_op} expects its second argument (end) to be a \
+                            "{op} expects its second argument (end) to be a \
                             positive integer smaller than {}, got {end}",
                             usize::MAX
                         ),
@@ -3543,7 +3693,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if end_as_usize < start_as_usize || end_as_usize > array.len() {
                     return Err(EvalErrorData::Other(
                         format!(
-                            "{n_op}: index out of bounds. Expected `start <= end <= {}`, but \
+                            "{op}: index out of bounds. Expected `start <= end <= {}`, but \
                             got `start={start}` and `end={end}`.",
                             array.len()
                         ),
@@ -3672,19 +3822,12 @@ fn eq<C: Cache>(
     match (value1.content_ref(), value2.content_ref()) {
         (ValueContentRef::Null, ValueContentRef::Null) => Ok(EqResult::Bool(true)),
         (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) => Ok(EqResult::Bool(b1 == b2)),
-        (ValueContentRef::Number(n1), ValueContentRef::Number(n2)) => {
-            Ok(EqResult::Bool(n1 == n2))
+        (ValueContentRef::Number(n1), ValueContentRef::Number(n2)) => Ok(EqResult::Bool(n1 == n2)),
+        (ValueContentRef::String(s1), ValueContentRef::String(s2)) => Ok(EqResult::Bool(s1 == s2)),
+        (ValueContentRef::Label(l1), ValueContentRef::Label(l2)) => Ok(EqResult::Bool(l1 == l2)),
+        (ValueContentRef::SealingKey(k1), ValueContentRef::SealingKey(k2)) => {
+            Ok(EqResult::Bool(k1 == k2))
         }
-        (ValueContentRef::String(s1), ValueContentRef::String(s2)) => {
-            Ok(EqResult::Bool(s1 == s2))
-        }
-        (ValueContentRef::Label(l1), ValueContentRef::Label(l2)) => {
-            Ok(EqResult::Bool(l1 == l2))
-        }
-        (
-            ValueContentRef::SealingKey(k1),
-            ValueContentRef::SealingKey(k2),
-        ) => Ok(EqResult::Bool(k1 == k2)),
         (
             ValueContentRef::EnumVariant(EnumVariantData {
                 tag: tag1,

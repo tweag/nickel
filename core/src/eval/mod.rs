@@ -484,7 +484,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     field = next_field;
                 }
-                other => {
+                _ => {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
                     return self.throw_with_ctxt(EvalErrorData::QueryNonRecord {
                         pos: prev_pos_idx,
@@ -671,6 +671,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         #[cfg(feature = "metrics")]
         let start_time = std::time::Instant::now();
 
+        // See https://github.com/rust-lang/rust-clippy/issues/15987.
+        #[allow(clippy::let_and_return)]
         let result = loop {
             let Closure { value, mut env } = closure;
             let pos_idx = value.pos_idx();
@@ -1299,10 +1301,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             &mut self.context.pos_table,
             &mut self.context.import_resolver,
         )
-    }
-
-    pub(crate) fn pos_table_mut(&mut self) -> &mut PosTable {
-        &mut self.context.pos_table
     }
 }
 

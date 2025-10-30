@@ -2247,7 +2247,7 @@ impl Traverse<Type> for NickelValue {
     ) -> Option<U> {
         self.traverse_ref(
             &mut |value: &NickelValue, state: &S| {
-                if let Some(TypeData { typ, contract }) = value.as_type() {
+                if let Some(TypeData { typ, contract: _ }) = value.as_type() {
                     typ.traverse_ref(f, state).into()
                 } else {
                     TraverseControl::Continue
