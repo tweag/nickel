@@ -1,11 +1,8 @@
 //! Lenses are a way to lazily and conditionally extract owned data from a Nickel value.
-
 use super::{
     Container, InlineValue, NickelValue, RefCount, TermData, ValueBlockData, ValueBlockHeader,
     ValueBlockRc,
 };
-
-use std::rc::Rc;
 
 use crate::{
     error::{EvalErrorData, ParseError},
@@ -436,9 +433,7 @@ impl ValueLens<(Pattern, NickelValue)> {
     }
 }
 
-impl
-    ValueLens<LetData>
-{
+impl ValueLens<LetData> {
     /// Creates a new lens extracting [crate::term::Term::Let].
     ///
     /// # Safety
@@ -453,9 +448,7 @@ impl
     }
 
     /// Extractor for [crate::term::Term::Let].
-    fn term_let_extractor(
-        value: NickelValue,
-    ) -> LetData {
+    fn term_let_extractor(value: NickelValue) -> LetData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::Let(bindings, body, attrs) = term {
@@ -481,9 +474,7 @@ impl ValueLens<LetPatternData> {
     }
 
     /// Extractor for [crate::term::Term::LetPattern].
-    fn term_let_pat_extractor(
-        value: NickelValue,
-    ) -> LetPatternData {
+    fn term_let_pat_extractor(value: NickelValue) -> LetPatternData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::LetPattern(bindings, body, attrs) = term {
@@ -546,9 +537,7 @@ impl ValueLens<LocIdent> {
     }
 }
 
-impl
-    ValueLens<RecRecordData>
-{
+impl ValueLens<RecRecordData> {
     /// Creates a new lens extracting [crate::term::Term::RecRecord].
     ///
     /// # Safety
@@ -563,9 +552,7 @@ impl
     }
 
     /// Extractor for [crate::term::Term::RecRecord].
-    fn term_rec_record_extractor(
-        value: NickelValue,
-    ) -> RecRecordData {
+    fn term_rec_record_extractor(value: NickelValue) -> RecRecordData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::RecRecord(data, includes, fields, deps, bool) = term {

@@ -9,12 +9,14 @@ use serde::de::{
 };
 
 use crate::{
-    bytecode::value::{
-        Array, ArrayData, Container, InlineValue, NickelValue, RecordData, ValueContent,
-        ValueContentRef,
-    },
     error::{self, NullReporter},
-    eval::cache::CacheImpl,
+    eval::{
+        cache::CacheImpl,
+        value::{
+            Array, ArrayData, Container, InlineValue, NickelValue, RecordData, ValueContent,
+            ValueContentRef,
+        },
+    },
     identifier::LocIdent,
     program::{Input, Program},
     term::{IndexMap, record::Field},
@@ -749,7 +751,7 @@ mod tests {
 
     use nickel_lang_utils::{
         nickel_lang_core::{
-            bytecode::value::NickelValue, deserialize::RustDeserializationError,
+            eval::value::NickelValue, deserialize::RustDeserializationError,
             error::NullReporter,
         },
         test_program::TestProgram,

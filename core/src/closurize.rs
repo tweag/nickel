@@ -13,8 +13,11 @@
 //! closurize all the inner terms.
 
 use crate::{
-    bytecode::value::{Array, ArrayData, Container, NickelValue, ValueContentRef},
-    eval::{Closure, Environment, cache::Cache},
+    eval::{
+        Closure, Environment,
+        cache::Cache,
+        value::{Array, ArrayData, Container, NickelValue, ValueContentRef},
+    },
     term::{
         BindingType, RuntimeContract, Term,
         record::{Field, FieldDeps, RecordData, RecordDeps},

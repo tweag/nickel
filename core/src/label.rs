@@ -5,8 +5,10 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    bytecode::value::NickelValue,
-    eval::cache::{Cache as EvalCache, CacheIndex},
+    eval::{
+        cache::{Cache as EvalCache, CacheIndex},
+        value::NickelValue,
+    },
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{

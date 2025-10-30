@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    bytecode::value::{Container, NickelValue, ValueContentRefMut},
+    eval::value::{Container, NickelValue, ValueContentRefMut},
     identifier::Ident,
     term::pattern::*,
     term::{

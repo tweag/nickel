@@ -1,7 +1,7 @@
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use crate::{
-    bytecode::value::NickelValue,
     error::ParseError,
+    eval::value::NickelValue,
     files::Files,
     identifier::LocIdent,
     parser::{ErrorTolerantParserCompat, error::ParseError as InternalParseError},
@@ -47,7 +47,7 @@ fn mk_single_chunk(s: &str) -> NickelValue {
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
     use crate::{
-        bytecode::value::{ValueContent, lens::TermContent},
+        eval::value::{ValueContent, lens::TermContent},
         term::make::builder,
     };
 

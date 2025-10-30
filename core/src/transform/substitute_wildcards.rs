@@ -9,7 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use super::Wildcards;
 
 use crate::{
-    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     label::Label,
     term::{
         LabeledType, Term, TypeAnnotation,

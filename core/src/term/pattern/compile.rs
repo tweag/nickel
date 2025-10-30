@@ -24,7 +24,7 @@
 //! we can generate inlined versions on-the-fly here).
 use super::*;
 use crate::{
-    bytecode::value::NickelValue,
+    eval::value::NickelValue,
     error::EvalErrorData,
     metrics::increment,
     mk_app,

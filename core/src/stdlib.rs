@@ -1,5 +1,5 @@
 //! Load the Nickel standard library in strings at compile-time.
-use crate::{bytecode::value::NickelValue, term::make as mk_term};
+use crate::{eval::value::NickelValue, term::make as mk_term};
 
 /// This is an array containing all the Nickel standard library modules. Currently, this is one
 /// monolithic `std` module, and the definitions of `internals` living at the toplevel.

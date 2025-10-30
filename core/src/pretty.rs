@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::{
-    bytecode::value::{Container, NickelValue, ValueContentRef},
+    eval::value::{Container, NickelValue, ValueContentRef},
     cache::InputFormat,
     identifier::{Ident, LocIdent},
     parser::lexer::KEYWORDS,

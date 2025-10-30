@@ -6,11 +6,11 @@
 
 use super::{primop::PrimOp, *};
 use crate::{
-    bytecode::value::{
+    combine::Combine,
+    eval::value::{
         ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
         ValueContentRefMut,
     },
-    combine::Combine,
     label,
     position::{PosTable, RawSpan},
     term, typ as mline_type,
@@ -1778,9 +1778,9 @@ fn merge_fields(
     field1: term::record::Field,
     field2: term::record::Field,
 ) -> term::record::Field {
-    use crate::{
-        bytecode::value::ValueContent,
-        eval::merge::{merge_doc, split},
+    use crate::eval::{
+        merge::{merge_doc, split},
+        value::ValueContent,
     };
     use term::{BinaryOp, make as mk_term, record::RecordData};
 

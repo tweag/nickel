@@ -12,16 +12,14 @@ use codespan::ByteIndex;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
-    bytecode::{
-        ast::{
-            self, Ast, AstAlloc,
-            compat::ToMainline,
-            record::{FieldMetadata, FieldPathElem},
-        },
-        value::{NickelValue, ValueContent, lens::TermContent},
+    bytecode::ast::{
+        self, Ast, AstAlloc,
+        compat::ToMainline,
+        record::{FieldMetadata, FieldPathElem},
     },
     error::ParseError,
-    files::{FileId, Files},
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
+    files::FileId,
     identifier::{Ident, LocIdent},
     position::{PosTable, RawSpan, TermPos},
     term::Number,
@@ -521,10 +519,9 @@ fn json_scanner_error(file_id: Option<FileId>, e: json_scanner::ParseError) -> P
 pub fn load_json<'ast>(
     alloc: &'ast AstAlloc,
     s: &str,
-    location: Option<(FileId, &Files)>,
+    file_id: Option<FileId>,
 ) -> Result<Ast<'ast>, ParseError> {
     let mut parser = json_scanner::Parser::new(s.as_bytes());
-    let file_id = location.map(|(id, _)| id);
     let mut loader = Loader {
         format_name: "json",
         file_id,
@@ -668,7 +665,7 @@ fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
 pub fn load_json_value(
     pos_table: &mut PosTable,
     s: &str,
-    location: Option<(FileId, &Files)>,
+    location: Option<FileId>,
 ) -> Result<NickelValue, ParseError> {
     let alloc = AstAlloc::new();
     Ok(ast_to_term(pos_table, load_json(&alloc, s, location)?))

@@ -12,7 +12,7 @@
 //! The `gen_pending_contracts` phase implemented by this module must be run before
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
-    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
     position::PosTable,
     term::{

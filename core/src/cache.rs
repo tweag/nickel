@@ -7,16 +7,13 @@
 pub use ast_cache::AstCache;
 
 use crate::{
-    bytecode::{
-        ast::{
-            self, Ast, AstAlloc, TryConvert,
-            compat::{ToAst, ToMainline},
-        },
-        value::NickelValue,
+    bytecode::ast::{
+        self, Ast, AstAlloc, TryConvert,
+        compat::{ToAst, ToMainline},
     },
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
-    eval::cache::Cache as EvalCache,
+    eval::{cache::Cache as EvalCache, value::NickelValue},
     files::{FileId, Files},
     identifier::LocIdent,
     metrics::measure_runtime,
@@ -2964,7 +2961,6 @@ mod ast_cache {
                 let ast = term.to_ast(slf.alloc, pos_table);
                 let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
 
-                
                 typecheck::env_add_term(
                     slf.alloc,
                     &mut slf.type_ctxt.type_env,

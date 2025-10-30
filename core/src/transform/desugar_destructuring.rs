@@ -4,7 +4,7 @@
 use smallvec::SmallVec;
 
 use crate::{
-    bytecode::value::{NickelValue, ValueContent, lens::TermContent},
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     error::EvalErrorData,
     identifier::LocIdent,
     position::PosTable,

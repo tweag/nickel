@@ -23,14 +23,17 @@ use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use nickel_lang_core::{
-    bytecode::value::{self, ArrayData, Container, NickelValue},
     cache::{CacheHub, InputFormat, SourcePath},
     deserialize::RustDeserializationError as DeserializationError,
     error::{
         Error as NickelCoreError, IOError, IntoDiagnostics, NullReporter, PointedExportErrorData,
         report::DiagnosticsWrapper,
     },
-    eval::{VirtualMachine, VmContext, cache::CacheImpl},
+    eval::{
+        VirtualMachine, VmContext,
+        cache::CacheImpl,
+        value::{self, ArrayData, Container, NickelValue},
+    },
     files::Files,
     identifier::{Ident, LocIdent},
     serialize::{ExportFormat, to_string, validate},

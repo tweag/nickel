@@ -2,13 +2,13 @@
 //!
 //! See [eval](../eval/index.html).
 use super::{
+    Closure, Environment,
     cache::{Cache, CacheIndex},
     operation::OperationCont,
+    value::NickelValue,
 };
 
 use crate::{
-    bytecode::value::NickelValue,
-    eval::{Closure, Environment},
     position::PosIdx,
     term::{BindingType, StrChunk},
 };

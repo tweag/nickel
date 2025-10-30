@@ -1,7 +1,7 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{BlackholedError, Cache, CacheIndex, Closure};
 use crate::{
-    bytecode::value::NickelValue,
+    eval::value::NickelValue,
     identifier::Ident,
     metrics::increment,
     term::{record::FieldDeps, BindingType, Term},

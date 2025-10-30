@@ -4,9 +4,8 @@ use std::path::PathBuf;
 use super::{command::Command, *};
 
 use crate::{
-    bytecode::value::ValueContentRef,
     error::report::ColorOpt,
-    eval::cache::CacheImpl,
+    eval::{cache::CacheImpl, value::ValueContentRef},
 };
 
 use anstyle::Style;

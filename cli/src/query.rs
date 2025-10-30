@@ -1,9 +1,11 @@
 use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
-    bytecode::value::{ValueContentRef, Container},
     error::{Error, IOError, Reporter as _},
-    eval::cache::lazy::CBNCache,
+    eval::{
+        value::{ValueContentRef, Container},
+        cache::CacheImpl,
+    },
     identifier::{Ident, LocIdent},
     position::PosTable,
     pretty::PrettyPrintCap,
@@ -182,7 +184,7 @@ impl QueryCommand {
 
     fn output(
         &self,
-        program: &mut Program<CBNCache>,
+        program: &mut Program<CacheImpl>,
     ) -> Result<(), nickel_lang_core::error::Error> {
         use MetadataExportFormat::*;
         match self.format {

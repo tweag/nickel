@@ -54,7 +54,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 } else {
                     // If we are in this branch, `value` must be a constant after closurization
                     // (the evaluation of a recursive record starts by closurizing all fields and
-                    // contracts). 
+                    // contracts).
                     debug_assert!(value.is_constant());
                     // Constants don't need an environment: they contain no variable.
                     let closure: Closure = value.clone().into();

@@ -1,6 +1,6 @@
 //! Program transformations.
 use crate::{
-    bytecode::value::NickelValue,
+    eval::value::NickelValue,
     cache::ImportResolver,
     position::PosTable,
     traverse::{Traverse, TraverseOrder},

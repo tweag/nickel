@@ -4,11 +4,10 @@
 /// Terminology:
 /// An *element* of the cache is what is stored inside of it.
 /// An *index* into the cache points to a given element.
-use super::Closure;
+use super::{Closure, value::NickelValue};
 use crate::{
-    bytecode::value::NickelValue,
     identifier::Ident,
-    term::{record::FieldDeps, BindingType},
+    term::{BindingType, record::FieldDeps},
 };
 
 pub mod lazy;

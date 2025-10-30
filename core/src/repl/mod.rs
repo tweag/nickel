@@ -7,15 +7,14 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::{
-        ast::{alloc::AstAlloc, typ::Type},
-        value::NickelValue,
-    },
+    bytecode::ast::{alloc::AstAlloc, typ::Type},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{
         Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors, ReplError,
     },
-    eval::{self, Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
+    eval::{
+        self, Closure, VirtualMachine, VmContext, cache::Cache as EvalCache, value::NickelValue,
+    },
     files::FileId,
     identifier::LocIdent,
     parser::{ErrorTolerantParser, grammar, lexer},

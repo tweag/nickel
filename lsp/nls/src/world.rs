@@ -68,7 +68,7 @@ pub struct World {
     /// derive [nickel_lang_core::cache::CacheHub] instances for background evaluation while
     /// avoiding work duplication as much as possible. In particular, the instances will use this
     /// parsed and converted representation of the stdlib and will share the same source cache.
-    compiled_stdlib: nickel_lang_core::bytecode::value::NickelValue,
+    compiled_stdlib: nickel_lang_core::eval::value::NickelValue,
     contract_configs: crate::contracts::ContractConfigsWatcher,
     pub config: LspConfig,
     /// Since we hold a compiled version of the stdlib, we also need the corresponding position

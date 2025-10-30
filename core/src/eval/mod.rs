@@ -74,10 +74,6 @@
 //! appear inside recursive records. A dedicated garbage collector is probably something to
 //! consider at some point.
 use crate::{
-    bytecode::value::{
-        Container, EnumVariantData, NickelValue, ValueContent,
-        ValueContentRef, ValueContentRefMut,
-    },
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{Closurize, closurize_rec_record},
     environment::Environment as GenericEnvironment,
@@ -110,10 +106,14 @@ pub mod fixpoint;
 pub mod merge;
 pub mod operation;
 pub mod stack;
+pub mod value;
 
 use callstack::*;
 use operation::OperationCont;
 use stack::{Stack, StrAccData};
+use value::{
+    Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef, ValueContentRefMut,
+};
 
 use self::cache::{Cache, CacheIndex};
 
@@ -463,16 +463,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
             match current_evaled.value.content_ref() {
                 ValueContentRef::Record(container) => {
-                    let Some(next_field) = container
-                        .get(*id)
-                        .cloned()
-                    else {
+                    let Some(next_field) = container.get(*id).cloned() else {
                         let pos_op = self.context.pos_table.push(id.pos);
 
                         return self.throw_with_ctxt(EvalErrorData::FieldMissing {
                             id: *id,
-                            field_names: container
-                                .field_names(RecordOpKind::IgnoreEmptyOpt),
+                            field_names: container.field_names(RecordOpKind::IgnoreEmptyOpt),
                             operator: "extract_field".to_owned(),
                             pos_record: prev_pos_idx,
                             // TODO: we need to push back the position in the table, which isn't
@@ -759,9 +755,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::Let(
-                        bindings,
-                        body,
-                        LetAttrs { binding_type, rec },
+                    bindings,
+                    body,
+                    LetAttrs { binding_type, rec },
                 )) => {
                     let mut indices = Vec::new();
                     let init_env = env.clone();
@@ -944,11 +940,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     result.into()
                 }
                 ValueContentRef::Term(Term::RecRecord(
-                        data,
-                        includes,
-                        dyn_fields,
-                        deps,
-                        closurized,
+                    data,
+                    includes,
+                    dyn_fields,
+                    deps,
+                    closurized,
                 )) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
@@ -1478,7 +1474,7 @@ pub fn subst<C: Cache>(
     initial_env: &Environment,
     env: &Environment,
 ) -> NickelValue {
-    use crate::bytecode::value::lens::TermContent;
+    use value::lens::TermContent;
 
     let pos_idx = value.pos_idx();
 

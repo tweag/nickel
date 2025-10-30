@@ -5,7 +5,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::{CompiledRegex, Number};
 use crate::{
-    bytecode::value::{Array, NickelValue},
+    eval::value::{Array, NickelValue},
     identifier::{Ident, LocIdent},
 };
 

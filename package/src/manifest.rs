@@ -6,10 +6,12 @@ use std::{
 };
 
 use nickel_lang_core::{
-    bytecode::value::NickelValue,
     cache::normalize_rel_path,
     error::NullReporter,
-    eval::cache::CacheImpl,
+    eval::{
+        value::NickelValue,
+        cache::CacheImpl,
+    },
     identifier::Ident,
     label::Label,
     program::{Program, ProgramContract},

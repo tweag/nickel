@@ -1,5 +1,5 @@
 use criterion::Criterion;
-use nickel_lang_core::{bytecode::value::NickelValue, position::PosTable};
+use nickel_lang_core::{eval::value::NickelValue, position::PosTable};
 
 use std::path::PathBuf;
 

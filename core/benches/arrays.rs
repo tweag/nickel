@@ -1,9 +1,7 @@
 #![cfg_attr(feature = "benchmark-ci", allow(unused_imports))]
 
 use criterion::criterion_main;
-use nickel_lang_core::{
-    bytecode::value::NickelValue,
-};
+use nickel_lang_core::eval::value::NickelValue;
 use nickel_lang_utils::{bench::EvalMode, bench::criterion_config, ncl_bench_group};
 use pretty::{DocBuilder, Pretty};
 

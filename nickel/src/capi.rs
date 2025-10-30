@@ -69,7 +69,7 @@ use std::{
     ptr,
 };
 
-use nickel_lang_core::bytecode::value::{self, Container, NickelValue};
+use nickel_lang_core::eval::value::{self, Container, NickelValue};
 
 use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record};
 

@@ -11,14 +11,16 @@ use smallvec::SmallVec;
 use string::NickelString;
 
 use crate::{
-    bytecode::value::{
-        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
-        ValueContentRef,
-    },
     cache::InputFormat,
     combine::Combine,
     error::{EvalErrorData, ParseError},
-    eval::{Environment, contract_eq},
+    eval::{
+        Environment, contract_eq,
+        value::{
+            Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
+            ValueContentRef,
+        },
+    },
     files::FileId,
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
@@ -908,7 +910,7 @@ impl<E> StrChunk<E> {
 
 impl Term {
     /// Return the class of an expression in WHNF. See
-    /// [crate::bytecode::value::NickelValue::type_of].
+    /// [crate::eval::value::NickelValue::type_of].
     pub fn type_of(&self) -> Option<&'static str> {
         match self {
             Term::Value(value) | Term::Closurize(value) => value.type_of(),
@@ -968,7 +970,7 @@ impl Term {
     }
 
     /// Determine if a term is a constant. Calls to
-    /// [crate::bytecode::value::NickelValue::is_constant] if this term is a value, or returns
+    /// [crate::eval::value::NickelValue::is_constant] if this term is a value, or returns
     /// `false` otherwise.
     pub fn is_constant(&self) -> bool {
         if let Term::Value(value) = self {
@@ -2267,7 +2269,7 @@ impl From<Term> for NickelValue {
 impl_display_from_pretty!(Term);
 
 #[macro_use]
-/// Helpers to build [Term] objects as [values][crate::bytecode::value::NickelValue] from other
+/// Helpers to build [Term] objects as [values][crate::eval::value::NickelValue] from other
 /// values.
 pub mod make {
     use super::*;
@@ -2278,10 +2280,10 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_app {
         ( $f:expr, $arg:expr) => {
-            $crate::bytecode::value::NickelValue::from(
+            $crate::eval::value::NickelValue::from(
                 $crate::term::Term::App(
-                    $crate::bytecode::value::NickelValue::from($f),
-                    $crate::bytecode::value::NickelValue::from($arg)
+                    $crate::eval::value::NickelValue::from($f),
+                    $crate::eval::value::NickelValue::from($arg)
                 )
             )
         };
@@ -2295,8 +2297,8 @@ pub mod make {
     macro_rules! mk_opn {
         ( $op:expr, $( $args:expr ),+) => {
             {
-                let args = vec![$( $crate::bytecode::value::NickelValue::from($args) ),+];
-                $crate::bytecode::value::NickelValue::from($crate::term::Term::OpN($op, args))
+                let args = vec![$( $crate::eval::value::NickelValue::from($args) ),+];
+                $crate::eval::value::NickelValue::from($crate::term::Term::OpN($op, args))
             }
         };
     }
@@ -2307,10 +2309,10 @@ pub mod make {
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
             //MARKER
-            $crate::bytecode::value::NickelValue::from(
+            $crate::eval::value::NickelValue::from(
                 $crate::term::Term::Fun(
                     $crate::identifier::LocIdent::from($id),
-                    $crate::bytecode::value::NickelValue::from($body)
+                    $crate::eval::value::NickelValue::from($body)
                 )
             )
         };
@@ -2327,11 +2329,11 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = indexmap::IndexMap::<$crate::identifier::LocIdent, $crate::bytecode::value::NickelValue>::new();
+                let mut fields = indexmap::IndexMap::<$crate::identifier::LocIdent, $crate::eval::value::NickelValue>::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::bytecode::value::NickelValue::record_posless(
+                $crate::eval::value::NickelValue::record_posless(
                     $crate::term::record::RecordData::with_field_values(fields)
                 )
             }
@@ -2346,11 +2348,11 @@ pub mod make {
     macro_rules! mk_array {
         ( $( $terms:expr ),* ) => {
             {
-                let ts : $crate::bytecode::value::Array =
-                    [$( $crate::bytecode::value::NickelValue::from($terms) ),*]
+                let ts : $crate::eval::value::Array =
+                    [$( $crate::eval::value::NickelValue::from($terms) ),*]
                     .into_iter()
                     .collect();
-                $crate::bytecode::value::NickelValue::array_posless(ts, Vec::new())
+                $crate::eval::value::NickelValue::array_posless(ts, Vec::new())
             }
         };
     }

@@ -42,7 +42,7 @@
 use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
-    bytecode::value::{
+    eval::value::{
         Container, EnumVariantData, NickelValue, ValueContentRef,
     },
     identifier::LocIdent,

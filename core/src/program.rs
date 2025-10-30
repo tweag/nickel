@@ -21,17 +21,18 @@
 //! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    bytecode::{
-        ast::{AstAlloc, compat::ToMainline},
-        value::{Container, NickelValue, ValueContent},
-    },
+    bytecode::ast::{AstAlloc, compat::ToMainline},
     cache::*,
     closurize::Closurize as _,
     error::{
         Error, EvalError, EvalErrorData, ExportError, IOError, ParseError, ParseErrors, Reporter,
         warning::Warning,
     },
-    eval::{Closure, VirtualMachine, VmContext, cache::Cache as EvalCache},
+    eval::{
+        Closure, VirtualMachine, VmContext,
+        cache::Cache as EvalCache,
+        value::{Container, NickelValue, ValueContent},
+    },
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
@@ -1183,7 +1184,7 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        bytecode::value::{Container, NickelValue, ValueContentRef},
+        eval::value::{Container, NickelValue, ValueContentRef},
         error::{Error, ExportError, ExportErrorData, IOError},
         position::PosTable,
         term::Term,

@@ -6,9 +6,7 @@ use super::ImportResolver;
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
     use super::{ImportResolver, tolerant};
-    use crate::{
-        bytecode::value::NickelValue, error::ImportError, files::FileId, position::PosTable,
-    };
+    use crate::{error::ImportError, eval::value::NickelValue, files::FileId, position::PosTable};
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -83,9 +81,8 @@ pub mod strict {
 pub mod tolerant {
     use super::ImportResolver;
     use crate::{
-        bytecode::value::ValueContentRef,
-        bytecode::value::NickelValue,
         error::ImportError,
+        eval::{value::NickelValue, value::ValueContentRef},
         files::FileId,
         position::PosTable,
         term::Term,

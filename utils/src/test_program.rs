@@ -1,11 +1,11 @@
 use nickel_lang_core::{
-    bytecode::{value::NickelValue, ast::{Ast, AstAlloc}},
+    bytecode::ast::{Ast, AstAlloc},
     error::{Error, NullReporter, ParseError},
-    eval::cache::CacheImpl,
+    eval::{cache::CacheImpl, value::NickelValue},
     files::Files,
-    parser::{grammar, lexer, ErrorTolerantParser as _, ErrorTolerantParserCompat, ExtendedTerm},
-    program::Program,
+    parser::{ErrorTolerantParser as _, ErrorTolerantParserCompat, ExtendedTerm, grammar, lexer},
     position::PosTable,
+    program::Program,
     typecheck::TypecheckMode,
 };
 
@@ -49,7 +49,10 @@ pub fn parse_bytecode_ast<'a>(alloc: &'a AstAlloc, s: &str) -> Result<Ast<'a>, P
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
-pub fn parse_extended(pos_table: &mut PosTable, s: &str) -> Result<ExtendedTerm<NickelValue>, ParseError> {
+pub fn parse_extended(
+    pos_table: &mut PosTable,
+    s: &str,
+) -> Result<ExtendedTerm<NickelValue>, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::ExtendedTermParser::new()

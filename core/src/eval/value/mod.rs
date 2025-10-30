@@ -4,15 +4,12 @@
 //! values. See
 //! [RFC007](https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md) for more
 //! details.
-// Temporary, since this module isn't used yet
-#![allow(dead_code, unused_variables, unused_imports)]
-
 use crate::{
     eval::cache::CacheIndex,
     identifier::LocIdent,
     impl_display_from_pretty,
     label::Label,
-    position::{PosIdx, PosTable, RawSpan, TermPos},
+    position::{PosIdx, PosTable, TermPos},
     term::{
         ForeignIdPayload, Number, RecordOpKind, RuntimeContract, SealingKey, Term, record::Field,
         string::NickelString,
@@ -24,10 +21,8 @@ use malachite::base::num::conversion::traits::ToSci as _;
 use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
-    cmp::max,
     convert::Infallible,
     fmt,
-    marker::PhantomData,
     mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
 };
@@ -1431,26 +1426,6 @@ pub enum DataTag {
 }
 
 impl DataTag {
-    /// Returns the padding required in bytes between the header and the data in [ValueBlockRc] for
-    /// a given type of data. Calls to [ValueBlockRc::padding] under the hood instantiated with the
-    /// right type.
-    fn padding(&self) -> usize {
-        match self {
-            DataTag::Number => ValueBlockRc::padding::<NumberData>(),
-            DataTag::String => ValueBlockRc::padding::<StringData>(),
-            DataTag::Array => ValueBlockRc::padding::<ArrayData>(),
-            DataTag::Record => ValueBlockRc::padding::<RecordData>(),
-            DataTag::Thunk => ValueBlockRc::padding::<ThunkData>(),
-            DataTag::Term => ValueBlockRc::padding::<TermData>(),
-            DataTag::Label => ValueBlockRc::padding::<LabelData>(),
-            DataTag::EnumVariant => ValueBlockRc::padding::<EnumVariantData>(),
-            DataTag::ForeignId => ValueBlockRc::padding::<ForeignIdData>(),
-            DataTag::SealingKey => ValueBlockRc::padding::<SealingKeyData>(),
-            DataTag::CustomContract => ValueBlockRc::padding::<CustomContractData>(),
-            DataTag::Type => ValueBlockRc::padding::<TypeData>(),
-        }
-    }
-
     /// Returns the offset of the data in a value block from the start pointer (the header). Calls
     /// to [ValueBlockRc::data_offset] under the hood instantiated with the right type.
     fn data_offset(&self) -> usize {
@@ -1589,12 +1564,6 @@ impl ValueBlockHeader {
             ref_count: RefCount::ONE,
             pos_idx,
         }
-    }
-
-    /// Creates a new header for a value block with the given tag, a reference count of 1 and a
-    /// position index set to [PosIdx::NONE].
-    pub fn new_posless(tag: DataTag) -> Self {
-        Self::new(tag, PosIdx::NONE)
     }
 
     fn ref_count(&self) -> u64 {
@@ -1938,12 +1907,8 @@ impl ValueBlockRc {
             DataTag::EnumVariant => {
                 Self::encode(self.decode::<EnumVariantData>().clone(), self.pos_idx())
             }
-            DataTag::ForeignId => {
-                Self::encode(*self.decode::<ForeignIdData>(), self.pos_idx())
-            }
-            DataTag::SealingKey => {
-                Self::encode(*self.decode::<SealingKeyData>(), self.pos_idx())
-            }
+            DataTag::ForeignId => Self::encode(*self.decode::<ForeignIdData>(), self.pos_idx()),
+            DataTag::SealingKey => Self::encode(*self.decode::<SealingKeyData>(), self.pos_idx()),
             DataTag::CustomContract => {
                 Self::encode(self.decode::<CustomContractData>().clone(), self.pos_idx())
             }
@@ -2112,7 +2077,7 @@ impl Drop for ValueBlockRc {
             unsafe {
                 let tag = self.tag();
                 // Safety: the value block is guaranteed to have been allocated with a size of
-                // `size_of::<ValueBlockHeader>()` + `tag.padding()` + `size_of::<T>()`.
+                // `size_of::<ValueBlockHeader>()` + `padding` + `size_of::<T>()`.
                 let data_ptr = self.0.as_ptr().add(tag.data_offset());
 
                 // Safety: `data_ptr` is a valid pointer for the corresponding type and it hasn't
@@ -2386,6 +2351,7 @@ impl ValueContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::position::RawSpan;
 
     #[test]
     fn inline_values() {

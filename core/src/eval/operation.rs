@@ -13,16 +13,16 @@ use super::{
     merge::{self, MergeMode, split},
     stack::StrAccData,
     subst,
+    value::{
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
+        ValueContentRef, ValueContentRefMut,
+    },
 };
 
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
 
 use crate::{
-    bytecode::value::{
-        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
-        ValueContentRef, ValueContentRefMut,
-    },
     cache::InputFormat,
     closurize::Closurize,
     combine::Combine,

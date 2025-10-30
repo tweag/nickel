@@ -27,7 +27,6 @@
 
 use super::*;
 use crate::{
-    bytecode::value::{EnumVariantData, NickelValue, ValueContent},
     closurize::Closurize,
     combine::Combine,
     error::{EvalError, IllegalPolymorphicTailAction},
@@ -355,7 +354,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let final_pos = if let MergeMode::Standard(_) = mode {
-                    pos_op_inh 
+                    pos_op_inh
                 } else {
                     pos1.to_inherited(&mut self.context.pos_table)
                 };

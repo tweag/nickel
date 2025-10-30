@@ -1,9 +1,7 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
-    bytecode::value::{
-        ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef,
-    },
     error::{ExportErrorData, PointedExportErrorData},
+    eval::value::{ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
     metrics,
     term::{IndexMap, Number, Term, TypeAnnotation, record::RecordData},
@@ -620,7 +618,7 @@ pub fn to_string(format: ExportFormat, rt: &NickelValue) -> Result<String, Point
 /// any new dependencies, because it's used by `toml` internally anyway.
 pub mod toml_deser {
     use crate::{
-        bytecode::value::NickelValue,
+        eval::value::NickelValue,
         files::FileId,
         identifier::LocIdent,
         position::{PosTable, RawSpan, TermPos},

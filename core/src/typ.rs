@@ -41,7 +41,7 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
-    bytecode::value::{Array, NickelValue},
+    eval::value::{Array, NickelValue},
     environment::Environment,
     error::{EvalErrorData, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},

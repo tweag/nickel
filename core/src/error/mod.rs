@@ -13,17 +13,17 @@ use malachite::base::num::conversion::traits::ToSci;
 use ouroboros::self_referencing;
 
 use crate::{
-    bytecode::{
-        ast::{
-            Ast,
-            alloc::{AstAlloc, CloneTo},
-            compat::ToMainline as _,
-            typ::{EnumRow, RecordRow, Type},
-        },
-        value::{EnumVariantData, NickelValue},
+    bytecode::ast::{
+        Ast,
+        alloc::{AstAlloc, CloneTo},
+        compat::ToMainline as _,
+        typ::{EnumRow, RecordRow, Type},
     },
     cache::InputFormat,
-    eval::callstack::CallStack,
+    eval::{
+        callstack::CallStack,
+        value::{EnumVariantData, NickelValue},
+    },
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     label::{
@@ -1858,8 +1858,7 @@ mod blame_error {
     use codespan_reporting::diagnostic::{Diagnostic, Label};
 
     use crate::{
-        bytecode::value::NickelValue,
-        eval::callstack::CallStack,
+        eval::{callstack::CallStack, value::NickelValue},
         files::{FileId, Files},
         label::{
             self, Polarity,

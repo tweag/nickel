@@ -4,7 +4,7 @@
 //!
 //! ```rust
 //! # use nickel_lang_core::{
-//! #   bytecode::value::NickelValue,
+//! #   eval::value::NickelValue,
 //! #   term::{MergePriority, Term, make::builder::Record},
 //! # };
 //!
@@ -23,7 +23,7 @@
 use indexmap::IndexMap;
 
 use crate::{
-    bytecode::value::NickelValue,
+    eval::value::NickelValue,
     combine::Combine,
     identifier::{Ident, LocIdent},
     label::Label,
