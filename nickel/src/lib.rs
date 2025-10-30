@@ -287,7 +287,7 @@ impl Context {
     }
 
     /// Evaluates an expression to weak head normal form (WHNF). Same as [Self::eval_shallow], but
-    /// takes an [Self::Expr] coming from a previous shallow evaluation instead of a string.
+    /// takes an [Expr] coming from a previous shallow evaluation instead of a string.
     ///
     /// This has no effect if the expression is already evaluated (see [`Expr::is_value`]).
     pub fn eval_expr_shallow(&mut self, expr: Expr) -> Result<Expr, Error> {

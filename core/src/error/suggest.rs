@@ -1,6 +1,6 @@
 //! Suggest existing symbols that are similar to what the user typed in case of various "symbol not
-//! found" errors, such as [super::EvalError::UnboundIdentifier] or
-//! [super::EvalError::FieldMissing].
+//! found" errors, such as [super::EvalErrorData::UnboundIdentifier] or
+//! [super::EvalErrorData::FieldMissing].
 //!
 //! The current implementation uses the normalized Damereau-Levenshtein edit distance to find the
 //! closest match.

@@ -678,11 +678,10 @@ pub unsafe extern "C" fn nickel_expr_is_array(expr: *const nickel_expr) -> c_int
 
 /// Has this expression been evaluated?
 ///
-/// An evaluated expression is either null, or it's a number, bool, string,
-/// record, array, or enum. If this expression is not a value, you probably
-/// got it from looking inside the result of [`nickel_context_eval_shallow`],
-/// and you can use the [`VirtualMachine`] you got from
-/// `nickel_context_eval_shallow` to evaluate this expression further.
+/// An evaluated expression is either null, or it's a number, bool, string, record, array, or enum.
+/// If this expression is not a value, you probably got it from looking inside the result of
+/// [`nickel_context_eval_shallow`], and you can use the [`nickel_context_eval_expr_shallow`] to
+/// evaluate this expression further.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nickel_expr_is_value(expr: *const nickel_expr) -> c_int {
     // Safety: `expr` is expected to be a valid pointer to an expression

@@ -65,7 +65,7 @@ pub type ForeignIdPayload = u64;
 /// # History
 ///
 /// [Term] used to be the single representation from parsing to execution, but a new, more compact
-/// and closer-to-source AST has been introduced in [bytecode::ast] and is now used for the
+/// and closer-to-source AST has been introduced in [crate::bytecode::ast] and is now used for the
 /// front-end (parser, typechecker, and LSP).
 ///
 /// [Term] remains as a temporary runtime representation until the bytecode virtual machine and
@@ -329,7 +329,7 @@ pub enum BindingType {
 /// [BinaryOp::ContractApply].
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeContract {
-    /// The pending contract, which can be a function, a type, a [CustomContract] or a record.
+    /// The pending contract, which can be a function, a type, a custom contract or a record.
     pub contract: NickelValue,
     /// The blame label.
     pub label: Label,
@@ -1287,7 +1287,7 @@ pub enum UnaryOp {
     /// priority annotation.
     RecForce,
 
-    /// Creates an "empty" record with the sealed tail of its [`Term::Record`] argument.
+    /// Creates an "empty" record with the sealed tail of its record argument.
     ///
     /// Used in the `$record` contract implementation to ensure that we can define a `field_diff`
     /// function that preserves the sealed polymorphic tail of its argument.
@@ -1338,7 +1338,7 @@ pub enum UnaryOp {
     /// used blindly for something else.
     PatternBranch,
 
-    /// Wrap a contract implementation as a [CustomContract]. You can think of this primop as a
+    /// Wrap a contract implementation as a custom contract. You can think of this primop as a
     /// type constructor for custom contracts.
     ContractCustom,
 
@@ -1705,7 +1705,7 @@ pub enum BinaryOp {
     LabelAppendNote,
 
     /// Look up the [`crate::label::TypeVarData`] associated with a [`SealingKey`] in the type
-    /// environment of a [label](Term::Lbl)
+    /// environment of a label.
     LabelLookupTypeVar,
 }
 
@@ -1807,29 +1807,29 @@ pub enum NAryOp {
     /// record contracts do not violate parametricity.
     ///
     /// Takes four arguments:
-    ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
-    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is
+    ///   - a sealing key, which must be provided later to unseal the tail,
+    ///   - a label, which will be used to assign blame correctly tail access is
     ///     attempted,
-    ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
-    ///   - the [record](Term::Record) that we wish to seal.
+    ///   - a record, which is the record we wish to seal the tail into,
+    ///   - the record that we wish to seal.
     RecordSealTail,
 
     /// Unseals a term from the tail of a record and returns it.
     ///
     /// Takes three arguments:
-    ///   - the [sealing key](Term::SealingKey), which was used to seal the tail,
-    ///   - a [label](Term::Lbl) which will be used to assign blame correctly if
+    ///   - the sealing key, which was used to seal the tail,
+    ///   - a label which will be used to assign blame correctly if
     ///     something goes wrong while unsealing,
-    ///   - the [record](Term::Record) whose tail we wish to unseal.
+    ///   - the record whose tail we wish to unseal.
     RecordUnsealTail,
 
     /// Insert type variable data into the `type_environment` of a [`crate::label::Label`]
     ///
     /// Takes four arguments:
-    ///   - the [sealing key](Term::SealingKey) assigned to the type variable
+    ///   - the sealing key assigned to the type variable
     ///   - the [introduction polarity](crate::label::Polarity) of the type variable
     ///   - the [kind](crate::typ::VarKind) of the type variable
-    ///   - a [label](Term::Lbl) on which to operate
+    ///   - a label on which to operate
     LabelInsertTypeVar,
 
     /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the

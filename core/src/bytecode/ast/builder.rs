@@ -310,7 +310,7 @@ impl<'ast> Record<'ast> {
         self
     }
 
-    /// Finalize the record and turn it into a [`crate::term::RichTerm`]
+    /// Finalize the record and turn it into a [`super::Ast`]
     pub fn build(self, alloc: &'ast AstAlloc) -> Ast<'ast> {
         alloc
             .record(record::Record {

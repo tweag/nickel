@@ -23,8 +23,8 @@ use crate::{
 
 /// Structures which can be packed together with their environment as a closure.
 ///
-/// The typical implementer is [`crate::term::NickelValue`], but structures containing terms can also
-/// be closurizable, such as the contract case in a [`crate::typ::Type`], an array of terms, etc.
+/// The typical implementer is [NickelValue], but structures containing terms can also be
+/// closurizable, such as the contract case in a [crate::typ::Type], an array of terms, etc.
 ///
 /// In those cases, the inner terms are closurized.
 pub trait Closurize: Sized {

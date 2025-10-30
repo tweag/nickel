@@ -420,7 +420,7 @@ impl Label {
         self.arg_idx.clone().map(|idx| cache.get(idx).value)
     }
 
-    /// Same as [`with_diagnostic_message`], but mutate `self` in place.
+    /// Same as [`Self::with_diagnostic_message`], but mutate `self` in place.
     pub fn set_diagnostic_message(&mut self, message: impl Into<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
             current.message = Some(message.into());
@@ -439,7 +439,7 @@ impl Label {
         self
     }
 
-    /// Same as [`with_diagnostic_notes`], but mutate `self` in place.
+    /// Same as [`Self::with_diagnostic_notes`], but mutate `self` in place.
     pub fn set_diagnostic_notes(&mut self, notes: Vec<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
             current.notes = notes;

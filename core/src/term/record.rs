@@ -301,8 +301,8 @@ impl Traverse<NickelValue> for Field {
 
 /// The base structure of a Nickel record.
 ///
-/// Used to group together fields common to both the [super::Term::Record] and
-/// [super::Term::RecRecord] terms.
+/// Used to group together fields common to both the [NickelValue] evaluated record and the
+/// [super::Term::RecRecord] term.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RecordData {
     /// Fields whose names are known statically.

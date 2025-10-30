@@ -915,11 +915,11 @@ impl CacheHub {
     ///
     /// - if the entry is already in the term cache, do nothing.
     /// - if the format is Nickel and there is a corresponding entry in the AST cache, converts the
-    ///   parsed AST to a [RichTerm] and put it in the term cache.
+    ///   parsed AST to a [NickelValue] and put it in the term cache.
     /// - if the format is Nickel but there is no cached AST, or if the format is not Nickel, parse
     ///   the input directly into the term cache.
     ///
-    /// Mostly used during ([RichTerm]-based) import resolution.
+    /// Mostly used during ([NickelValue]-based) import resolution.
     pub fn parse_to_term(
         &mut self,
         pos_table: &mut PosTable,

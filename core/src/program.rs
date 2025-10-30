@@ -139,10 +139,10 @@ impl FieldOverride {
     /// Parse an assignment `path.to.field=value` to a field override, with the priority given as a
     /// separate argument.
     ///
-    /// Internally, the parser entirely parses the `value` part to a [crate::term::NickelValue] (have
-    /// it accept anything after the equal sign is in fact harder than actually parsing it), but
-    /// what we need at this point is just a string. Thus, `parse` uses the span to extract back
-    /// the `value` part of the input string.
+    /// Internally, the parser entirely parses the `value` part to a [NickelValue] (have it accept
+    /// anything after the equal sign is in fact harder than actually parsing it), but what we need
+    /// at this point is just a string. Thus, `parse` uses the span to extract back the `value`
+    /// part of the input string.
     ///
     /// Theoretically, this means we parse two times the same string (the value part of an
     /// assignment). In practice, we expect this cost to be completely negligible.
@@ -922,13 +922,13 @@ impl<EC: EvalCache> Program<EC> {
     /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
     /// - If the result is a record, we recursively evaluate subfields to record spines
     /// - If the result isn't a record, it is returned as it is
-    /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
+    /// - If the evaluation fails with [EvalErrorData::MissingFieldDef], the original
     ///   term is returned unevaluated[^missing-field-def]
     /// - If any other error occurs, the evaluation fails and returns the error.
     ///
     /// [^missing-field-def]: Because we want to handle partial configurations as well,
-    /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
-    /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
+    /// [EvalErrorData::MissingFieldDef] errors are _ignored_: if this is encountered when
+    /// evaluating a field, this field is just left as it is and the evaluation proceeds.
     pub fn eval_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(false)
     }

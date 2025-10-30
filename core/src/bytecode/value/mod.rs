@@ -276,7 +276,7 @@ impl NickelValue {
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
-            pos_idx: InlinePosIdx::NONE,
+            pos_idx: PosIdx::NONE,
         }
     }
 }
@@ -291,22 +291,22 @@ impl NickelValue {
     }
 
     /// Creates a new inline value without an associated position index. Same as
-    /// `Self::inline(inline, InlinePosIdx::NONE)`.
+    /// `Self::inline(inline, PosIdx::NONE)`.
     pub const fn inline_posless(inline: InlineValue) -> Self {
         Self::inline(inline, PosIdx::NONE)
     }
 
-    /// Creates a new null value with the index set to [InlinePosIdx::NONE].
+    /// Creates a new null value with the index set to [PosIdx::NONE].
     pub const fn null() -> Self {
         Self::inline_posless(InlineValue::Null)
     }
 
-    /// Creates a new true value with the index set to [InlinePosIdx::NONE].
+    /// Creates a new true value with the index set to [PosIdx::NONE].
     pub const fn bool_true() -> Self {
         Self::inline_posless(InlineValue::True)
     }
 
-    /// Creates a new false value with the index set to [InlinePosIdx::NONE].
+    /// Creates a new false value with the index set to [PosIdx::NONE].
     pub const fn bool_false() -> Self {
         Self::inline_posless(InlineValue::False)
     }
@@ -320,17 +320,17 @@ impl NickelValue {
         }
     }
 
-    /// Creates a new boolean value with the index set to [InlinePosIdx::NONE].
+    /// Creates a new boolean value with the index set to [PosIdx::NONE].
     pub fn bool_value_posless(value: bool) -> Self {
         Self::bool_value(value, PosIdx::NONE)
     }
 
-    /// Creates a new empty array with the index set to [InlinePosIdx::NONE].
+    /// Creates a new empty array with the index set to [PosIdx::NONE].
     pub const fn empty_array() -> Self {
         Self::inline_posless(InlineValue::EmptyArray)
     }
 
-    /// Creates a new empty record with the index set to [InlinePosIdx::NONE].
+    /// Creates a new empty record with the index set to [PosIdx::NONE].
     pub const fn empty_record() -> Self {
         Self::inline_posless(InlineValue::EmptyRecord)
     }
@@ -2314,7 +2314,7 @@ pub enum ValueContentRefMut<'a> {
     /// return the original value back. It can be overridden directly with a new inline value.
     ///
     /// Note that the empty array case and the empty record case are handled by the [Container]
-    /// part in [Self::Array] and [Self::Record]. They won't appear as [ValueContent::InlineValue].
+    /// part in [Self::Array] and [Self::Record].
     Null(&'a mut NickelValue),
     Bool(&'a mut NickelValue),
     Number(&'a mut NumberData),
