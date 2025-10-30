@@ -74,7 +74,7 @@ use nickel_lang_core::{
     term::Term,
 };
 
-use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record, Trace, VirtualMachine};
+use crate::{Array, BlugBlorg, Context, Error, ErrorFormat, Expr, Number, Record, Trace};
 
 /// The main entry point.
 pub struct nickel_context {
@@ -161,7 +161,7 @@ impl nickel_array {
             Array {
                 // Safety: pre-condition of this unsafe function
                 array: Container::Alloc(unsafe {
-                    (*this as *const value::ArrayBody).as_ref().unwrap()
+                    (*this as *const value::ArrayData).as_ref().unwrap()
                 }),
             }
         }
@@ -204,7 +204,7 @@ impl nickel_record {
             Record {
                 data: Container::Alloc(
                     // Safety: pre-condition of this unsafe function
-                    unsafe { (*this as *const value::RecordBody).as_ref().unwrap() },
+                    unsafe { (*this as *const value::RecordData).as_ref().unwrap() },
                 ),
             }
         }
@@ -259,11 +259,6 @@ impl<'a> From<Number<'a>> for *const nickel_number {
     fn from(n: Number<'a>) -> Self {
         n.num as *const _ as *const nickel_number
     }
-}
-
-/// A Nickel virtual machine, which can be used for evaluating partially-evaluated expressions.
-pub struct nickel_virtual_machine {
-    inner: Option<VirtualMachine>,
 }
 
 /// Allocate a new [`nickel_context`], which can be used to evaluate Nickel expressions.
@@ -371,7 +366,7 @@ pub unsafe extern "C" fn nickel_context_set_trace_callback(
     flush: nickel_flush_callback,
     user_data: *mut c_void,
 ) {
-    let trace = Trace::new(CTrace {
+    let trace = Box::new(CTrace {
         write,
         flush,
         context: user_data,
@@ -380,7 +375,7 @@ pub unsafe extern "C" fn nickel_context_set_trace_callback(
     // Safety: `ctx` is required to be a valid pointer to a box-allocated context, as
     // returned by `nickel_context_alloc`.
     unsafe {
-        nickel_context::as_rust_mut(&mut ctx).trace = trace;
+        nickel_context::as_rust_mut(&mut ctx).vm_ctxt.trace = trace;
     }
 }
 
@@ -520,31 +515,24 @@ pub unsafe extern "C" fn nickel_context_eval_deep_for_export(
 /// variant, the payload (record values, array elements, or enum
 /// payloads) will be left unevaluated.
 ///
-/// Together with the expression, this returns a Nickel virtual machine that
-/// can be used to further evaluate unevaluated sub-expressions.
+/// Sub-expressions of the result can be evaluated further by [nickel_context_eval_expr_shallow].
 ///
 /// - `src` is a null-terminated string containing UTF-8-encoded Nickel source.
 /// - `out_expr` is either NULL or something that was created with [`nickel_expr_alloc`]
 /// - `out_error` can be NULL if you aren't interested in getting detailed
 ///   error messages
-/// - `out_virtual_machine` is either NULL or something that was created
-///   with [`nickel_virtual_machine_alloc`]
 ///
-/// If evaluation is successful, returns `NICKEL_RESULT_OK` and replaces
-/// the value at `out_expr` (if non-NULL) with the newly-evaluated Nickel expression,
-/// and the value at `out_virtual_machine` (if non-NULL) with a virtual machine
-/// that can be used for further evaluation.
+/// If evaluation is successful, returns `NICKEL_RESULT_OK` and replaces the value at `out_expr`
+/// (if non-NULL) with the newly-evaluated Nickel expression.
 ///
-/// If evaluation fails, returns `NICKEL_RESULT_ERR` and replaces the
-/// value at `out_error` (if non-NULL) by a pointer to a newly-allocated Nickel error.
-/// That error should be freed with `nickel_error_free` when you are
-/// done with it.
+/// If evaluation fails, returns `NICKEL_RESULT_ERR` and replaces the value at `out_error` (if
+/// non-NULL) by a pointer to a newly-allocated Nickel error. That error should be freed with
+/// `nickel_error_free` when you are done with it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nickel_context_eval_shallow(
     mut ctx: *mut nickel_context,
     src: *const c_char,
     mut out_expr: *mut nickel_expr,
-    out_virtual_machine: *mut nickel_virtual_machine,
     out_error: *mut nickel_error,
 ) -> nickel_result {
     // Safety: the various expectations are requirements from C caller (`src` is a valid UTF8 C
@@ -552,12 +540,9 @@ pub unsafe extern "C" fn nickel_context_eval_shallow(
     unsafe {
         let src = CStr::from_ptr(src).to_str().unwrap();
         match nickel_context::as_rust_mut(&mut ctx).eval_shallow(src) {
-            Ok((vm, expr)) => {
+            Ok(expr) => {
                 if !out_expr.is_null() {
                     *nickel_expr::as_rust_mut(&mut out_expr) = expr;
-                }
-                if !out_virtual_machine.is_null() {
-                    *out_virtual_machine = nickel_virtual_machine { inner: Some(vm) };
                 }
                 nickel_result::NICKEL_RESULT_OK
             }
@@ -873,46 +858,70 @@ unsafe fn export_result(
     }
 }
 
-/// Convert this expression to JSON.
+/// Converts an expression to JSON.
 ///
 /// This is fallible because enum variants have no canonical conversion to
 /// JSON: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_expr_to_json(
+pub unsafe extern "C" fn nickel_context_to_json(
+    mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
     out_err: *mut nickel_error,
 ) -> nickel_result {
-    unsafe { export_result(nickel_expr::as_rust(&expr).to_json(), out_string, out_err) }
+    // Safety: function pre-conditions
+    unsafe {
+        export_result(
+            nickel_context::as_rust_mut(&mut ctx).to_json(nickel_expr::as_rust(&expr)),
+            out_string,
+            out_err,
+        )
+    }
 }
 
-/// Convert this expression to YAML.
+/// Converts an expression to YAML.
 ///
 /// This is fallible because enum variants have no canonical conversion to
 /// YAML: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_expr_to_yaml(
+pub unsafe extern "C" fn nickel_context_to_yaml(
+    mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
     out_err: *mut nickel_error,
 ) -> nickel_result {
-    unsafe { export_result(nickel_expr::as_rust(&expr).to_yaml(), out_string, out_err) }
+    // Safety: function pre-conditions
+    unsafe {
+        export_result(
+            nickel_context::as_rust_mut(&mut ctx).to_yaml(nickel_expr::as_rust(&expr)),
+            out_string,
+            out_err,
+        )
+    }
 }
 
-/// Convert this expression to TOML.
+/// Converts an expression to TOML.
 ///
 /// This is fallible because enum variants have no canonical conversion to
 /// TOML: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_expr_to_toml(
+pub unsafe extern "C" fn nickel_context_to_toml(
+    mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
     out_err: *mut nickel_error,
 ) -> nickel_result {
-    unsafe { export_result(nickel_expr::as_rust(&expr).to_toml(), out_string, out_err) }
+    // Safety: function pre-conditions
+    unsafe {
+        export_result(
+            nickel_context::as_rust_mut(&mut ctx).to_toml(nickel_expr::as_rust(&expr)),
+            out_string,
+            out_err,
+        )
+    }
 }
 
 /// Is this number an integer within the range of an `int64_t`?
@@ -1101,22 +1110,6 @@ pub unsafe extern "C" fn nickel_string_data(
     }
 }
 
-/// Allocate space for a virtual machine.
-///
-/// The virtual machine can be initialized by `nickel_context_eval_shallow`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_virtual_machine_alloc() -> *mut nickel_virtual_machine {
-    Box::into_raw(Box::new(nickel_virtual_machine { inner: None }))
-}
-
-/// Free a virtual machine.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_virtual_machine_free(vm: *mut nickel_virtual_machine) {
-    // Safety: `vm` is required to be a valid pointer to a box-allocated virtual machine, as
-    // returned by `nickel_vm_alloc`.
-    let _ = unsafe { Box::from_raw(vm) };
-}
-
 /// Evaluate an expression to weak head normal form (WHNF).
 ///
 /// This has no effect if the expression is already evaluated (see
@@ -1127,8 +1120,8 @@ pub unsafe extern "C" fn nickel_virtual_machine_free(vm: *mut nickel_virtual_mac
 /// variant, the payload (record values, array elements, or enum
 /// payloads) will be left unevaluated.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_virtual_machine_eval_shallow(
-    vm: *mut nickel_virtual_machine,
+pub unsafe extern "C" fn nickel_context_eval_expr_shallow(
+    mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     mut out_expr: *mut nickel_expr,
     out_error: *mut nickel_error,
@@ -1145,13 +1138,8 @@ pub unsafe extern "C" fn nickel_virtual_machine_eval_shallow(
 
     // Safety: pre-conditions of this function
     unsafe {
-        match vm
-            .as_mut()
-            .unwrap()
-            .inner
-            .as_mut()
-            .unwrap()
-            .eval_shallow(nickel_expr::as_rust(&expr).clone())
+        match nickel_context::as_rust_mut(&mut ctx)
+            .eval_expr_shallow(nickel_expr::as_rust(&expr).clone())
         {
             Ok(out) => {
                 if !out_expr.is_null() {
