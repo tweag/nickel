@@ -37,23 +37,21 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                     Term::Annotated(annot.subst_wildcards(wildcards), inner),
                     pos_idx,
                 )
+            } else if let TermContent::RecRecord(record_lens) = term_lens {
+                let (record_data, includes, dyn_fields, deps, closurized) = record_lens.take();
+
+                let record_data = record_data.subst_wildcards(wildcards);
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
+                    .collect();
+
+                NickelValue::term(
+                    Term::RecRecord(record_data, includes, dyn_fields, deps, closurized),
+                    pos_idx,
+                )
             } else {
-                if let TermContent::RecRecord(record_lens) = term_lens {
-                    let (record_data, includes, dyn_fields, deps, closurized) = record_lens.take();
-
-                    let record_data = record_data.subst_wildcards(wildcards);
-                    let dyn_fields = dyn_fields
-                        .into_iter()
-                        .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
-                        .collect();
-
-                    NickelValue::term(
-                        Term::RecRecord(record_data, includes, dyn_fields, deps, closurized),
-                        pos_idx,
-                    )
-                } else {
-                    term_lens.restore()
-                }
+                term_lens.restore()
             }
         }
         ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),

@@ -349,7 +349,7 @@ fn record_terms() {
 /// Regression test for [#876](https://github.com/tweag/nickel/issues/876)
 #[test]
 fn invalid_record_types() {
-    let mut pos_table = PosTable::new();
+    let pos_table = PosTable::new();
 
     assert_matches!(
         parse_no_table("let x | forall r. { n | Num; r } = {} in x"),

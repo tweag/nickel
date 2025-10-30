@@ -3,7 +3,7 @@ use std::{io::Cursor, thread};
 use nickel_lang_core::{
     bytecode::value::NickelValue,
     error::{
-        Error, EvalError, EvalErrorData, ExportError, ExportErrorData, ImportError, NullReporter,
+        Error, EvalError, EvalErrorData, ExportErrorData, ImportError, NullReporter,
         ParseError, PointedExportErrorData, TypecheckErrorData,
     },
     typecheck::TypecheckMode,

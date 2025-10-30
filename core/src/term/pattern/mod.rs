@@ -7,7 +7,7 @@ use super::{
 };
 
 use crate::{
-    bytecode::value::NickelValue, error::EvalError, identifier::LocIdent, impl_display_from_pretty,
+    bytecode::value::NickelValue, identifier::LocIdent, impl_display_from_pretty,
     parser::error::ParseError, position::PosIdx,
 };
 

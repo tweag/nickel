@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{CompiledRegex, Number, Term};
+use super::{CompiledRegex, Number};
 use crate::{
     bytecode::value::{Array, NickelValue},
     identifier::{Ident, LocIdent},
@@ -116,7 +116,7 @@ impl NickelString {
     #[inline]
     fn grapheme_clusters(&self) -> Array {
         self.graphemes(true)
-            .map(|g| NickelValue::string_posless(g))
+            .map(NickelValue::string_posless)
             .collect()
     }
 

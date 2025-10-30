@@ -13,11 +13,9 @@
 //!   other languages.
 
 use std::{
-    cell::RefCell,
     ffi::OsString,
     io::{Cursor, Write},
     path::PathBuf,
-    rc::Rc,
 };
 
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
@@ -28,13 +26,12 @@ use nickel_lang_core::{
     cache::{CacheHub, InputFormat, SourcePath},
     deserialize::RustDeserializationError as DeserializationError,
     error::{
-        Error as NickelCoreError, ExportError, IOError, IntoDiagnostics, NullReporter,
-        PointedExportErrorData, report::DiagnosticsWrapper,
+        Error as NickelCoreError, IOError, IntoDiagnostics, NullReporter, PointedExportErrorData,
+        report::DiagnosticsWrapper,
     },
-    eval::{Closure, Environment, VirtualMachine, VmContext, cache::CacheImpl},
+    eval::{VirtualMachine, VmContext, cache::CacheImpl},
     files::Files,
     identifier::{Ident, LocIdent},
-    program::Program,
     serialize::{ExportFormat, to_string, validate},
     term::{
         self,
@@ -76,39 +73,6 @@ pub enum ErrorFormat {
 
 #[cfg(feature = "capi")]
 pub mod capi;
-
-/// Provides a destination for the output of `std.trace`.
-#[derive(Clone)]
-pub struct Trace {
-    // This is a little annoying, in that VirtualMachine already takes a generic
-    // trace and boxes it. Since we don't want a generic parameter on Context,
-    // it means we need to double-box it.
-    inner: Rc<RefCell<dyn Write>>,
-}
-
-impl Trace {
-    pub fn new<W: Write + 'static>(write: W) -> Self {
-        Trace {
-            inner: Rc::new(RefCell::new(write)),
-        }
-    }
-}
-
-impl Write for Trace {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.inner.borrow_mut().write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.borrow_mut().flush()
-    }
-}
-
-impl Default for Trace {
-    fn default() -> Trace {
-        Trace::new(std::io::sink())
-    }
-}
 
 /// The main entry point.
 ///
@@ -378,14 +342,6 @@ impl Context {
     }
 }
 
-/// A Nickel virtual machine.
-///
-/// This can be used to further evaluate unevaluated subexpressions (thunks).
-/// You can create one of these with [`Context::eval_shallow`].
-pub struct BlugBlorg {
-    program: Program<CacheImpl>,
-}
-
 /// A Nickel expression.
 ///
 /// This might be fully evaluated (for example, if you got it from [`Context::eval_deep`])
@@ -555,10 +511,9 @@ impl Expr {
 
     /// Has this expression been evaluated?
     ///
-    /// An evaluated expression is either null, or it's a number, bool, string,
-    /// record, array, or enum. If this expression is not a value, you probably
-    /// got it from looking inside the result of [`Context::eval_shallow`],
-    /// and you can use the [`VirtualMachine`] you got from `eval_shallow` to
+    /// An evaluated expression is either null, or it's a number, bool, string, record, array, or
+    /// enum. If this expression is not a value, you probably got it from looking inside the result
+    /// of [`Context::eval_shallow`], and you can use the [`Context::eval_expr_shallow`] to
     /// evaluate this expression further.
     pub fn is_value(&self) -> bool {
         self.value.is_whnf()

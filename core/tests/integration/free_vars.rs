@@ -2,7 +2,7 @@ use nickel_lang_core::{
     bytecode::value::{ValueContent, lens::TermContent},
     identifier::Ident,
     position::PosTable,
-    term::{IndexMap, Term, record::FieldDeps},
+    term::{IndexMap, record::FieldDeps},
     transform::free_vars,
 };
 

@@ -5,7 +5,6 @@ use nickel_lang_core::{
     files::Files,
     parser::{grammar, lexer, ErrorTolerantParser as _, ErrorTolerantParserCompat, ExtendedTerm},
     program::Program,
-    term::Term,
     position::PosTable,
     typecheck::TypecheckMode,
 };

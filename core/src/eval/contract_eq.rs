@@ -123,7 +123,7 @@ fn contract_eq_bounded(
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
     // structural checks below may reject the equality)
-    if t1.phys_eq(&t2) && Environment::ptr_eq(env1, env2) {
+    if t1.phys_eq(t2) && Environment::ptr_eq(env1, env2) {
         return true;
     }
 

@@ -41,7 +41,7 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
-    bytecode::value::{Array, NickelValue, ValueBlockRc},
+    bytecode::value::{Array, NickelValue},
     environment::Environment,
     error::{EvalErrorData, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},
@@ -53,8 +53,8 @@ use crate::{
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
-        IndexMap, MatchBranch, MatchData, SealingKey, Term, make as mk_term,
-        pattern::compile::Compile, record::RecordData, string::NickelString,
+        IndexMap, MatchBranch, MatchData, make as mk_term,
+        pattern::compile::Compile, record::RecordData,
     },
     traverse::*,
 };
@@ -960,8 +960,7 @@ impl Subcontract for Type {
                                 excluded.iter().map(|id| NickelValue::string_posless(*id)),
                             ),
                             Vec::new(),
-                        )
-                        .into();
+                        );
 
                         mk_app!(
                             internals::forall_record_tail(),

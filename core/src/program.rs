@@ -37,7 +37,7 @@ use crate::{
     label::Label,
     metrics::{increment, measure_runtime},
     package::PackageMap,
-    position::{PosIdx, PosTable, RawSpan, TermPos},
+    position::{PosIdx, PosTable, RawSpan},
     term::{
         BinaryOp, Import, MergePriority, RuntimeContract, Term,
         make::{self as mk_term, builder},

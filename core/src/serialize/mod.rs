@@ -1,9 +1,9 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     bytecode::value::{
-        ArrayData, Container, EnumVariantData, InlineValue, NickelValue, ValueContentRef,
+        ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef,
     },
-    error::{ExportError, ExportErrorData, PointedExportErrorData},
+    error::{ExportErrorData, PointedExportErrorData},
     identifier::{Ident, LocIdent},
     metrics,
     term::{IndexMap, Number, Term, TypeAnnotation, record::RecordData},
@@ -741,7 +741,6 @@ mod tests {
     use super::*;
     use crate::{
         cache::CacheHub,
-        cache::resolvers::DummyResolver,
         error::NullReporter,
         eval::{VirtualMachine, VmContext, cache::CacheImpl},
         program::Program,

@@ -10,7 +10,7 @@ use crate::{
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{
-        SealingKey, Term,
+        SealingKey,
         record::{Field, RecordData},
     },
     typ::{Type, TypeF},

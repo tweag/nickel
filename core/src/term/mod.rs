@@ -12,13 +12,13 @@ use string::NickelString;
 
 use crate::{
     bytecode::value::{
-        self, Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
-        ValueContentRef, lens::TermContent,
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
+        ValueContentRef,
     },
     cache::InputFormat,
     combine::Combine,
     error::{EvalErrorData, ParseError},
-    eval::{Environment, cache::CacheIndex, contract_eq},
+    eval::{Environment, contract_eq},
     files::FileId,
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
@@ -43,7 +43,7 @@ pub use malachite::{
     rational::Rational,
 };
 
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 
 // Because we use `IndexMap` for records, consumer of Nickel (as a library) might have to
 // manipulate values of this type, so we re-export it.
@@ -51,7 +51,6 @@ pub use indexmap::IndexMap;
 
 use std::{
     cmp::{Ordering, PartialOrd},
-    convert::Infallible,
     ffi::OsString,
     fmt,
     ops::Deref,

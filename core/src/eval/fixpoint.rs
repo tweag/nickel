@@ -1,8 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::{
-    position::{PosIdx, PosTable, TermPos},
-};
+use crate::position::PosIdx;
 
 /// Updates the environment of an expression by extending it with a recursive environment. In the
 /// general case, the expression is expected to be a variable pointing to the element to be patched.

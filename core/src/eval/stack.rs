@@ -351,7 +351,7 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 mod tests {
     use super::*;
     use crate::eval::cache::CacheImpl;
-    use crate::term::{Term, UnaryOp};
+    use crate::term::UnaryOp;
     use assert_matches::assert_matches;
 
     impl Stack<CacheImpl> {

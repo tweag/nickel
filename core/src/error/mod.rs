@@ -1497,7 +1497,7 @@ impl IntoDiagnostics for EvalError {
                             notes.push("Values of different types can't be merged".to_owned());
                         }
                         "String" | "Number" | "Bool" | "Array" | "EnumTag" => {
-                            push_merge_note(&mut notes, &left_ty);
+                            push_merge_note(&mut notes, left_ty);
                         }
                         "Function" | "MatchExpression" => {
                             notes.push(
@@ -1945,7 +1945,7 @@ mod blame_error {
                 (TermPos::Inherited(ref val_pos), Some(arg_pos)) if val_pos == arg_pos => {
                     evaluated_arg = evaluated_arg.with_pos_idx(PosIdx::NONE);
                     labels.push(
-                        secondary_term(&pos_table, &evaluated_arg, files)
+                        secondary_term(pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
                     );
                 }
@@ -1959,12 +1959,12 @@ mod blame_error {
 
                     evaluated_arg = evaluated_arg.with_pos_idx(PosIdx::NONE);
                     labels.push(
-                        secondary_term(&pos_table, &evaluated_arg, files)
+                        secondary_term(pos_table, &evaluated_arg, files)
                             .with_message("evaluated to this value"),
                     );
                 }
                 (TermPos::None, _) => labels.push(
-                    secondary_term(&pos_table, &evaluated_arg, files)
+                    secondary_term(pos_table, &evaluated_arg, files)
                         .with_message("evaluated to this value"),
                 ),
             }

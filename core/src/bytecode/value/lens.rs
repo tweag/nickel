@@ -271,7 +271,7 @@ impl TermContent {
         };
 
         // unwrap(): if the lens is a TermContent, then the underlying value must be a term block.
-        &value.as_term().unwrap()
+        value.as_term().unwrap()
     }
 
     /// Unconditionally take the inner `Term` out, ignoring the actual shape of the content.

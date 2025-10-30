@@ -612,7 +612,7 @@ impl NickelValue {
     /// block with an enum variant inside, which has no arguments, or `None` otherwise.
     pub fn as_enum_tag(&self) -> Option<LocIdent> {
         let enum_var = self.as_enum_variant()?;
-        enum_var.arg.is_none().then(|| enum_var.tag)
+        enum_var.arg.is_none().then_some(enum_var.tag)
     }
 
     /// Returns a reference to the inner sealing key stored in this value if `self` is a value
@@ -1205,7 +1205,7 @@ impl NickelValue {
                 ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8)).pos_idx
             },
             // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
-            ValueTag::Inline => self.inline_pos_idx().unwrap().into(),
+            ValueTag::Inline => self.inline_pos_idx().unwrap(),
         }
     }
 
@@ -1939,10 +1939,10 @@ impl ValueBlockRc {
                 Self::encode(self.decode::<EnumVariantData>().clone(), self.pos_idx())
             }
             DataTag::ForeignId => {
-                Self::encode(self.decode::<ForeignIdData>().clone(), self.pos_idx())
+                Self::encode(*self.decode::<ForeignIdData>(), self.pos_idx())
             }
             DataTag::SealingKey => {
-                Self::encode(self.decode::<SealingKeyData>().clone(), self.pos_idx())
+                Self::encode(*self.decode::<SealingKeyData>(), self.pos_idx())
             }
             DataTag::CustomContract => {
                 Self::encode(self.decode::<CustomContractData>().clone(), self.pos_idx())
@@ -2244,16 +2244,14 @@ impl Container<&ArrayData> {
     pub fn iter(&self) -> impl Iterator<Item = &NickelValue> {
         self.into_opt()
             .into_iter()
-            .map(|array_data| array_data.array.iter())
-            .flatten()
+            .flat_map(|array_data| array_data.array.iter())
     }
 
     /// Iterates over the pending contracts.
     pub fn iter_pending_contracts(&self) -> impl Iterator<Item = &RuntimeContract> {
         self.into_opt()
             .into_iter()
-            .map(|array_data| array_data.pending_contracts.iter())
-            .flatten()
+            .flat_map(|array_data| array_data.pending_contracts.iter())
     }
 
     /// Retrieves an element from the underlying array at the given index, or returns `None` if `self`

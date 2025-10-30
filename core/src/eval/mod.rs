@@ -76,7 +76,7 @@
 use crate::{
     bytecode::value::{
         Container, EnumVariantData, NickelValue, ValueContent,
-        ValueContentRef, ValueContentRefMut, lens::TermContent,
+        ValueContentRef, ValueContentRefMut,
     },
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{Closurize, closurize_rec_record},
@@ -85,7 +85,7 @@ use crate::{
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     metrics::{increment, measure_runtime},
-    position::{PosIdx, PosTable, TermPos},
+    position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
         BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
@@ -823,7 +823,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContentRef::Term(Term::OpN(op, args)) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
-                    let mut args_iter = args.into_iter();
+                    let mut args_iter = args.iter();
                     let fst_arg = args_iter.next().ok_or_else(|| {
                         EvalErrorData::NotEnoughArgs(op.arity(), op.to_string(), pos_idx)
                     })?;
@@ -1518,7 +1518,6 @@ pub fn subst<C: Cache>(
             };
 
             let array = array_data.array.into_iter()
-                .into_iter()
                 .map(|t| subst(pos_table, cache, t, initial_env, env))
                 .collect();
 

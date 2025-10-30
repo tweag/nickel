@@ -54,10 +54,10 @@ fn parse_with_table(pos_table: &mut PosTable, s: &str) -> Option<NickelValue> {
 #[test]
 fn identity_over_values() {
     let num = NickelValue::number_posless(Number::try_from(45.3).unwrap());
-    assert_eq!(Ok(num.clone()), eval_no_import(num.into()));
+    assert_eq!(Ok(num.clone()), eval_no_import(num));
 
     let boolean = NickelValue::bool_true();
-    assert_eq!(Ok(boolean.clone()), eval_no_import(boolean.into()));
+    assert_eq!(Ok(boolean.clone()), eval_no_import(boolean));
 
     let lambda = mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x")));
     assert_eq!(Ok(lambda.clone()), eval_no_import(lambda));
@@ -413,8 +413,8 @@ fn substitution() {
 fn foreign_id() {
     let t = mk_term::op2(
         BinaryOp::Merge(Label::default().into()),
-        mk_record!(("a", NickelValue::from(NickelValue::number_posless(1)))),
-        mk_record!(("b", NickelValue::from(NickelValue::foreign_id_posless(42)))),
+        mk_record!(("a", NickelValue::number_posless(1))),
+        mk_record!(("b", NickelValue::foreign_id_posless(42))),
     );
 
     let evaled = eval_no_import(t.clone()).unwrap();

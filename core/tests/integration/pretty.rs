@@ -58,7 +58,7 @@ fn check_idempotent(path: &str) {
 fn check_bytecode_ast_idempotent(path: &str) {
     let mut buffer = String::new();
     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
-    let mut pos_table = PosTable::new();
+    let pos_table = PosTable::new();
 
     file.read_to_string(&mut buffer)
         .expect("Fail to read content of test file");

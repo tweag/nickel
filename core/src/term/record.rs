@@ -4,7 +4,7 @@ use crate::{
     error::EvalErrorData,
     identifier::{Ident, LocIdent},
     label::Label,
-    position::{PosIdx, TermPos},
+    position::PosIdx,
 };
 use std::{collections::HashSet, rc::Rc};
 

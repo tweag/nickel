@@ -16,7 +16,6 @@ use crate::{
     },
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
-    eval::Closure,
     eval::cache::Cache as EvalCache,
     files::{FileId, Files},
     identifier::LocIdent,
@@ -26,10 +25,10 @@ use crate::{
     position::{PosTable, TermPos},
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
-    term::{self, Term},
+    term::{self},
     transform::{Wildcards, import_resolution},
     traverse::{Traverse, TraverseOrder},
-    typ::{self as mainline_typ, UnboundTypeVariableError},
+    typ::UnboundTypeVariableError,
     typecheck::{self, HasApparentType, TypecheckMode, typecheck},
     {eval, parser, transform},
 };
@@ -655,7 +654,7 @@ impl SourceCache {
                     .map(|v| v.with_pos_idx(pos_idx))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
             }
-            InputFormat::Text => Ok(NickelValue::string(source, pos_idx).into()),
+            InputFormat::Text => Ok(NickelValue::string(source, pos_idx)),
         }
     }
 
@@ -2965,15 +2964,15 @@ mod ast_cache {
                 let ast = term.to_ast(slf.alloc, pos_table);
                 let mut resolver = AstResolver::new(slf.alloc, slf.asts, slice.reborrow());
 
-                let ret = typecheck::env_add_term(
+                
+                typecheck::env_add_term(
                     slf.alloc,
                     &mut slf.type_ctxt.type_env,
                     ast,
                     &slf.type_ctxt.term_env,
                     &mut resolver,
                 )
-                .map_err(|_| NotARecord);
-                ret
+                .map_err(|_| NotARecord)
             })
         }
     }

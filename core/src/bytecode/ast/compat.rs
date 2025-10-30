@@ -7,12 +7,12 @@
 use super::{primop::PrimOp, *};
 use crate::{
     bytecode::value::{
-        ArrayData, Container, EnumVariantData, InlineValue, NickelValue, TypeData, ValueContentRef,
+        ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
         ValueContentRefMut,
     },
     combine::Combine,
     label,
-    position::{PosIdx, PosTable, RawSpan},
+    position::{PosTable, RawSpan},
     term, typ as mline_type,
 };
 use indexmap::IndexMap;

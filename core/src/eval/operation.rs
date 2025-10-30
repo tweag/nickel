@@ -20,19 +20,19 @@ use crate::nix_ffi;
 
 use crate::{
     bytecode::value::{
-        Array, ArrayData, Container, EnumVariantData, InlineValue, NickelValue, TypeData,
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData,
         ValueContent, ValueContentRef, ValueContentRefMut,
     },
     cache::InputFormat,
     closurize::Closurize,
     combine::Combine,
-    error::{EvalCtxt, EvalError, EvalErrorData, IllegalPolymorphicTailAction, Warning},
+    error::{EvalErrorData, IllegalPolymorphicTailAction, Warning},
     identifier::LocIdent,
     label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
     parser::utils::parse_number_sci,
-    position::{PosIdx, PosTable, TermPos},
+    position::{PosIdx, PosTable},
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{make as mk_term, record::*, string::NickelString, *},
@@ -102,7 +102,7 @@ pub enum OperationCont {
 
 /// A string represention of the type of the first argument of serialization-related primitive
 /// operations. This is a Nickel enum of the supported serialization formats.
-static ENUM_FORMAT: &'static str = "[| 'Json, 'Yaml, 'Toml |]";
+static ENUM_FORMAT: &str = "[| 'Json, 'Yaml, 'Toml |]";
 
 impl std::fmt::Debug for OperationCont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -315,7 +315,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             //     _ => mk_type_error!("Label"),
             // }),
             UnaryOp::EnumEmbed(_id) => {
-                if let Some(_) = value.as_enum_variant() {
+                if value.as_enum_variant().is_some() {
                     Ok(value.with_pos_idx(pos_op_inh).into())
                 } else {
                     mk_type_error!("Enum")
@@ -729,13 +729,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ValueContentRef::Array(Container::Alloc(array_data)) => {
                         let terms = seq_terms(
                             array_data.array.iter().map(|t| {
-                                let t_with_ctr = RuntimeContract::apply_all(
+                                
+                                RuntimeContract::apply_all(
                                     t.clone(),
                                     array_data.pending_contracts.iter().cloned(),
                                     pos.to_inherited(&mut self.context.pos_table),
                                 )
-                                .closurize(&mut self.context.cache, env.clone());
-                                t_with_ctr
+                                .closurize(&mut self.context.cache, env.clone())
                             }),
                             pos_op,
                         );
@@ -1130,7 +1130,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })
                         } else {
                             Ok(Closure {
-                                value: NickelValue::enum_tag(tag, pos_op_inh).into(),
+                                value: NickelValue::enum_tag(tag, pos_op_inh),
                                 env,
                             })
                         }
@@ -1237,7 +1237,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             UnaryOp::Trace => {
                 if let Some(s) = value.as_string() {
-                    let _ = writeln!(self.context.trace, "std.trace: {}", s);
+                    let _ = writeln!(self.context.trace, "std.trace: {s}");
                     Ok(())
                 } else {
                     mk_type_error!("String")
@@ -1312,7 +1312,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let arg = NickelValue::thunk(Thunk::new(arg_clos), arg_pos);
 
                 Ok(NickelValue::enum_variant(
-                    LocIdent::new(&tag).with_pos(self.context.pos_table.get(pos)),
+                    LocIdent::new(tag).with_pos(self.context.pos_table.get(pos)),
                     Some(arg),
                     pos_op_inh,
                 )
@@ -1327,7 +1327,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             UnaryOp::EnumIsVariant => Ok(NickelValue::bool_value(
                 value
                     .as_enum_variant()
-                    .map_or(false, |enum_variant| enum_variant.arg.is_some()),
+                    .is_some_and(|enum_variant| enum_variant.arg.is_some()),
                 pos_op_inh,
             )
             .into()),
@@ -1452,7 +1452,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 // The stack should already contain the default label to attach, so push
                 // the (potential) error data.
-                self.stack.push_arg(Closure { value: value, env }, pos_arg);
+                self.stack.push_arg(Closure { value, env }, pos_arg);
 
                 Ok(Closure {
                     value: internals::add_default_check_label(),
@@ -1770,7 +1770,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("String", 2, value2);
                 };
 
-                Ok(NickelValue::string(format!("{}{}", s1, s2), pos_op_inh).into())
+                Ok(NickelValue::string(format!("{s1}{s2}"), pos_op_inh).into())
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
                 // Performing only one match `if let Term::Type` and putting the call to
@@ -2340,7 +2340,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )
                 {
                     match record.sealed_tail.as_ref() {
-                        Some(t) if t.has_dyn_field(&id) => {
+                        Some(t) if t.has_dyn_field(id) => {
                             Err(EvalErrorData::IllegalPolymorphicTailAccess {
                                 action: IllegalPolymorphicTailAction::FieldRemove {
                                     field: id.to_string(),
@@ -2948,19 +2948,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         fields: IndexMap::from([
                             (
                                 LocIdent::from("left_only"),
-                                Field::from(NickelValue::from(left_only)),
+                                Field::from(left_only),
                             ),
                             (
                                 LocIdent::from("left_center"),
-                                Field::from(NickelValue::from(left_center)),
+                                Field::from(left_center),
                             ),
                             (
                                 LocIdent::from("right_center"),
-                                Field::from(NickelValue::from(right_center)),
+                                Field::from(right_center),
                             ),
                             (
                                 LocIdent::from("right_only"),
-                                Field::from(NickelValue::from(right_only)),
+                                Field::from(right_only),
                             ),
                         ]),
                         attrs: RecordAttrs::default(),
@@ -3180,7 +3180,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     expected: expected.to_owned(),
                     arg_number,
                     pos_arg,
-                    arg_evaluated: arg_evaluated,
+                    arg_evaluated,
                     pos_op,
                 })
             };

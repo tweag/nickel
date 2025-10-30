@@ -69,12 +69,9 @@ use std::{
     ptr,
 };
 
-use nickel_lang_core::{
-    bytecode::value::{self, Container, NickelValue},
-    term::Term,
-};
+use nickel_lang_core::bytecode::value::{self, Container, NickelValue};
 
-use crate::{Array, BlugBlorg, Context, Error, ErrorFormat, Expr, Number, Record, Trace};
+use crate::{Array, Context, Error, ErrorFormat, Expr, Number, Record};
 
 /// The main entry point.
 pub struct nickel_context {

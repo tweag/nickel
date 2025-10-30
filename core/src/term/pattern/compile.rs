@@ -186,7 +186,7 @@ fn update_with_merge(
     //
     // unwrap(): typechecking ensures that there are no unbound variables at this point
     let singleton =
-        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton.into())
+        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton)
             .unwrap();
 
     // Since we generate a non-recursive record and inject it in the evaluation, we must manually
@@ -375,7 +375,7 @@ impl CompilePart for OrPattern {
     ) -> NickelValue {
         self.patterns
             .iter()
-            .fold(NickelValue::null().into(), |cont, pattern| {
+            .fold(NickelValue::null(), |cont, pattern| {
                 let prev_bindings = LocIdent::fresh();
 
                 let is_prev_not_null = make::op1(
