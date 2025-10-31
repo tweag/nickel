@@ -647,8 +647,8 @@ impl SourceCache {
                 let json = nix_ffi::eval_to_json(source, &self.get_base_dir_for_nix(file_id))
                     .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
-                    .map(|v| v.with_pos_idx(pos_idx))
-                    .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
+                    .map(|v: NickelValue| v.with_pos_idx(pos_idx))
+                    .map_err(|err| ParseError::from_serde_json(err, Some(file_id, &self.files)))
             }
             InputFormat::Text => Ok(NickelValue::string(source, pos_idx)),
         }

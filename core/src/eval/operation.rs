@@ -230,19 +230,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn process_unary_operation(
         &mut self,
         eval_data: Op1EvalData,
-        // u_op: UnaryOp,
-        // clos: Closure,
-        // pos_arg: PosIdx,
-        // pos_op: PosIdx,
     ) -> Result<Closure, EvalErrorData> {
-        increment!(format!("primop:{u_op}"));
-
         let Op1EvalData {
             orig_pos_arg,
             arg: Closure { value, env },
             pos_op,
             op,
         } = eval_data;
+
+        increment!(format!("primop:{op}"));
+
         let pos = value.pos_idx();
         let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
 
@@ -1328,7 +1325,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Some(s) = value.as_string() {
-                    let base_dir = pos_op
+                    let base_dir = self
+                        .context
+                        .pos_table
+                        .get(pos_op)
                         .into_opt()
                         .map(|span| self.import_resolver().get_base_dir_for_nix(span.src_id))
                         .unwrap_or_default();
@@ -1339,11 +1339,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos,
                         )
                     })?;
-                    Ok(Closure::atomic_closure(
-                        serde_json::from_str(&json).map_err(|e| {
-                            EvalErrorData::Other(format!("nix produced invalid json: {e}"), pos)
-                        })?,
-                    ))
+
+                    let result: NickelValue = serde_json::from_str(&json).map_err(|e| {
+                        EvalErrorData::Other(format!("nix produced invalid json: {e}"), pos)
+                    })?;
+
+                    Ok(result.into())
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
                     Err(EvalErrorData::TypeError {
@@ -1625,8 +1626,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         &mut self,
         eval_data: Op2EvalData,
     ) -> Result<Closure, EvalErrorData> {
-        increment!(format!("primop:{b_op}"));
-
         let Op2EvalData {
             op,
             arg1:
@@ -1643,6 +1642,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             orig_pos_arg2,
             pos_op,
         } = eval_data;
+
+        increment!(format!("primop:{op}"));
 
         let pos1 = value1.pos_idx();
         let pos2 = value2.pos_idx();
@@ -1902,7 +1903,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // is enabled (we get unused variable warning otherwise). It's simpler to just make
                 // a separate `if` conditionally included.
                 #[cfg(feature = "metrics")]
-                if Some(TypeData { typ, .. }) = value1.as_type() {
+                if let Some(TypeData { typ, .. }) = value1.as_type() {
                     increment!(format!(
                         "primop:contract/apply:{}",
                         typ.pretty_print_cap(40)
@@ -3323,9 +3324,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ///
     /// Arguments are expected to be evaluated (in WHNF).
     fn process_nary_operation(&mut self, eval_data: OpNEvalData) -> Result<Closure, EvalErrorData> {
-        increment!(format!("primop:{n_op}"));
-
         let OpNEvalData { op, args, pos_op } = eval_data;
+        increment!(format!("primop:{op}"));
         let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
 
         let mk_type_error =
