@@ -25,7 +25,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{
-        Error, EvalError, EvalErrorData, ExportError, IOError, ParseError, ParseErrors, Reporter,
+        Error, EvalError, EvalErrorData, IOError, ParseError, ParseErrors, Reporter,
         warning::Warning,
     },
     eval::{
@@ -1122,7 +1122,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
-        use crate::error::ExportErrorData;
+        use crate::error::{ExportError, ExportErrorData};
 
         let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
