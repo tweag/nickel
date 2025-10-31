@@ -584,8 +584,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let terms = values.into_iter().map(|(_, value)| value).collect();
 
                     Ok(Closure {
-                        // TODO: once sure that the Record is properly closurized, we can safely
-                        // assume that the extracted array here is, in turn, also closuried.
+                        // as evaluated records are assumed to be closurized, we can assume that
+                        // the extracted array here is, in turn, also closuried.
                         value: NickelValue::array(terms, Vec::new(), pos_op_inh),
                         env,
                     })
@@ -1011,6 +1011,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     use crate::term::string::RegexFindResult;
 
                     let result = match s.find_regex(&regex) {
+                        // This record doesn't need to be closurized, since all values are
+                        // constant.
                         None => mk_record!(
                             ("matched", NickelValue::string_posless("")),
                             ("index", NickelValue::number_posless(-1)),
@@ -1020,7 +1022,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             matched: mtch,
                             index,
                             groups,
-                        }) => mk_record!(
+                        }) => closurize_container(mk_record!(
                             ("matched", NickelValue::string_posless(mtch)),
                             ("index", NickelValue::number_posless(index)),
                             (
@@ -1039,7 +1041,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                     Vec::new()
                                 )
                             )
-                        ),
+                        )),
                     };
 
                     Ok(result.with_pos_idx(pos_op_inh).into())
@@ -1051,7 +1053,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let Some(s) = value.as_string() {
                     let result = NickelValue::array(
                         Array::from_iter(s.find_all_regex(&regex).map(|found| {
-                            mk_record!(
+                            closurize_container(mk_record!(
                                 ("matched", NickelValue::string_posless(found.matched)),
                                 ("index", NickelValue::number_posless(found.index)),
                                 (
@@ -1071,7 +1073,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                         Vec::new(),
                                     )
                                 )
-                            )
+                            ))
                         })),
                         Vec::new(),
                         pos_op_inh,
@@ -3119,7 +3121,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     attrs: RecordAttrs::default(),
                 });
 
-                Ok(NickelValue::record(
+                Ok(closurize_container(NickelValue::record(
                     RecordData {
                         fields: IndexMap::from([
                             (LocIdent::from("left_only"), Field::from(left_only)),
@@ -3131,7 +3133,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         sealed_tail: None,
                     },
                     pos_op_inh,
-                )
+                ))
                 .into())
             }
             BinaryOp::RecordDisjointMerge => {
@@ -4098,6 +4100,12 @@ where
             })
             .collect()
     }
+}
+
+/// Wrap a value in a [crate::term::Term::Closurize] operator with the same position index.
+fn closurize_container(value: NickelValue) -> NickelValue {
+    let pos_idx = value.pos_idx();
+    NickelValue::term(Term::Closurize(value), pos_idx)
 }
 
 #[cfg(test)]
