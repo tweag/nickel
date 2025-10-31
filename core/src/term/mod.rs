@@ -81,19 +81,6 @@ pub enum Term {
     /// An evaluated expression.
     Value(NickelValue),
 
-    // /// The null value.
-    // Null,
-    //
-    // /// A boolean value.
-    // Bool(bool),
-    //
-    // /// A floating-point value.
-    // #[serde(serialize_with = "crate::serialize::serialize_num")]
-    // #[serde(deserialize_with = "crate::serialize::deserialize_num")]
-    // Num(Number),
-    //
-    // /// A literal string.
-    // Str(NickelString),
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions yet to be concatenated.
     ///

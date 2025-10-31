@@ -1529,8 +1529,6 @@ impl CacheHub {
                     .get_wildcards(file_id)
                     .map(|ws| ws.iter())
                     .unwrap_or_default()
-                    // .into_iter()
-                    // .flatten()
                     .map(|ty| ty.to_mainline(pos_table))
                     .collect(),
             );
