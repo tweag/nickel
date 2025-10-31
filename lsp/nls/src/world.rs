@@ -16,7 +16,7 @@ use nickel_lang_core::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
     error::{ImportError, IntoDiagnostics, ParseErrors},
-    eval::{VirtualMachine, VmContext, cache::CacheImpl},
+    eval::{VirtualMachine, VmContext, cache::CacheImpl, value::NickelValue},
     files::FileId,
     position::{PosTable, RawPos, RawSpan, TermPos},
     traverse::TraverseAlloc,
@@ -68,11 +68,12 @@ pub struct World {
     /// derive [nickel_lang_core::cache::CacheHub] instances for background evaluation while
     /// avoiding work duplication as much as possible. In particular, the instances will use this
     /// parsed and converted representation of the stdlib and will share the same source cache.
-    compiled_stdlib: nickel_lang_core::eval::value::NickelValue,
+    compiled_stdlib: NickelValue,
     contract_configs: crate::contracts::ContractConfigsWatcher,
     pub config: LspConfig,
     /// Since we hold a compiled version of the stdlib, we also need the corresponding position
-    /// table.
+    /// table. The pos table is also used for analysis of non-Nickel format (e.g. JSON or YAML)
+    /// which are currently only representable in a "compiled" form.
     pos_table: PosTable,
 }
 
@@ -277,7 +278,7 @@ impl World {
             format => {
                 let errors = self
                     .sources
-                    .parse_other(file_id, format)
+                    .parse_other(&mut self.pos_table, file_id, format)
                     .err()
                     .map(|e| ParseErrors::new(vec![e]))
                     .unwrap_or_else(|| ParseErrors::new(vec![]));
@@ -337,6 +338,12 @@ impl World {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<(), Vec<SerializableDiagnostic>> {
+        use codespan_reporting::diagnostic::{Diagnostic, Label};
+        use nickel_lang_core::{
+            cache::{TermEntry, TermEntryState},
+            term::{LabeledType, Term, TypeAnnotation},
+        };
+
         let Some(uri) = self.file_uris.get(&file_id) else {
             return Ok(());
         };
@@ -400,13 +407,15 @@ impl World {
             .insert(file_id, TermPos::None);
 
         let (reporter, warnings) = WarningReporter::new();
-        let mut vm_ctxt = VmContext::new(
-            self.cache_hub_for_eval(contract_id),
-            std::io::stderr(),
-            reporter,
-        );
+        let (cache_hub, pos_table) = self.cache_hub_for_eval(contract_id);
 
-        let term = match self.sources.parse_other(file_id, format) {
+        let mut vm_ctxt =
+            VmContext::new_with_pos_table(cache_hub, pos_table, std::io::stderr(), reporter);
+
+        let value = match self
+            .sources
+            .parse_other(&mut self.pos_table, file_id, format)
+        {
             Ok(t) => t,
             Err(e) => {
                 return Err(self.lsp_diagnostics(file_id, ParseErrors::new(vec![e])));
@@ -415,9 +424,9 @@ impl World {
 
         vm_ctxt.import_resolver.terms.insert(
             file_id,
-            nickel_lang_core::cache::TermEntry {
-                term,
-                state: nickel_lang_core::cache::TermEntryState::Populated,
+            TermEntry {
+                value,
+                state: TermEntryState::Populated,
                 format,
             },
         );
@@ -425,22 +434,19 @@ impl World {
         // unwrap: we don't expect an error here, since we already typechecked above.
         let contract_rt = vm_ctxt.prepare_eval_only(contract_id).unwrap();
 
-        let rt: RichTerm = Term::ResolvedImport(file_id).into();
-
-        let rt: RichTerm = Term::Annotated(
-            term::TypeAnnotation {
+        let value = NickelValue::term_posless(Term::Annotated(
+            TypeAnnotation {
                 typ: None,
-                contracts: vec![term::LabeledType {
+                contracts: vec![LabeledType {
                     typ: TypeF::Contract(contract_rt).into(),
                     label: Default::default(),
                 }],
             },
-            rt,
-        )
-        .into();
+            NickelValue::term_posless(Term::ResolvedImport(file_id)),
+        ));
 
         let mut vm = VirtualMachine::<_, CacheImpl>::new(&mut vm_ctxt);
-        let errors = vm.eval_permissive(rt, self.config.eval_config.eval_limits.recursion_limit);
+        let errors = vm.eval_permissive(value, self.config.eval_config.eval_limits.recursion_limit);
         let mut files = vm.import_resolver().sources.files().clone();
         let mut diags: Vec<_> = errors
             .into_iter()
@@ -451,11 +457,7 @@ impl World {
             SerializableDiagnostic::from(warning, &mut files, file_id)
         }));
 
-        if diags.is_empty() {
-            Ok(())
-        } else {
-            Err(diags)
-        }
+        if diags.is_empty() { Ok(()) } else { Err(diags) }
     }
 
     /// Performs typechecking without checking for a cached value of the typechecking
@@ -708,12 +710,8 @@ impl World {
         if diags.is_empty() {
             let (reporter, warnings) = WarningReporter::new();
             let (cache_hub, pos_table) = self.cache_hub_for_eval(file_id);
-            let mut vm_ctxt: VmContext<_, CacheImpl> = VmContext::new_with_pos_table(
-                cache_hub,
-                pos_table,
-                std::io::stderr(),
-                reporter,
-            );
+            let mut vm_ctxt: VmContext<_, CacheImpl> =
+                VmContext::new_with_pos_table(cache_hub, pos_table, std::io::stderr(), reporter);
 
             // unwrap: we don't expect an error here, since we already typechecked above.
             let rt = vm_ctxt.prepare_eval_only(file_id).unwrap();
@@ -1029,7 +1027,12 @@ impl World {
         cache.terms.insert(
             file_id,
             TermEntry {
-                value: self.analysis_reg.get(file_id).unwrap().ast().to_mainline(&mut pos_table),
+                value: self
+                    .analysis_reg
+                    .get(file_id)
+                    .unwrap()
+                    .ast()
+                    .to_mainline(&mut pos_table),
                 state: TermEntryState::default(),
                 format: InputFormat::Nickel,
             },
