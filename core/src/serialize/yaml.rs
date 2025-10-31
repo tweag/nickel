@@ -659,9 +659,9 @@ fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
         .unwrap()
 }
 
-/// Parse a JSON string and convert it to a [`RichTerm`].
+/// Parse a JSON string and convert it to a [`NickelValue`].
 ///
-/// If a location is provided, the `RichTerm` will have its positions filled out.
+/// If a location is provided, the `NickelValue` will have its positions filled out.
 pub fn load_json_value(
     pos_table: &mut PosTable,
     s: &str,

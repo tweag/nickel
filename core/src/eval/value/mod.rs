@@ -2233,7 +2233,7 @@ impl Container<&ArrayData> {
     }
 
     /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying array is
-    /// empty (is such that [crate::bytecode::value::Array::is_empty] returns `true`).
+    /// empty (is such that [Array::is_empty] returns `true`).
     pub fn is_empty(&self) -> bool {
         match self {
             Container::Empty => true,

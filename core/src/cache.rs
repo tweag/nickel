@@ -2175,9 +2175,9 @@ pub trait AstImportResolver {
     /// # Returns
     ///
     /// [Self::resolve] returns `Ok(None)` if the import is an external format, which can currently
-    /// be serialized directly to he runtime representation ([crate::bytecode::value::NickelValue])
-    /// without going through an AST. AST import resolution is mostly used by the typechecker, and
-    /// the typechecker currently ignores external formats anyway.
+    /// be serialized directly to he runtime representation ([NickelValue]) without going through
+    /// an AST. AST import resolution is mostly used by the typechecker, and the typechecker
+    /// currently ignores external formats anyway.
     ///
     /// # Lifetimes
     ///
