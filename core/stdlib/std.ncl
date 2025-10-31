@@ -1196,14 +1196,22 @@
           ends the program execution and prints a detailed report thanks to the
           information tracked inside the label.
 
+          Note that `blame` should only be used for delayed contract errors.
+          Please refer to the contract chapter of the manual for a more detailed
+          explanation of immediate versus delayed contract errors.
+
           # Examples
 
+          This example is here for illustrative purpose, but in practice you
+          shouldn't use blame to report such an immediate contract error.
+          You should return an `'Err {..}` value instead.
+
           ```nickel
-          let IsZero = fun label value =>
+          let IsZero = std.contract.custom (fun label value =>
             if value == 0 then
-              value
+              'Ok value
             else
-              std.contract.blame label
+              std.contract.blame label)
           in
           0 | IsZero
           ```
@@ -1223,14 +1231,17 @@
 
           # Examples
 
-          ```nickel
-          let IsZero = fun label value =>
-            if value == 0 then
-              value
-            else
-              std.contract.blame_with_message "Not zero" label
-          in
+          This example is here for illustrative purpose, but in practice you
+          shouldn't use blame to report such an immediate contract error.
+          You should return an `'Err {..}` value instead.
 
+          ```nickel
+          let IsZero = std.contract.custom (fun label value =>
+            if value == 0 then
+              'Ok value
+            else
+              std.contract.blame_with_message "Not zero" label)
+          in
           0 | IsZero
           ```
         "%
