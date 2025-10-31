@@ -512,6 +512,13 @@ impl RecordData {
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty() && self.sealed_tail.is_none()
     }
+
+    /// Checks if this record is empty (including the sealed tail), or if it is composed only of
+    /// empty optional fields. [Self::is_empty] implies [Self::has_only_empty_opts], but the
+    /// converse is not true, typically for `{foo | optional}`, for example.
+    pub fn has_only_empty_opts(&self) -> bool {
+        self.fields.values().all(Field::is_empty_optional) && self.sealed_tail.is_none()
+    }
 }
 
 /// The sealed tail of a Nickel record under a polymorphic contract.

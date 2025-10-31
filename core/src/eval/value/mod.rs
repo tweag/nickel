@@ -2195,11 +2195,21 @@ impl Container<&RecordData> {
     }
 
     /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying record is
-    /// empty (is such that [crate::term::record::RecordData::is_empty] returns `true`).
+    /// empty (is such that [RecordData::is_empty] returns `true`).
     pub fn is_empty(&self) -> bool {
         match self {
             Container::Empty => true,
             Container::Alloc(record) => record.is_empty(),
+        }
+    }
+
+    /// Checks if this record is [Self::Empty], or is [Self::Alloc] where the underlying record is
+    /// empty or has only empty optional fields (is such that [RecordData::has_only_empty_opts]
+    /// returns `true`).
+    pub fn has_only_empty_opts(&self) -> bool {
+        match self {
+            Container::Empty => true,
+            Container::Alloc(record) => record.has_only_empty_opts(),
         }
     }
 }

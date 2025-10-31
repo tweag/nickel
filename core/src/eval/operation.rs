@@ -3859,12 +3859,13 @@ fn eq<C: Cache>(
             env1,
             env2,
         )),
-        // [^eq-empty-containers]We can't just handle the pattern `(Container::Empty, Container::Empty)`, because the
-        // first could be the inlined empty record while the second is allocated but empty as well
-        // (typically the case for the empty open record `{..}`). Hence we rely on `is_empty`,
-        // which handles both cases.
+        // [^eq-empty-containers] We can't just handle the pattern `(Container::Empty,
+        // Container::Empty)`, because the first could be the inlined empty record while the second
+        // is allocated but empty as well (typically the case for the empty open record `{..}`), or
+        // have only empty optional fields (which equality ignores). Hence we rely on
+        // `has_only_empty_opts`, which handles both cases.
         (ValueContentRef::Record(container1), ValueContentRef::Record(container2))
-            if container1.is_empty() && container2.is_empty() =>
+            if container1.has_only_empty_opts() && container2.has_only_empty_opts() =>
         {
             Ok(EqResult::Bool(true))
         }
