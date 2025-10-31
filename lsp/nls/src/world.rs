@@ -301,13 +301,11 @@ impl World {
     pub fn typecheck(&mut self, file_id: FileId) -> Result<(), Vec<SerializableDiagnostic>> {
         // unwrap: if `file_id` is known, `file_format` will be `Some`. If `file_id` is unknown,
         // we're allowed to panic
-        match self.file_format(file_id).unwrap() {
-            InputFormat::Nickel => {}
-            format => {
-                // We don't need to avoid import loops for non-Nickel files, because we don't
-                // call `typecheck` on an imported non-Nickel file.
-                return self.check_non_nickel(file_id, format);
-            }
+        let format = self.file_format(file_id).unwrap();
+        if !matches!(format, InputFormat::Nickel) {
+            // We don't need to avoid import loops for non-Nickel files, because we don't
+            // call `typecheck` on an imported non-Nickel file.
+            return self.check_non_nickel(file_id, format);
         }
 
         let analysis = self.analysis_reg.get(file_id);
@@ -408,13 +406,12 @@ impl World {
 
         let (reporter, warnings) = WarningReporter::new();
         let (cache_hub, pos_table) = self.cache_hub_for_eval(contract_id);
-
         let mut vm_ctxt =
             VmContext::new_with_pos_table(cache_hub, pos_table, std::io::stderr(), reporter);
 
         let value = match self
             .sources
-            .parse_other(&mut self.pos_table, file_id, format)
+            .parse_other(&mut vm_ctxt.pos_table, file_id, format)
         {
             Ok(t) => t,
             Err(e) => {
@@ -432,13 +429,13 @@ impl World {
         );
 
         // unwrap: we don't expect an error here, since we already typechecked above.
-        let contract_rt = vm_ctxt.prepare_eval_only(contract_id).unwrap();
+        let contract_value = vm_ctxt.prepare_eval_only(contract_id).unwrap();
 
         let value = NickelValue::term_posless(Term::Annotated(
             TypeAnnotation {
                 typ: None,
                 contracts: vec![LabeledType {
-                    typ: TypeF::Contract(contract_rt).into(),
+                    typ: TypeF::Contract(contract_value).into(),
                     label: Default::default(),
                 }],
             },
