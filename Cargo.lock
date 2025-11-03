@@ -532,11 +532,11 @@ checksum = "cbd0f76e066e64fdc5631e3bb46381254deab9ef1158292f27c8c57e3bf3fe59"
 
 [[package]]
 name = "codespan"
-version = "0.12.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e4b418d52c9206820a56fc1aa28db73d67e346ba8ba6aa90987e8d6becef7e4"
+checksum = "583f52b0658b321b25fd6b209b6c76cf058f433071297de64e5980c3d9aad937"
 dependencies = [
- "codespan-reporting",
+ "codespan-reporting 0.13.1",
  "serde",
 ]
 
@@ -545,6 +545,17 @@ name = "codespan-reporting"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
+dependencies = [
+ "serde",
+ "termcolor",
+ "unicode-width 0.2.1",
+]
+
+[[package]]
+name = "codespan-reporting"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
  "serde",
  "termcolor",
@@ -853,7 +864,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27d955b93e56a8e45cbc34df0ae920d8b5ad01541a4571222c78527c00e1a40a"
 dependencies = [
  "cc",
- "codespan-reporting",
+ "codespan-reporting 0.12.0",
  "indexmap",
  "proc-macro2 1.0.101",
  "quote 1.0.40",
@@ -868,7 +879,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "052f6c468d9dabdc2b8b228bcb2d7843b2bea0f3fb9c4e2c6ba5852574ec0150"
 dependencies = [
  "clap",
- "codespan-reporting",
+ "codespan-reporting 0.12.0",
  "indexmap",
  "proc-macro2 1.0.101",
  "quote 1.0.40",
@@ -1074,7 +1085,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1197,7 +1208,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2794,7 +2805,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
 dependencies = [
  "equivalent",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.0",
  "serde",
  "serde_core",
 ]
@@ -3471,7 +3482,7 @@ dependencies = [
 name = "nickel-lang"
 version = "0.1.0"
 dependencies = [
- "codespan-reporting",
+ "codespan-reporting 0.13.1",
  "indexmap",
  "malachite",
  "nickel-lang-core",
@@ -3515,7 +3526,7 @@ dependencies = [
  "bumpalo",
  "clap",
  "codespan",
- "codespan-reporting",
+ "codespan-reporting 0.13.1",
  "colorchoice",
  "comrak",
  "criterion",
@@ -3598,7 +3609,7 @@ dependencies = [
  "bincode 2.0.1",
  "clap",
  "codespan",
- "codespan-reporting",
+ "codespan-reporting 0.13.1",
  "criterion",
  "crossbeam",
  "csv",
@@ -4182,7 +4193,7 @@ dependencies = [
 name = "py-nickel"
 version = "1.14.0"
 dependencies = [
- "codespan-reporting",
+ "codespan-reporting 0.13.1",
  "nickel-lang-core",
  "pyo3",
  "pyo3-build-config",
@@ -4595,7 +4606,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5202,7 +5213,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5211,7 +5222,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2111ef44dae28680ae9752bb89409e7310ca33a8c621ebe7b106cf5c928b3ac0"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5988,7 +5999,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

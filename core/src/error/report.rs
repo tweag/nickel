@@ -122,7 +122,8 @@ pub fn report_with<E: IntoDiagnostics>(
 
     let result = match format {
         ErrorFormat::Text => diagnostics.iter().try_for_each(|d| {
-            codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
+            codespan_reporting::term::emit_to_write_style(writer, &config, files, d)
+                .map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map(|_| eprintln!())

@@ -314,7 +314,9 @@ pub fn diags_to_string(files: &Files, diags: &[Diagnostic<FileId>]) -> String {
 
     diags
         .iter()
-        .try_for_each(|d| codespan_reporting::term::emit(&mut buffer, &config, files, d))
+        .try_for_each(|d| {
+            codespan_reporting::term::emit_to_write_style(&mut buffer, &config, files, d)
+        })
         .unwrap();
 
     String::from_utf8(buffer.into_inner().into_inner()).unwrap()

@@ -134,7 +134,7 @@ impl Error {
                 };
                 let config = codespan_reporting::term::Config::default();
                 diagnostics.diagnostics.iter().try_for_each(|d| {
-                    Ok(codespan_reporting::term::emit(
+                    Ok(codespan_reporting::term::emit_to_write_style(
                         writer, &config, &err.files, d,
                     )?)
                 })
