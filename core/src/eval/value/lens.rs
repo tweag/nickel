@@ -67,8 +67,8 @@ impl<T: ValueBlockData + Clone> ValueLens<Container<T>> {
     ///
     /// # Safety
     ///
-    /// `value` must be either be an inlined empty container (matching `T`) or a value block with
-    /// tag `T::TAG`.
+    /// `value` must either be an inlined empty container (matching `T`) or a value block with tag
+    /// `T::TAG`.
     pub(super) unsafe fn container_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
