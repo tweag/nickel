@@ -257,7 +257,7 @@ impl Closurize for RecordData {
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {
         ValueContentRef::Term(Term::Var(_)
-            | Term::Fun(_, _)
+            | Term::Fun(_)
             // match acts like a function, and is a WHNF
             | Term::Match(_)) => false,
         ValueContentRef::Term(_)

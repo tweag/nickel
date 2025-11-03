@@ -491,13 +491,18 @@ impl Allocator {
 
         loop {
             match body.as_term() {
-                Some(Term::Fun(id, val)) => {
-                    builder = docs![self, builder, self.line(), self.as_string(id)];
-                    body = val;
+                Some(Term::Fun(data)) => {
+                    builder = docs![self, builder, self.line(), self.as_string(data.arg)];
+                    body = &data.body;
                 }
-                Some(Term::FunPattern(pat, val)) => {
-                    builder = docs![self, builder, self.line(), self.pat_with_parens(pat)];
-                    body = val;
+                Some(Term::FunPattern(data)) => {
+                    builder = docs![
+                        self,
+                        builder,
+                        self.line(),
+                        self.pat_with_parens(&data.pattern)
+                    ];
+                    body = &data.body;
                 }
                 _ => break,
             }
@@ -985,8 +990,10 @@ impl<'a> Pretty<'a, Allocator> for &Term {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         match self {
             Term::StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
-            Term::Fun(id, body) => allocator.function(allocator.as_string(id), body),
-            Term::FunPattern(pat, body) => allocator.function(allocator.pat_with_parens(pat), body),
+            Term::Fun(data) => allocator.function(allocator.as_string(data.arg), &data.body),
+            Term::FunPattern(data) => {
+                allocator.function(allocator.pat_with_parens(&data.pattern), &data.body)
+            }
             Term::Let(bindings, body, attrs) => docs![
                 allocator,
                 "let",

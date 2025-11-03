@@ -56,6 +56,18 @@ use std::{
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunPatternData {
+    pub pattern: Pattern,
+    pub body: NickelValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunData {
+    pub arg: LocIdent,
+    pub body: NickelValue,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -87,10 +99,10 @@ pub enum Term {
 
     /// A function. Grabs the value of its parameter on the stack, puts it in the environment and
     /// proceeds with the valuation of the body.
-    Fun(LocIdent, NickelValue),
+    Fun(FunData),
 
     /// A destructuring function.
-    FunPattern(Pattern, NickelValue),
+    FunPattern(Box<FunPatternData>),
 
     /// A let binding. Adds the binding to the environment and proceeds with the evaluation of the
     /// body.
@@ -831,7 +843,7 @@ impl Term {
         match self {
             Term::Value(value) | Term::Closurize(value) => value.type_of(),
             Term::RecRecord(..) => Some("Record"),
-            Term::Fun(_, _) | Term::FunPattern(_, _) => Some("Function"),
+            Term::Fun(_) | Term::FunPattern(_) => Some("Function"),
             // We could print a separate type for predicates. For the time being, we just consider
             // it to be the function resulting of `$predicate_to_ctr pred`.
             Term::Match { .. } => Some("MatchExpression"),
@@ -952,6 +964,16 @@ impl Term {
         } else {
             None
         }
+    }
+
+    /// Builds a term representing a function.
+    pub fn fun(arg: LocIdent, body: NickelValue) -> Self {
+        Term::Fun(FunData { arg, body })
+    }
+
+    /// Builds a term representing a function that patterns match on its argument.
+    pub fn fun_pattern(pattern: Pattern, body: NickelValue) -> Self {
+        Term::FunPattern(Box::new(FunPatternData { pattern, body }))
     }
 }
 
@@ -1798,13 +1820,13 @@ impl Traverse<NickelValue> for Term {
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
         Ok(match self {
-            Term::Fun(id, body) => {
-                let body = body.traverse(f, order)?;
-                Term::Fun(id, body)
-            }
-            Term::FunPattern(pat, body) => {
-                let body = body.traverse(f, order)?;
-                Term::FunPattern(pat, body)
+            Term::Fun(data) => Term::Fun(FunData {
+                arg: data.arg,
+                body: data.body.traverse(f, order)?,
+            }),
+            Term::FunPattern(mut data) => {
+                data.body = data.body.traverse(f, order)?;
+                Term::FunPattern(data)
             }
             Term::Let(bindings, body, attrs) => {
                 let bindings = bindings
@@ -1952,12 +1974,12 @@ impl Traverse<NickelValue> for Term {
                     None
                 }
             }),
-            Term::Fun(_, t)
-            | Term::FunPattern(_, t)
+            Term::Fun(FunData { arg: _, body: t })
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _)
             | Term::Value(t)
             | Term::Closurize(t) => t.traverse_ref(f, state),
+            Term::FunPattern(data) => data.body.traverse_ref(f, state),
             Term::Let(bindings, body, _) => bindings
                 .iter()
                 .find_map(|(_id, t)| t.traverse_ref(f, state))
@@ -2044,7 +2066,7 @@ pub mod make {
         ( $id:expr, $body:expr ) => {
             //MARKER
             $crate::eval::value::NickelValue::from(
-                $crate::term::Term::Fun(
+                $crate::term::Term::fun(
                     $crate::identifier::LocIdent::from($id),
                     $crate::eval::value::NickelValue::from($body)
                 )

@@ -8,7 +8,7 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        IndexMap, MatchBranch, StrChunk, Term, TypeAnnotation,
+        FunData, FunPatternData, IndexMap, MatchBranch, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -79,22 +79,8 @@ impl CollectFreeVars for Term {
             | Term::RuntimeError(_)
             | Term::Import { .. }
             | Term::ResolvedImport(_) => (),
-            Term::Fun(id, t) => {
-                let mut fresh = HashSet::new();
-
-                t.collect_free_vars(&mut fresh);
-                fresh.remove(&id.ident());
-
-                free_vars.extend(fresh);
-            }
-            Term::FunPattern(pat, body) => {
-                let mut fresh = HashSet::new();
-
-                body.collect_free_vars(&mut fresh);
-                pat.remove_bindings(&mut fresh);
-
-                free_vars.extend(fresh);
-            }
+            Term::Fun(data) => data.collect_free_vars(free_vars),
+            Term::FunPattern(data) => data.collect_free_vars(free_vars),
             Term::Let(bindings, body, attrs) => {
                 let mut fresh = HashSet::new();
 
@@ -304,6 +290,28 @@ impl CollectFreeVars for Field {
 impl CollectFreeVars for Include {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         self.metadata.annotation.collect_free_vars(set);
+    }
+}
+
+impl CollectFreeVars for FunData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        let mut fresh = HashSet::new();
+
+        self.body.collect_free_vars(&mut fresh);
+        fresh.remove(&self.arg.ident());
+
+        set.extend(fresh);
+    }
+}
+
+impl CollectFreeVars for FunPatternData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        let mut fresh = HashSet::new();
+
+        self.body.collect_free_vars(&mut fresh);
+        self.pattern.remove_bindings(&mut fresh);
+
+        set.extend(fresh);
     }
 }
 

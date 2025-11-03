@@ -4023,7 +4023,7 @@ fn eq<C: Cache>(
 fn eta_expand(op: UnaryOp, pos_op: PosIdx) -> Term {
     let param = LocIdent::fresh();
 
-    Term::Fun(
+    Term::fun(
         param,
         NickelValue::term(
             Term::Op1(op, NickelValue::term(Term::Var(param), pos_op)),
