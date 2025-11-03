@@ -1148,8 +1148,8 @@ impl NickelValue {
         }
     }
 
-    /// Updates the position of this value. First allocates a position index of the proper type
-    /// (inline or not) in the position table, and then use it as the new index.
+    /// Updates the position of this value. First allocates a position index in the position table
+    /// and use it as the new index.
     pub fn with_pos(self, pos_table: &mut PosTable, pos: TermPos) -> Self {
         self.with_pos_idx(pos_table.push(pos))
     }
