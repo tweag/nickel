@@ -372,18 +372,7 @@ impl NickelValue {
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
-        if value.is_empty() {
-            Self::inline(InlineValue::EmptyArray, PosIdx::NONE)
-        } else {
-            ValueBlockRc::encode(
-                ArrayData {
-                    array: value,
-                    pending_contracts,
-                },
-                PosIdx::NONE,
-            )
-            .into()
-        }
+        Self::array(value, pending_contracts, PosIdx::NONE) 
     }
 
     /// Creates a new empty array, but doesn't inline it. This forces the allocation of a value
