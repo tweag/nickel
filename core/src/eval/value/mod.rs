@@ -2295,9 +2295,9 @@ pub enum ValueContentRefMut<'a> {
 /// A lazy handle to the owned content of a value block.
 ///
 /// It's a common pattern to need to move the content out of a block (copying the content if it's
-/// shared, but avoiding copy if it's unique, like [std::)  only if a value matches some patterns. Typically
-/// during program transformations, where blocks should always be 1-reference counted, and where
-/// one transformation only affects specific nodes.
+/// shared, but avoiding copy if it's unique, like [std::rc::Rc::unwrap_or_clone]) only if a value
+/// matches some pattern. Typically during program transformations, where blocks should always be
+/// 1-reference counted, and where one transformation only affects specific nodes.
 ///
 /// This is the *lazy* part: while the type of the data is known, the content is hidden behind a
 /// lazy handle, which can either be unwrapped further - consuming the original value irreversibly
