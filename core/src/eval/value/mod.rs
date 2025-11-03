@@ -97,34 +97,34 @@ impl PartialEq for NickelValue {
 
 impl fmt::Debug for NickelValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "NickelValue(pos_idx: {:?}, ", self.pos_idx())?;
+        write!(f, "NickelValue {{ pos_idx: {:?}, data: ", self.pos_idx())?;
 
         match self.content_ref() {
-            ValueContentRef::Null => write!(f, "content: null"),
-            ValueContentRef::Bool(b) => write!(f, "content: {b}"),
-            ValueContentRef::Number(number) => write!(f, "content: {number}"),
-            ValueContentRef::Array(container) => write!(f, "array: {container:?}"),
-            ValueContentRef::Record(container) => write!(f, "record: {container:?}"),
-            ValueContentRef::String(string) => write!(f, "{string}"),
-            ValueContentRef::Thunk(thunk) => write!(f, "thunk: {thunk:?}"),
-            ValueContentRef::Term(term) => write!(f, "{term:?}"),
-            ValueContentRef::Label(label) => write!(f, "{label:?}"),
+            ValueContentRef::Null => write!(f, "InlineValue(null)"),
+            ValueContentRef::Bool(b) => write!(f, "InlineValue({b})"),
+            ValueContentRef::Number(number) => write!(f, "Number({number})"),
+            ValueContentRef::Array(container) => write!(f, "Array({container:?})"),
+            ValueContentRef::Record(container) => write!(f, "Record({container:?})"),
+            ValueContentRef::String(string) => write!(f, "String({string})"),
+            ValueContentRef::Thunk(thunk) => write!(f, "Thunk({thunk:?})"),
+            ValueContentRef::Term(term) => write!(f, "Term({term:?})"),
+            ValueContentRef::Label(label) => write!(f, "Label({label:?})"),
             ValueContentRef::EnumVariant(enum_variant_data) => {
-                write!(f, "{enum_variant_data:?}")
+                write!(f, "EnumVariant({enum_variant_data:?})")
             }
             ValueContentRef::ForeignId(foreign_id) => {
-                write!(f, "foreign id: {foreign_id:?}")
+                write!(f, "ForeignId({foreign_id:?})")
             }
             ValueContentRef::SealingKey(sealing_key) => {
-                write!(f, "sealing key: {sealing_key:?}")
+                write!(f, "SealingKey({sealing_key:?})")
             }
             ValueContentRef::CustomContract(custom_contract) => {
-                write!(f, "custom contract: {custom_contract:?}")
+                write!(f, "CustomContract({custom_contract:?})")
             }
-            ValueContentRef::Type(type_data) => write!(f, "{type_data:?}"),
+            ValueContentRef::Type(type_data) => write!(f, "Type({type_data:?})"),
         }?;
 
-        write!(f, ")")
+        write!(f, "}}")
     }
 }
 
