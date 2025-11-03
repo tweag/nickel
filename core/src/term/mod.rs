@@ -2092,8 +2092,8 @@ impl Traverse<NickelValue> for NickelValue {
             | ValueContent::Thunk(_)
             | ValueContent::SealingKey(_)
             | ValueContent::ForeignId(_)) => lens.restore(),
-            ValueContent::Array(lens) if lens.peek().is_empty_array() => lens.restore(),
-            ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),
+            ValueContent::Array(lens) if lens.peek().is_inline_empty_array() => lens.restore(),
+            ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => lens.restore(),
             ValueContent::Term(lens) => {
                 let term = lens.take();
                 let term = term.traverse(f, order)?;

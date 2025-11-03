@@ -54,7 +54,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                 term_lens.restore()
             }
         }
-        ValueContent::Record(lens) if lens.peek().is_empty_record() => lens.restore(),
+        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => lens.restore(),
         ValueContent::Record(record_lens) => {
             // unwrap(): we treated the inline empty record case above
             let record_data = record_lens.take().into_opt().unwrap();

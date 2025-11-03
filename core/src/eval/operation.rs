@@ -683,7 +683,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 })?;
 
                 match value.content() {
-                    ValueContent::Record(lens) if lens.peek().is_empty_record() => {
+                    ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => {
                         Ok(lens.restore().with_pos_idx(pos_op).into())
                     }
                     ValueContent::Record(lens) => {
@@ -1098,7 +1098,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 match value.content() {
-                    ValueContent::Record(lens) if !lens.peek().is_empty_record() => {
+                    ValueContent::Record(lens) if !lens.peek().is_inline_empty_record() => {
                         //unwrap(): the guard of the pattern exclude empty records
                         let record = lens.take().unwrap_alloc();
                         let fields = record
@@ -1133,7 +1133,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         Ok(seq_terms(terms.into_iter(), pos_op, cont).into())
                     }
-                    ValueContent::Array(lens) if !lens.peek().is_empty_array() => {
+                    ValueContent::Array(lens) if !lens.peek().is_inline_empty_array() => {
                         //unwrap(): the guard of the pattern exclude empty arrays
                         let ArrayData {
                             array: ts,
@@ -1240,7 +1240,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 // Ditto if the record is empty. We can also drop the environment.
-                if value.is_empty_record() {
+                if value.is_inline_empty_record() {
                     return Ok(value.into());
                 }
 
@@ -2400,7 +2400,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let mut value2 = value2;
 
-                if value2.is_empty_record() {
+                if value2.is_inline_empty_record() {
                     // We are going to insert in the record, so we make sure that it's an allocated
                     // block and not an inline empty record.
                     value2 = NickelValue::empty_record_block(pos2);
@@ -2466,7 +2466,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 let mut value2 = value2;
 
-                if value2.is_empty_record() {
+                if value2.is_inline_empty_record() {
                     // We are going to insert in the record, so we make sure that it's an allocated
                     // block and not an inline empty record.
                     value2 = NickelValue::empty_record_block(pos2);
@@ -2899,7 +2899,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     lens => return mk_type_error!("Label", 1, lens.restore()),
                 };
 
-                if value2.is_empty_array() {
+                if value2.is_inline_empty_array() {
                     // We are going to insert in the array, so we make sure that it's an allocated
                     // block and not an inline empty array.
                     value2 = NickelValue::empty_array_block(pos2);
@@ -3491,7 +3491,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("Label", 2, arg_pos2, arg2);
                 };
 
-                if arg3.is_empty_record() {
+                if arg3.is_inline_empty_record() {
                     // We are going to insert in the record, so we make sure that it's an allocated
                     // block and not an inline empty record.
                     arg3 = NickelValue::empty_record_block(arg3.pos_idx());
@@ -3662,7 +3662,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("Number", 2, arg_pos2, arg2);
                 };
 
-                if arg3.is_empty_array() {
+                if arg3.is_inline_empty_array() {
                     // We are going to insert in the array, so we make sure that it's an allocated
                     // block and not an inline empty array.
                     arg3 = NickelValue::empty_array_block(arg3.pos_idx());

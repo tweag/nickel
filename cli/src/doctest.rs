@@ -507,7 +507,7 @@ fn doctest_transform(
                 record_with_doctests(record_data, Some((includes, dyn_fields)), pos_idx)?
             }
             // unwrap(): we exclude the inline empty record case, which ensures that `into_opt` is `Some`
-            ValueContent::Record(lens) if !lens.peek().is_empty_record() => {
+            ValueContent::Record(lens) if !lens.peek().is_inline_empty_record() => {
                 record_with_doctests(lens.take().into_opt().unwrap(), None, pos_idx)?
             }
             lens => lens.restore(),

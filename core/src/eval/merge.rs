@@ -263,7 +263,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // for performance reasons: to avoid allocation, recomputation of fixpoint, etc.
             (ValueContent::Record(lens), ValueContent::Record(empty))
             | (ValueContent::Record(empty), ValueContent::Record(lens))
-                if empty.peek().is_empty_record() =>
+                if empty.peek().is_inline_empty_record() =>
             {
                 // In merge contract mode, we need to maintain the position of the first argument,
                 // which is the scrutinized value, to maintain good contract error messages.

@@ -885,7 +885,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
                     // should probably do a `content()` call at the top of the eval function.
                     let result = match value.clone().content() {
-                        ValueContent::Array(lens) if lens.peek().is_empty_array() => lens.restore(),
+                        ValueContent::Array(lens) if lens.peek().is_inline_empty_array() => lens.restore(),
                         ValueContent::Array(lens) => {
                             // unwrap(): we treated the empty array case above
                             let array_data = lens.take().into_opt().unwrap();
@@ -912,7 +912,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                             NickelValue::array(array, pending_contracts, pos_idx)
                         }
-                        ValueContent::Record(lens) if lens.peek().is_empty_record() => {
+                        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => {
                             lens.restore()
                         }
                         ValueContent::Record(lens) => NickelValue::record(
@@ -1389,7 +1389,7 @@ pub fn env_add_record<C: Cache>(
     env: &mut Environment,
     closure: Closure,
 ) -> Result<(), EnvBuildError> {
-    if closure.value.is_empty_record() {
+    if closure.value.is_inline_empty_record() {
         return Ok(());
     }
 
