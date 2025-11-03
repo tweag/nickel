@@ -372,7 +372,7 @@ impl NickelValue {
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
-        Self::array(value, pending_contracts, PosIdx::NONE) 
+        Self::array(value, pending_contracts, PosIdx::NONE)
     }
 
     /// Creates a new empty array, but doesn't inline it. This forces the allocation of a value
@@ -546,7 +546,7 @@ impl NickelValue {
     }
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
-    /// with tag array, or `None` otherwise.
+    /// with tag array or an inline empty array. Returns `None` otherwise.
     pub fn as_array(&self) -> Option<Container<&ArrayData>> {
         if self.is_empty_array() {
             Some(Container::Empty)
@@ -556,7 +556,7 @@ impl NickelValue {
     }
 
     /// Returns a reference to the inner record stored in this value if `self` is a value block
-    /// with tag record, or `None` otherwise.
+    /// with tag record or an inline empty record. Returns `None` otherwise.
     pub fn as_record(&self) -> Option<Container<&RecordData>> {
         if self.is_empty_record() {
             Some(Container::Empty)
