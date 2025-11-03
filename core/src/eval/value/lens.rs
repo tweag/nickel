@@ -356,7 +356,7 @@ impl ValueLens<NickelValue> {
 }
 
 impl ValueLens<Vec<StrChunk<NickelValue>>> {
-    /// Creates a new lens extracting [crate::term::Term::Value].
+    /// Creates a new lens extracting [crate::term::Term::StrChunks].
     ///
     /// # Safety
     ///
