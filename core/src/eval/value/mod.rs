@@ -380,10 +380,7 @@ impl NickelValue {
     /// that will be mutated in a second step.
     pub fn empty_array_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(
-            ArrayData {
-                array: Array::default(),
-                pending_contracts: Vec::new(),
-            },
+            ArrayData::default()
             pos_idx,
         )
         .into()
