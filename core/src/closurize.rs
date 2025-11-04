@@ -212,9 +212,6 @@ impl Closurize for ArrayData {
         env: Environment,
         btype: BindingType,
     ) -> Self {
-        //TODO[RFC007]: we need to handle the case where the array is already closurized but is
-        //revertible at the callsite, now.
-
         let pending_contracts =
             self.pending_contracts
                 .closurize_as_btype(cache, env.clone(), btype.clone());
