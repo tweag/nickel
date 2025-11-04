@@ -386,6 +386,34 @@ pub trait CloneTo {
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to>;
 }
 
+impl<T> CloneTo for &T
+where
+    T: for<'a> CloneTo<Data<'a>: Clone + Allocable>,
+    for<'a> <T as CloneTo>::Data<'a>: 'a,
+{
+    type Data<'a> = &'a T::Data<'a>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        dest.clone_ref_from::<T>(data)
+    }
+}
+
+impl<T: CloneTo> CloneTo for Box<T> {
+    type Data<'a> = Box<T::Data<'a>>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        Box::new(dest.clone_from::<T>(*data))
+    }
+}
+
+impl<S: CloneTo, T: CloneTo> CloneTo for (S, T) {
+    type Data<'a> = (S::Data<'a>, T::Data<'a>);
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        (dest.clone_from::<S>(data.0), dest.clone_from::<T>(data.1))
+    }
+}
+
 impl CloneTo for Ast<'_> {
     type Data<'a> = Ast<'a>;
 
@@ -645,32 +673,56 @@ impl CloneTo for Type<'_> {
     }
 }
 
-impl CloneTo for typ::EnumRows<'_> {
-    type Data<'ast> = typ::EnumRows<'ast>;
+impl<Ty: CloneTo, ERows: CloneTo> CloneTo for typ::EnumRowsF<Ty, ERows> {
+    type Data<'ast> = typ::EnumRowsF<Ty::Data<'ast>, ERows::Data<'ast>>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
         use typ::*;
 
-        let inner = match data.0 {
+        match data {
             EnumRowsF::Empty => EnumRowsF::Empty,
             EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
-                row: EnumRow::clone_to(row, dest),
-                tail: dest.clone_ref_from::<EnumRows>(tail),
+                row: EnumRowF::<Ty>::clone_to(row, dest),
+                tail: dest.clone_from::<ERows>(tail),
             },
             EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
-        };
-
-        EnumRows(inner)
+        }
     }
 }
 
-impl CloneTo for typ::EnumRow<'_> {
-    type Data<'ast> = typ::EnumRow<'ast>;
+impl CloneTo for typ::EnumRows<'_> {
+    type Data<'ast> = typ::EnumRows<'ast>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        typ::EnumRow {
+        EnumRows(dest.clone_from::<EnumRowsUnr>(data.0))
+    }
+}
+
+impl<Ty: CloneTo> CloneTo for typ::EnumRowF<Ty> {
+    type Data<'ast> = typ::EnumRowF<Ty::Data<'ast>>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        typ::EnumRowF {
             id: data.id,
-            typ: data.typ.map(|ty| dest.clone_ref_from::<Type>(ty)),
+            typ: data.typ.map(|ty| dest.clone_from::<Ty>(ty)),
+        }
+    }
+}
+
+impl<Ty: CloneTo, RRows: CloneTo> CloneTo for typ::RecordRowsF<Ty, RRows> {
+    type Data<'ast> = typ::RecordRowsF<Ty::Data<'ast>, RRows::Data<'ast>>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        use typ::*;
+
+        match data {
+            RecordRowsF::Empty => RecordRowsF::Empty,
+            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
+                row: RecordRowF::<Ty>::clone_to(row, dest),
+                tail: dest.clone_from::<RRows>(tail),
+            },
+            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
+            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
         }
     }
 }
@@ -679,29 +731,17 @@ impl CloneTo for typ::RecordRows<'_> {
     type Data<'ast> = typ::RecordRows<'ast>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        use typ::*;
-
-        let inner = match data.0 {
-            RecordRowsF::Empty => RecordRowsF::Empty,
-            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
-                row: RecordRow::clone_to(row, dest),
-                tail: dest.clone_ref_from::<RecordRows>(tail),
-            },
-            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
-            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
-        };
-
-        RecordRows(inner)
+        RecordRows(dest.clone_from::<RecordRowsUnr>(data.0))
     }
 }
 
-impl CloneTo for typ::RecordRow<'_> {
-    type Data<'ast> = typ::RecordRow<'ast>;
+impl<Ty: CloneTo> CloneTo for typ::RecordRowF<Ty> {
+    type Data<'ast> = typ::RecordRowF<Ty::Data<'ast>>;
 
     fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        typ::RecordRow {
+        typ::RecordRowF {
             id: data.id,
-            typ: dest.clone_ref_from::<Type>(data.typ),
+            typ: dest.clone_from::<Ty>(data.typ),
         }
     }
 }
@@ -834,6 +874,52 @@ impl CloneTo for OrPattern<'_> {
                     .map(|pat| Pattern::clone_to(pat.clone(), dest)),
             ),
             ..pat
+        }
+    }
+}
+
+impl<Ty, RRows, ERows, Te> CloneTo for TypeF<Ty, RRows, ERows, Te>
+where
+    Ty: CloneTo,
+    RRows: CloneTo,
+    ERows: CloneTo,
+    Te: CloneTo,
+{
+    type Data<'a> = TypeF<Ty::Data<'a>, RRows::Data<'a>, ERows::Data<'a>, Te::Data<'a>>;
+
+    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
+        match data {
+            TypeF::Dyn => TypeF::Dyn,
+            TypeF::Number => TypeF::Number,
+            TypeF::Bool => TypeF::Bool,
+            TypeF::String => TypeF::String,
+            TypeF::Symbol => TypeF::Symbol,
+            TypeF::ForeignId => TypeF::ForeignId,
+            TypeF::Contract(te) => TypeF::Contract(dest.clone_from::<Te>(te)),
+            TypeF::Arrow(src, tgt) => {
+                TypeF::Arrow(dest.clone_from::<Ty>(src), dest.clone_from::<Ty>(tgt))
+            }
+            TypeF::Var(id) => TypeF::Var(id),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => TypeF::Forall {
+                var,
+                var_kind,
+                body: dest.clone_from::<Ty>(body),
+            },
+            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<ERows>(erows)),
+            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<RRows>(rrows)),
+            TypeF::Dict {
+                type_fields,
+                flavour,
+            } => TypeF::Dict {
+                type_fields: dest.clone_from::<Ty>(type_fields),
+                flavour,
+            },
+            TypeF::Array(ty) => TypeF::Array(dest.clone_from::<Ty>(ty)),
+            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
         }
     }
 }

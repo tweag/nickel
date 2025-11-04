@@ -42,7 +42,7 @@ fn parse(s: &str) -> Option<NickelValue> {
 
 /// Same as [parse], but when we actually need the position table later.
 fn parse_with_table(pos_table: &mut PosTable, s: &str) -> Option<NickelValue> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
     grammar::TermParser::new()
         .parse_strict_compat(pos_table, id, lexer::Lexer::new(s))

@@ -3,7 +3,7 @@
 //! Using this module, you can define Nickel values using a builder style. For example:
 //!
 //! ```rust
-//! # use nickel_lang_core::bytecode::ast::{record::MergePriority, Ast, Node, builder::Record, AstAlloc};
+//! # use nickel_lang_parser::ast::{record::MergePriority, Ast, Node, builder::Record, AstAlloc};
 //!
 //! let alloc = AstAlloc::new();
 //!
@@ -27,7 +27,8 @@
 use crate::identifier::Ident;
 
 use super::{
-    record::{FieldMetadata, FieldPathElem, Include, MergePriority},
+    MergePriority,
+    record::{FieldMetadata, FieldPathElem, Include},
     typ::Type,
     *,
 };
@@ -339,21 +340,21 @@ impl<'ast> Record<'ast> {
 macro_rules! app {
     // We avoid a vec allocation for unary applications, which are relatively common.
     ( $alloc:expr, $f:expr , $arg:expr $(,)?) => {
-            $crate::bytecode::ast::Ast::from(
+            $crate::ast::Ast::from(
                 $alloc.app(
-                    $crate::bytecode::ast::Ast::from($f),
-                    std::iter::once($crate::bytecode::ast::Ast::from($arg))
+                    $crate::ast::Ast::from($f),
+                    std::iter::once($crate::ast::Ast::from($arg))
                 )
             )
     };
     ( $alloc:expr, $f:expr, $arg1:expr $(, $args:expr )+ $(,)?) => {
         {
             let args = vec![
-                $crate::bytecode::ast::Ast::from($arg1)
-                $(, $crate::bytecode::ast::Ast::from($args) )+
+                $crate::ast::Ast::from($arg1)
+                $(, $crate::ast::Ast::from($args) )+
             ];
 
-            $crate::bytecode::ast::Ast::from($alloc.app($crate::bytecode::ast::Ast::from($f), args))
+            $crate::ast::Ast::from($alloc.app($crate::ast::Ast::from($f), args))
         }
     };
 }
@@ -363,20 +364,20 @@ macro_rules! app {
 macro_rules! primop_app {
     // We avoid a vec allocation for unary primop applications, which are relatively common.
     ( $alloc:expr, $op:expr , $arg:expr $(,)?) => {
-            $crate::bytecode::ast::Ast::from(
+            $crate::ast::Ast::from(
                 $alloc.prim_op(
                     $op,
-                    std::iter::once($crate::bytecode::ast::Ast::from($arg))
+                    std::iter::once($crate::ast::Ast::from($arg))
                 )
             )
     };
     ( $alloc:expr, $op:expr, $arg1:expr $(, $args:expr )+ $(,)?) => {
         {
             let args = vec![
-                $crate::bytecode::ast::Ast::from($arg1)
-                $(, $crate::bytecode::ast::Ast::from($args) )+
+                $crate::ast::Ast::from($arg1)
+                $(, $crate::ast::Ast::from($args) )+
             ];
-            $crate::bytecode::ast::Ast::from($alloc.prim_op($op, args))
+            $crate::ast::Ast::from($alloc.prim_op($op, args))
         }
     };
 }
@@ -397,11 +398,11 @@ macro_rules! fun {
     ($alloc:expr, args=[ $( $args:expr, )+ ], $body:expr) => {
         {
             let args = vec![
-                $($crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($args)), )+
+                $($crate::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($args)), )+
             ];
 
-            $crate::bytecode::ast::Ast::from(
-                $alloc.fun(args, $crate::bytecode::ast::Ast::from($body))
+            $crate::ast::Ast::from(
+                $alloc.fun(args, $crate::ast::Ast::from($body))
             )
         }
     };
@@ -411,10 +412,10 @@ macro_rules! fun {
     };
     // We avoid a vec allocation for unary functions, which are relatively common.
     ( $alloc:expr, $arg:expr, $body:expr $(,)?) => {
-        $crate::bytecode::ast::Ast::from(
+        $crate::ast::Ast::from(
             $alloc.fun(
-                std::iter::once($crate::bytecode::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($arg))),
-                $crate::bytecode::ast::Ast::from($body)
+                std::iter::once($crate::ast::pattern::Pattern::any($crate::identifier::LocIdent::from($arg))),
+                $crate::ast::Ast::from($body)
             )
         )
     };

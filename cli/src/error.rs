@@ -204,7 +204,7 @@ impl Warning {
         use nickel_lang_core::error::report::report as core_report;
         match self {
             Warning::EmptyQueryPath => {
-                let mut files = Files::new();
+                let mut files = Files::empty();
                 let diag = Diagnostic::warning()
                     .with_message("empty query path")
                     .with_notes(vec![
@@ -263,7 +263,7 @@ impl From<nickel_lang_package::error::Error> for Error {
 // the same format set (potentially by default) by the `--error-format` flag.
 // This also makes error styling more consistent.
 fn report_standalone(main_label: &str, msg: Option<String>, format: ErrorFormat, color: ColorOpt) {
-    let mut dummy_files = Files::new();
+    let mut dummy_files = Files::empty();
     let diagnostic = Diagnostic::error()
         .with_message(main_label)
         .with_notes(msg.into_iter().collect());

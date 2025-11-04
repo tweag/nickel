@@ -408,21 +408,21 @@
           # rebuilt infrequently.
           cargoArtifacts = craneLib.buildPackage {
             inherit pname version;
-            pnameSuffix = "-core-lalrpop";
+            pnameSuffix = "-parser-lalrpop";
             src = craneLib.mkDummySrc {
               inherit src;
 
               # after stubbing out, reset things back just enough for lalrpop build
               extraDummyScript = ''
-                mkdir -p $out/core/src/parser
-                cp ${./core/build.rs} $out/core/build.rs
-                cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
+                mkdir -p $out/parser/src/
+                cp ${./parser/build.rs} $out/parser/build.rs
+                cp ${./parser/src/grammar.lalrpop} $out/parser/src/grammar.lalrpop
               '' +
               # package.build gets set to a dummy file. reset it to use local build.rs
               # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
               ''
-                ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
-                mv tmp $out/core/Cargo.toml
+                ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/parser/Cargo.toml > tmp
+                mv tmp $out/parser/Cargo.toml
               '';
             };
 

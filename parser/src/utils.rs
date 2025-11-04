@@ -9,15 +9,14 @@ use std::{
 use super::error::ParseError;
 
 use crate::{
-    app,
-    bytecode::ast::{
+    Number, app,
+    ast::{
+        combine::merge_doc,
         pattern::bindings::Bindings as _,
         record::{FieldDef, FieldMetadata, Include},
         *,
     },
-    cache::InputFormat,
     combine::CombineAlloc,
-    eval::merge::merge_doc,
     files::FileId,
     fun,
     identifier::LocIdent,
@@ -626,53 +625,5 @@ pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
                 "all elements in `unindent` should be expressions, but found a literal"
             ),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        combine::Combine,
-        label::Label,
-        term::{LabeledType, TypeAnnotation},
-        typ::{Type, TypeF},
-    };
-
-    #[test]
-    fn contract_annotation_order() {
-        let ty1 = LabeledType {
-            typ: TypeF::Number.into(),
-            label: Label::dummy(),
-        };
-        let annot1 = TypeAnnotation {
-            typ: None,
-            contracts: vec![ty1.clone()],
-        };
-
-        let ty2 = LabeledType {
-            typ: TypeF::Bool.into(),
-            label: Label::dummy(),
-        };
-        let annot2 = TypeAnnotation {
-            typ: None,
-            contracts: vec![ty2.clone()],
-        };
-
-        assert_eq!(Combine::combine(annot1, annot2).contracts, vec![ty1, ty2])
-    }
-
-    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
-    #[test]
-    fn type_annotation_combine() {
-        let inner = TypeAnnotation {
-            typ: Some(LabeledType {
-                typ: Type::from(TypeF::Number),
-                label: Label::dummy(),
-            }),
-            ..Default::default()
-        };
-        let outer = TypeAnnotation::default();
-        let res = TypeAnnotation::combine(outer, inner);
-        assert_ne!(res.typ, None);
     }
 }

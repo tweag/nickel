@@ -15,7 +15,7 @@ use crate::{
     typ::*,
 };
 
-use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
+use malachite::base::num::conversion::traits::ToSci;
 use once_cell::sync::Lazy;
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -568,7 +568,9 @@ impl Allocator {
     fn dyn_field<'a>(&'a self, id_expr: &NickelValue, field: &Field) -> DocBuilder<'a, Self> {
         match id_expr.as_term() {
             // Nickel will not parse a multiline string literal in this position
-            Some(Term::StrChunks(chunks)) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            Some(Term::StrChunks(chunks)) => {
+                self.chunks(chunks.as_slice(), StringRenderStyle::ForceMonoline)
+            }
             Some(Term::ParseError(_)) => docs![self, "%<parse error>"],
             _ => panic!("Dynamic record fields must be StrChunks currently"),
         }
@@ -1220,7 +1222,7 @@ impl<'a> Pretty<'a, Allocator> for &EnumRows {
     }
 }
 
-impl<'a> Pretty<'a, Allocator> for &EnumRow {
+impl<'a> Pretty<'a, Allocator> for &EnumRowF<Box<Type>> {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         let mut result = allocator
             .text("'")
@@ -1242,6 +1244,12 @@ impl<'a> Pretty<'a, Allocator> for &EnumRow {
         }
 
         result
+    }
+}
+
+impl<'a> Pretty<'a, Allocator> for &EnumRow {
+    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
+        self.0.pretty(allocator)
     }
 }
 
@@ -1283,6 +1291,12 @@ where
 impl<'a> Pretty<'a, Allocator> for RecordRowF<&Type> {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         (&self).pretty(allocator)
+    }
+}
+
+impl<'a> Pretty<'a, Allocator> for &RecordRow {
+    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
+        self.0.pretty(allocator)
     }
 }
 
@@ -1453,7 +1467,7 @@ mod tests {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
-        let id = Files::new().add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         FixedTypeParser::new()
             .parse_strict_compat(&mut PosTable::new(), id, Lexer::new(s))
@@ -1462,7 +1476,7 @@ mod tests {
 
     /// Parse a term represented as a string.
     fn parse_term(s: &str) -> NickelValue {
-        let id = Files::new().add("<test>", s);
+        let id = Files::empty().add("<test>", s);
 
         TermParser::new()
             .parse_strict_compat(&mut PosTable::new(), id, Lexer::new(s))

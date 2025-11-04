@@ -155,7 +155,7 @@ impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error {
             error: Box::new(nickel_lang_core::error::Error::IOError(e.into())),
-            files: Files::new(),
+            files: Files::empty(),
         }
     }
 }
@@ -164,7 +164,7 @@ impl From<nickel_lang_core::error::ExportError> for Error {
     fn from(e: nickel_lang_core::error::ExportError) -> Self {
         Error {
             error: Box::new(e.into()),
-            files: Files::new(),
+            files: Files::empty(),
         }
     }
 }

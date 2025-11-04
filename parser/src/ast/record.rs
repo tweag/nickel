@@ -3,10 +3,12 @@ use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseO
 use crate::{
     identifier::{Ident, LocIdent},
     position::TermPos,
-    term::IndexMap,
 };
 
-pub use crate::term::MergePriority;
+use indexmap::IndexMap;
+
+// TODO(parser migration): compatibility shim
+pub use crate::ast::MergePriority;
 
 /// Element of a record field path in a record field definition. For example, in  `{ a."%{"hello-"
 /// ++ "world"}".c = true }`, the path `a."%{b}".c` is composed of three elements: an identifier
@@ -16,9 +18,9 @@ pub enum FieldPathElem<'ast> {
     /// A statically known identifier.
     Ident(LocIdent),
     /// A dynamic field name written as a quoted expression, e.g. `"%{protocol}" = .. `. Normally,
-    /// the expression must be a [crate::bytecode::ast::Node::StringChunks], so we could store the
+    /// the expression must be a [crate::ast::Node::StringChunks], so we could store the
     /// chunks directly which would be more precise. However, it's useful to keep a general
-    /// [crate::bytecode::ast::Ast] to store errors when part of the field path failed to parse
+    /// [crate::ast::Ast] to store errors when part of the field path failed to parse
     /// correctly.
     Expr(Ast<'ast>),
 }
