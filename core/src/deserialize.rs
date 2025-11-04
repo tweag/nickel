@@ -322,7 +322,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         match self.as_string() {
             Some(s) => visitor.visit_str(s),
             _ => Err(RustDeserializationError::InvalidType {
-                expected: "Str".to_string(),
+                expected: "String".to_string(),
                 occurred: self.type_of().unwrap_or("Other").to_owned(),
             }),
         }
@@ -336,7 +336,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         match self.content() {
             ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
             lens => Err(RustDeserializationError::InvalidType {
-                expected: "Str".to_string(),
+                expected: "String".to_string(),
                 occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
         }
