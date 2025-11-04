@@ -636,10 +636,6 @@ fn load<'ast>(
 // evaluated.
 fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
     let value: NickelValue = ast.to_mainline(pos_table);
-
-    // The mainline conversion creates RecRecords, but since they came from YAML we know they're
-    // just normal Records. This is important for std.deserialize, since it expects deserialized
-    // data to be evaluated.
     value
         .traverse::<_, Infallible>(
             &mut |value: NickelValue| {
