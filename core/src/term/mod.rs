@@ -164,8 +164,6 @@ pub enum Term {
     Sealed(SealingKey, NickelValue, Label),
 
     /// A term with a type and/or contract annotation.
-    // #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
-    // #[serde(skip_deserializing)]
     Annotated(TypeAnnotation, NickelValue),
 
     /// An unresolved import.
@@ -203,69 +201,6 @@ pub enum Term {
     /// behavior of `RuntimeError` behaves.
     RuntimeError(EvalErrorData),
 }
-
-// PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
-// Most of the instances aren't really meaningful to use outside of very simple cases, and you
-// should avoid comparing terms directly.
-//
-// We have to implement this instance by hand because of the `Closure` node.
-// #[cfg(test)]
-// impl PartialEq for Term {
-//     #[track_caller]
-//     fn eq(&self, other: &Self) -> bool {
-//         match (self, other) {
-//             // (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
-//             // (Self::Num(l0), Self::Num(r0)) => l0 == r0,
-//             // (Self::Str(l0), Self::Str(r0)) => l0 == r0,
-//             (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
-//             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
-//             (Self::FunPattern(l0, l1), Self::FunPattern(r0, r1)) => l0 == r0 && l1 == r1,
-//             // (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
-//             (Self::Let(l0, l1, l2), Self::Let(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
-//             (Self::LetPattern(l0, l1, l2), Self::LetPattern(r0, r1, r2)) => {
-//                 l0 == r0 && l1 == r1 && l2 == r2
-//             }
-//             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
-//             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
-//             // (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
-//             // (Self::Record(l0), Self::Record(r0)) => l0 == r0,
-//             (Self::RecRecord(l0, l1, l2, l3), Self::RecRecord(r0, r1, r2, r3)) => {
-//                 l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
-//             }
-//             (Self::Match(l_data), Self::Match(r_data)) => l_data == r_data,
-//             // (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
-//             (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
-//             (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
-//             (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
-//             // (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
-//             (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => {
-//                 l0 == r0 && l1 == r1 && l2 == r2
-//             }
-//             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-//             (Self::Import(l), Self::Import(r)) => l == r,
-//             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
-//             (
-//                 Self::Type {
-//                     typ: l0,
-//                     contract: l1,
-//                 },
-//                 Self::Type {
-//                     typ: r0,
-//                     contract: r1,
-//                 },
-//             ) => l0 == r0 && l1 == r1,
-//             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
-//             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
-//             // We don't compare closure, because we can't, without the evaluation cache at hand.
-//             // It's ok even if the cache index are the same: we implement PartialEq, so we can have
-//             // `x != x`. In practice, this case shouldn't even be triggered, because tests usually
-//             // compare simple terms without closures in it (or terms where closures have
-//             // been substituted for their value).
-//             (Self::Closure(_l0), Self::Closure(_r0)) => false,
-//             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
-//         }
-//     }
-// }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// Specifies where something should be imported from.
