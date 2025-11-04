@@ -7,9 +7,9 @@ use nickel_lang_git::Spec;
 use tempfile::tempdir;
 
 use crate::{
+    ManifestFile,
     error::{Error, IoResultExt},
     manifest::MANIFEST_NAME,
-    ManifestFile,
 };
 
 use super::{Id, Package, PreciseId};

@@ -14,7 +14,7 @@ use crate::{
         ForeignIdPayload, IndexMap, Number, RecordOpKind, RuntimeContract, SealingKey, Term,
         record::Field, string::NickelString,
     },
-    traverse::{Traverse, TraverseOrder, TraverseControl},
+    traverse::{Traverse, TraverseControl, TraverseOrder},
     typ::Type,
 };
 

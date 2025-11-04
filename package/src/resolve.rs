@@ -4,14 +4,14 @@ use nickel_lang_core::{cache::normalize_path, identifier::Ident, package::Packag
 use pubgrub::{DefaultStringReporter, DependencyProvider, Reporter as _};
 
 use crate::{
+    Dependency, IndexDependency, ManifestFile, PreciseGitPkg, PreciseIndexPkg, PrecisePkg,
+    UnversionedPrecisePkg,
     config::Config,
     error::{Error, IoResultExt as _},
     index::{self, PackageIndex, Shared},
     lock::{LockFile, LockPrecisePkg},
     snapshot::Snapshot,
     version::{SemVer, VersionReq},
-    Dependency, IndexDependency, ManifestFile, PreciseGitPkg, PreciseIndexPkg, PrecisePkg,
-    UnversionedPrecisePkg,
 };
 
 pub type ResolveError = pubgrub::PubGrubError<PackageRegistry>;

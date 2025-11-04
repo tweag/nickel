@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     fs::File,
-    io::{stdin, stdout, BufReader, Read, Write},
+    io::{BufReader, Read, Write, stdin, stdout},
     path::{Path, PathBuf},
 };
 

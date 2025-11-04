@@ -1,13 +1,11 @@
 use crate::{
-    bytecode::{
-        ast::{
-            Ast, AstAlloc,
-            compat::{FromAst, ToMainline},
-            typ::Type,
-        },
+    bytecode::ast::{
+        Ast, AstAlloc,
+        compat::{FromAst, ToMainline},
+        typ::Type,
     },
-    eval::value::NickelValue,
     error::{ParseError, ParseErrors},
+    eval::value::NickelValue,
     files::FileId,
     identifier::LocIdent,
     metrics,

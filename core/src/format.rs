@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
 };
 
-use topiary_core::{formatter, Language, Operation, TopiaryQuery};
+use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
 #[derive(Debug)]
 /// Errors that may be encountered during formatting

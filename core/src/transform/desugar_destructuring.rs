@@ -4,8 +4,8 @@
 use smallvec::SmallVec;
 
 use crate::{
-    eval::value::{NickelValue, ValueContent, lens::TermContent},
     error::EvalErrorData,
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
     position::PosTable,
     term::{BinaryOp, BindingType, LetAttrs, Term, make, pattern::*},

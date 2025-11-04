@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use nickel_lang_core::cache::CacheHub;
 use nickel_lang_utils::bench::criterion_config;

@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 use test_generator::test_resources;
 
-use lsp_harness::{file_url_from_path, TestFixture, TestHarness};
+use lsp_harness::{TestFixture, TestHarness, file_url_from_path};
 
 #[test_resources("lsp/nls/tests/inputs/*.ncl")]
 fn check_snapshots(path: &str) {

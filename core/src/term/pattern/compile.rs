@@ -24,8 +24,8 @@
 //! we can generate inlined versions on-the-fly here).
 use super::*;
 use crate::{
-    eval::value::NickelValue,
     error::EvalErrorData,
+    eval::value::NickelValue,
     metrics::increment,
     mk_app,
     position::PosTable,
@@ -186,8 +186,7 @@ fn update_with_merge(
     //
     // unwrap(): typechecking ensures that there are no unbound variables at this point
     let singleton =
-        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton)
-            .unwrap();
+        crate::transform::gen_pending_contracts::transform_one(pos_table, singleton).unwrap();
 
     // Since we generate a non-recursive record and inject it in the evaluation, we must manually
     // enforce it's properly closurized.

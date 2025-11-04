@@ -1,15 +1,15 @@
 use libtest_mimic::{Arguments, Trial};
 use std::{path::Path, process::ExitCode, sync::Arc};
-use util::{set_up_git_repo, PackageBuilder};
+use util::{PackageBuilder, set_up_git_repo};
 
 use nickel_lang_core::{
-    error::{report::report_as_str, NullReporter},
+    error::{NullReporter, report::report_as_str},
     eval::cache::lazy::CBNCache,
     program::Program,
 };
 use nickel_lang_package::{
-    config::Config, index::PackageIndex, lock::LockFile, manifest::MANIFEST_NAME, resolve,
-    snapshot::Snapshot, ManifestFile,
+    ManifestFile, config::Config, index::PackageIndex, lock::LockFile, manifest::MANIFEST_NAME,
+    resolve, snapshot::Snapshot,
 };
 use nickel_lang_utils::project_root::project_root;
 use tempfile::TempDir;

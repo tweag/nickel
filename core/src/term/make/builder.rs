@@ -23,8 +23,8 @@
 use indexmap::IndexMap;
 
 use crate::{
-    eval::value::NickelValue,
     combine::Combine,
+    eval::value::NickelValue,
     identifier::{Ident, LocIdent},
     label::Label,
     term::{

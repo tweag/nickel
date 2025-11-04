@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 #[cfg(feature = "package-experimental")]
-use nickel_lang_package::{config::Config as PackageConfig, ManifestFile};
+use nickel_lang_package::{ManifestFile, config::Config as PackageConfig};
 
 use crate::{customize::Customize, global::GlobalContext};
 

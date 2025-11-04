@@ -8,26 +8,23 @@ use std::{
 use nickel_lang_core::{
     cache::normalize_rel_path,
     error::NullReporter,
-    eval::{
-        value::NickelValue,
-        cache::CacheImpl,
-    },
+    eval::{cache::CacheImpl, value::NickelValue},
     identifier::Ident,
     label::Label,
     program::{Program, ProgramContract},
-    term::{make, RuntimeContract, Term},
+    term::{RuntimeContract, Term, make},
 };
 use serde::Deserialize;
 
 use crate::{
+    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
     config::Config,
     error::{Error, IoResultExt},
-    index::{self, path::RelativePathError, PackageIndex},
+    index::{self, PackageIndex, path::RelativePathError},
     lock::{LockFile, LockFileEntry},
     resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";

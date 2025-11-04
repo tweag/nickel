@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    sync::mpsc::{channel, Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, channel},
 };
 
 use nickel_lang_core::{

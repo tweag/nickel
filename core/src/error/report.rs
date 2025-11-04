@@ -55,7 +55,7 @@ pub fn report<E: IntoDiagnostics>(
     format: ErrorFormat,
     color_opt: ColorOpt,
 ) {
-    use std::io::{stderr, IsTerminal};
+    use std::io::{IsTerminal, stderr};
 
     report_with(
         &mut StandardStream::stderr(colors_for_terminal(color_opt, stderr().is_terminal())).lock(),
@@ -77,7 +77,7 @@ pub fn report_to_stdout<E: IntoDiagnostics>(
     format: ErrorFormat,
     color_opt: ColorOpt,
 ) {
-    use std::io::{stdout, IsTerminal};
+    use std::io::{IsTerminal, stdout};
 
     report_with(
         &mut StandardStream::stdout(colors_for_terminal(color_opt, stdout().is_terminal())).lock(),

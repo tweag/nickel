@@ -885,7 +885,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
                     // should probably do a `content()` call at the top of the eval function.
                     let result = match value.clone().content() {
-                        ValueContent::Array(lens) if lens.peek().is_inline_empty_array() => lens.restore(),
+                        ValueContent::Array(lens) if lens.peek().is_inline_empty_array() => {
+                            lens.restore()
+                        }
                         ValueContent::Array(lens) => {
                             // unwrap(): we treated the empty array case above
                             let array_data = lens.take().into_opt().unwrap();

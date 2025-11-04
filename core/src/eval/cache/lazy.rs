@@ -4,7 +4,7 @@ use crate::{
     eval::value::NickelValue,
     identifier::Ident,
     metrics::increment,
-    term::{record::FieldDeps, BindingType, Term},
+    term::{BindingType, Term, record::FieldDeps},
 };
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};

@@ -4,14 +4,14 @@ use std::fmt;
 
 use crate::{
     bytecode::ast::{
+        Annotation, Ast, Import, LetBinding, MatchBranch, Node, Number, StringChunk,
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, OrPattern, Pattern,
             PatternData, RecordPattern, TailPattern,
         },
         primop::{OpPos, PrimOp},
         record::{FieldDef, FieldMetadata, FieldPathElem, MergePriority, Record},
-        typ::{iter::RecordRowsItem, EnumRow, EnumRows, RecordRows, Type},
-        Annotation, Ast, Import, LetBinding, MatchBranch, Node, Number, StringChunk,
+        typ::{EnumRow, EnumRows, RecordRows, Type, iter::RecordRowsItem},
     },
     cache::InputFormat,
     identifier::{Ident, LocIdent},
@@ -566,11 +566,7 @@ trait NickelDocBuilderExt {
 
 impl NickelDocBuilderExt for DocBuilder<'_, Allocator> {
     fn parens_if(self, parens: bool) -> Self {
-        if parens {
-            self.parens()
-        } else {
-            self
-        }
+        if parens { self.parens() } else { self }
     }
 }
 
@@ -1343,9 +1339,9 @@ mod tests {
         bytecode::ast::AstAlloc,
         files::Files,
         parser::{
+            ErrorTolerantParser,
             grammar::{FixedTypeParser, TermParser},
             lexer::Lexer,
-            ErrorTolerantParser,
         },
     };
     use pretty::Doc;

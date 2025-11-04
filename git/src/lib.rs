@@ -3,11 +3,11 @@
 
 use anyhow::anyhow;
 use gix::{
+    ObjectId,
     interrupt::IS_INTERRUPTED,
     progress::Discard,
-    remote::{self, fetch, fetch::refmap, Direction},
+    remote::{self, Direction, fetch, fetch::refmap},
     worktree::state::checkout,
-    ObjectId,
 };
 use std::{num::NonZero, path::Path};
 

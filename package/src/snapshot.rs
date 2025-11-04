@@ -8,12 +8,13 @@ use nickel_lang_core::{cache::normalize_rel_path, identifier::Ident};
 use nickel_lang_git::Spec;
 
 use crate::{
+    Dependency, GitDependency, IndexDependency, ManifestFile, PreciseGitPkg, UnversionedDependency,
+    UnversionedPrecisePkg,
     config::Config,
     error::{Error, IoResultExt as _},
     lock::{LockFile, LockFileDep, LockPrecisePkg},
     manifest::MANIFEST_NAME,
-    repo_root, Dependency, GitDependency, IndexDependency, ManifestFile, PreciseGitPkg,
-    UnversionedDependency, UnversionedPrecisePkg,
+    repo_root,
 };
 
 /// Collects and locks all the path and git dependencies in the dependency tree.

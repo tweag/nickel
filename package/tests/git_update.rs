@@ -3,12 +3,12 @@
 
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_git::Target;
-use nickel_lang_package::{lock::EntryName, Dependency};
+use nickel_lang_package::{Dependency, lock::EntryName};
 use tempfile::TempDir;
 
 mod util;
 
-use util::{add_git_file, init_git, test_config, ManifestBuilder};
+use util::{ManifestBuilder, add_git_file, init_git, test_config};
 
 macro_rules! assert_lock_snapshot_filtered {
     { $name:expr, $snapshot:expr } => {

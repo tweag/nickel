@@ -2,8 +2,8 @@ use std::cell::Cell;
 use std::fmt;
 
 use crate::{
-    eval::value::{Container, NickelValue, ValueContentRef},
     cache::InputFormat,
+    eval::value::{Container, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
     parser::lexer::KEYWORDS,
     term::{

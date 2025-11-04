@@ -1,7 +1,7 @@
 //! Program transformations.
 use crate::{
-    eval::value::NickelValue,
     cache::ImportResolver,
+    eval::value::NickelValue,
     position::PosTable,
     traverse::{Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,

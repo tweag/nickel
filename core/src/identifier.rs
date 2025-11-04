@@ -224,7 +224,7 @@ impl PartialOrd for FastOrdIdent {
 
 impl Ord for FastOrdIdent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0 .0.cmp(&other.0 .0)
+        self.0.0.cmp(&other.0.0)
     }
 }
 

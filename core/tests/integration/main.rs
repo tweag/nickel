@@ -1,11 +1,11 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
-    eval::value::NickelValue,
     error::{
-        Error, EvalError, EvalErrorData, ExportErrorData, ImportError, NullReporter,
-        ParseError, PointedExportErrorData, TypecheckErrorData,
+        Error, EvalError, EvalErrorData, ExportErrorData, ImportError, NullReporter, ParseError,
+        PointedExportErrorData, TypecheckErrorData,
     },
+    eval::value::NickelValue,
     typecheck::TypecheckMode,
 };
 

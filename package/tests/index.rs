@@ -4,7 +4,7 @@ use tempfile::tempdir;
 
 mod util;
 
-use util::{init_git, test_config, ManifestBuilder, PackageBuilder};
+use util::{ManifestBuilder, PackageBuilder, init_git, test_config};
 
 #[test]
 fn index_fetch_on_lock() {
@@ -42,10 +42,12 @@ fn index_fetch_on_lock() {
 
     // Locking again won't trigger an index update, because it wasn't necessary.
     manifest.lock(config.clone()).unwrap();
-    assert!(!config
-        .index_dir
-        .join("github/myorg/myotherpackage")
-        .exists());
+    assert!(
+        !config
+            .index_dir
+            .join("github/myorg/myotherpackage")
+            .exists()
+    );
 
     // Modifying our manifest so that it's out-of-date will trigger a refresh.
     let manifest = ManifestBuilder::default()
@@ -53,8 +55,10 @@ fn index_fetch_on_lock() {
         .with_index_dep("mypackage", "github:myorg/myotherpackage", "=0.0.1")
         .build();
     manifest.lock(config.clone()).unwrap();
-    assert!(config
-        .index_dir
-        .join("github/myorg/myotherpackage")
-        .exists());
+    assert!(
+        config
+            .index_dir
+            .join("github/myorg/myotherpackage")
+            .exists()
+    );
 }

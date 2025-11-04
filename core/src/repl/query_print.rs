@@ -2,7 +2,7 @@
 use serde::Serialize;
 
 use crate::{
-    eval::value::{NickelValue, ValueContentRef, Container},
+    eval::value::{Container, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
     pretty::PrettyPrintCap,
     term::{

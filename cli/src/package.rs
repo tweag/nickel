@@ -6,10 +6,11 @@ use std::{
 };
 
 use nickel_lang_package::{
+    ManifestFile,
     config::Config,
     index::{self, PackageIndex},
     manifest::MANIFEST_NAME,
-    resolve, ManifestFile,
+    resolve,
 };
 
 use crate::{

@@ -1,5 +1,5 @@
 //! Web assembly interface to the REPL.
-use super::simple_frontend::{input, serialize, InputError, InputResult};
+use super::simple_frontend::{InputError, InputResult, input, serialize};
 use super::{Repl, ReplImpl};
 use crate::cache::CacheHub;
 use crate::error::IntoDiagnostics;

@@ -751,8 +751,7 @@ mod tests {
 
     use nickel_lang_utils::{
         nickel_lang_core::{
-            eval::value::NickelValue, deserialize::RustDeserializationError,
-            error::NullReporter,
+            deserialize::RustDeserializationError, error::NullReporter, eval::value::NickelValue,
         },
         test_program::TestProgram,
     };

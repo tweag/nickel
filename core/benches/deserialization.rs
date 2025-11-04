@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use nickel_lang_core::{bytecode::ast::AstAlloc, serialize::yaml::load_json};
 
 pub fn json_ast_construction(c: &mut Criterion) {

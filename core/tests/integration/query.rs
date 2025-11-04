@@ -3,9 +3,8 @@ use nickel_lang_core::{
     eval::cache::lazy::CBNCache,
     program::Program,
     term::{
-        make as mk_term,
+        TypeAnnotation, make as mk_term,
         record::{Field, FieldMetadata},
-        TypeAnnotation,
     },
 };
 

@@ -42,9 +42,7 @@
 use super::{Environment, cache::lazy::Thunk};
 
 use crate::{
-    eval::value::{
-        Container, EnumVariantData, NickelValue, ValueContentRef,
-    },
+    eval::value::{Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::LocIdent,
     term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
     typ::{
@@ -330,9 +328,7 @@ fn contract_eq_bounded(
                 _ => false,
             }
         }
-        (ValueContentRef::Thunk(id1), ValueContentRef::Thunk(id2))
-            if Thunk::ptr_eq(id1, id2) =>
-        {
+        (ValueContentRef::Thunk(id1), ValueContentRef::Thunk(id2)) if Thunk::ptr_eq(id1, id2) => {
             true
         }
         (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2)) => {

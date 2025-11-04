@@ -6,9 +6,9 @@ use nickel_lang_core::identifier::Ident;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    IndexDependency,
     index::{self, path::RelativePath},
     version::{SemVer, VersionReq},
-    IndexDependency,
 };
 
 use super::{Package, PreciseId};

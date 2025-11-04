@@ -1,5 +1,5 @@
 use nickel_lang_utils::{
-    annotated_test::{read_annotated_test_case, TestCase},
+    annotated_test::{TestCase, read_annotated_test_case},
     project_root::project_root,
 };
 use serde::Deserialize;

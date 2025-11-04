@@ -3,8 +3,8 @@ use std::{fs, io::Write, path::PathBuf};
 use nickel_lang_core::{
     error::{Error, IOError, Reporter as _},
     eval::{
-        value::{ValueContentRef, Container},
         cache::CacheImpl,
+        value::{Container, ValueContentRef},
     },
     identifier::{Ident, LocIdent},
     position::PosTable,
@@ -83,12 +83,9 @@ impl From<Field> for QueryResult {
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                ValueContentRef::Term(Term::RecRecord(
-                        record,
-                        includes,
-                        dyn_fields,
-                        ..,
-                )) if !record.fields.is_empty() => {
+                ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..))
+                    if !record.fields.is_empty() =>
+                {
                     let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
                     fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                     fields.sort();
@@ -97,8 +94,9 @@ impl From<Field> for QueryResult {
                     Some(fields)
                 }
                 // Empty record has empty sub_fields
-                ValueContentRef::Record(..)
-                | ValueContentRef::Term(Term::RecRecord(..)) => Some(Vec::new()),
+                ValueContentRef::Record(..) | ValueContentRef::Term(Term::RecRecord(..)) => {
+                    Some(Vec::new())
+                }
                 // Non-record has no concept of sub-field
                 _ => None,
             }

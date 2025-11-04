@@ -1,8 +1,8 @@
 //! Configuration for the Nickel Language Server
 use lsp_types::Url;
 use notify_debouncer_full::{
-    notify::{EventKind, RecommendedWatcher, RecursiveMode},
     DebouncedEvent, Debouncer, RecommendedCache,
+    notify::{EventKind, RecommendedWatcher, RecursiveMode},
 };
 use serde::Deserialize;
 

@@ -11,25 +11,23 @@ use lsp_types::Url;
 use ouroboros::self_referencing;
 
 use nickel_lang_core::{
-    bytecode::ast::{primop::PrimOp, record::FieldPathElem, typ::Type, Ast, AstAlloc, Node},
+    bytecode::ast::{Ast, AstAlloc, Node, primop::PrimOp, record::FieldPathElem, typ::Type},
     cache::{ImportData, InputFormat, SourceCache},
     error::{ParseErrors, TypecheckError},
     files::FileId,
     identifier::Ident,
     parser::{
-        self,
+        self, FullyErrorTolerantParser as _,
         lexer::{Lexer, OffsetLexer},
-        FullyErrorTolerantParser as _,
     },
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
     typecheck::{
-        self,
+        self, Context as TypeContext, TypeTables, TypecheckMode, TypecheckVisitor, UnifType,
         reporting::{NameReg, ToType},
-        typecheck_visit, Context as TypeContext, TypeTables, TypecheckMode, TypecheckVisitor,
-        UnifType,
+        typecheck_visit,
     },
 };
 
@@ -1166,13 +1164,13 @@ mod tests {
         bytecode::ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{grammar, lexer, FullyErrorTolerantParser as _},
+        parser::{FullyErrorTolerantParser as _, grammar, lexer},
     };
 
     use crate::{
         field_walker::EltId,
-        position::{tests::parse, PositionLookup},
-        usage::{tests::locced, Environment, UsageLookup},
+        position::{PositionLookup, tests::parse},
+        usage::{Environment, UsageLookup, tests::locced},
     };
 
     use super::*;

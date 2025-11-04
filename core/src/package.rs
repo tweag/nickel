@@ -126,6 +126,9 @@ mod tests {
         .unwrap();
         p.set_package_map(map);
 
-        assert_eq!(p.eval_full().unwrap().as_number().unwrap(), &Number::from(44));
+        assert_eq!(
+            p.eval_full().unwrap().as_number().unwrap(),
+            &Number::from(44)
+        );
     }
 }

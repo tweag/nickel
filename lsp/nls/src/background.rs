@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use crossbeam::channel::{bounded, Receiver, RecvTimeoutError, Sender};
+use crossbeam::channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use log::warn;
 use lsp_types::Url;
 use nickel_lang_core::cache::{InputFormat, SourcePath};

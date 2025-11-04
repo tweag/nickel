@@ -1,7 +1,7 @@
 //! Internal error types for typechecking.
 use super::{
-    reporting::{self, ToType},
     State, UnifEnumRow, UnifRecordRow, UnifType, VarId,
+    reporting::{self, ToType},
 };
 
 use crate::{

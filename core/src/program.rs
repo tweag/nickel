@@ -1184,8 +1184,8 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        eval::value::{Container, NickelValue, ValueContentRef},
         error::{Error, ExportError, ExportErrorData, IOError},
+        eval::value::{Container, NickelValue, ValueContentRef},
         position::PosTable,
         term::Term,
     };

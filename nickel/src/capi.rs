@@ -64,7 +64,7 @@
 #![deny(missing_docs)]
 
 use std::{
-    ffi::{c_char, c_int, c_void, CStr},
+    ffi::{CStr, c_char, c_int, c_void},
     io::Write,
     ptr,
 };
