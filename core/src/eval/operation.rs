@@ -134,7 +134,7 @@ struct Op2EvalData {
 struct OpNEvalData {
     /// The n-ary operation to apply.
     op: NAryOp,
-    /// The arguments evluated, together with the position of their original expression, when it
+    /// The arguments evaluated, together with the position of their original expression, when it
     /// was put on the stack for evaluation.
     args: Vec<(Closure, PosIdx)>,
     /// The position of the primop application.
