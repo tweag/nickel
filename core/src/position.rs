@@ -316,7 +316,7 @@ impl PosIdx {
         }
     }
 
-    /// Same as `usize::from(self)`, but as a `const fn`.                                
+    /// Same as `usize::from(self)`, but as a `const fn`.
     pub const fn to_usize(self) -> usize {
         self.0 as usize
     }
