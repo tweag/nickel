@@ -16,15 +16,15 @@ use nickel_lang_core::identifier::Ident;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serialize::PackageFormat;
-use tempfile::{tempdir_in, NamedTempFile};
+use tempfile::{NamedTempFile, tempdir_in};
 
 use crate::{
+    IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
     config::Config,
     error::{Error, IoResultExt as _},
     index::path::{RelativePath, RelativePathError},
     resolve::Resolution,
     version::SemVer,
-    IndexDependency, ManifestFile, PreciseIndexPkg, PrecisePkg,
 };
 
 pub mod lock;

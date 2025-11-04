@@ -5,12 +5,15 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    eval::cache::{Cache as EvalCache, CacheIndex},
+    eval::{
+        cache::{Cache as EvalCache, CacheIndex},
+        value::NickelValue,
+    },
     identifier::LocIdent,
     position::{RawSpan, TermPos},
     term::{
+        SealingKey,
         record::{Field, RecordData},
-        RichTerm, SealingKey, Term,
     },
     typ::{Type, TypeF},
 };
@@ -312,12 +315,12 @@ pub struct TypeVarData {
     pub polarity: Polarity,
 }
 
-impl From<&TypeVarData> for Term {
+impl From<&TypeVarData> for NickelValue {
     fn from(value: &TypeVarData) -> Self {
-        Term::Record(RecordData {
+        NickelValue::record_posless(RecordData {
             fields: [(
                 LocIdent::new("polarity"),
-                Field::from(RichTerm::from(Term::from(value.polarity))),
+                Field::from(NickelValue::from(value.polarity)),
             )]
             .into(),
             attrs: Default::default(),
@@ -342,22 +345,22 @@ impl Polarity {
     }
 }
 
-impl From<Polarity> for Term {
+impl From<Polarity> for NickelValue {
     fn from(value: Polarity) -> Self {
         match value {
-            Polarity::Positive => Term::Enum(LocIdent::new("Positive")),
-            Polarity::Negative => Term::Enum(LocIdent::new("Negative")),
+            Polarity::Positive => NickelValue::enum_tag_posless(LocIdent::new("Positive")),
+            Polarity::Negative => NickelValue::enum_tag_posless(LocIdent::new("Negative")),
         }
     }
 }
 
-impl TryFrom<&Term> for Polarity {
+impl TryFrom<&NickelValue> for Polarity {
     type Error = ();
 
-    fn try_from(value: &Term) -> Result<Self, Self::Error> {
-        match value {
-            Term::Enum(positive) if positive.label() == "Positive" => Ok(Self::Positive),
-            Term::Enum(negative) if negative.label() == "Negative" => Ok(Self::Negative),
+    fn try_from(value: &NickelValue) -> Result<Self, Self::Error> {
+        match value.as_enum_tag().ok_or(())? {
+            tag if tag.label() == "Positive" => Ok(Self::Positive),
+            tag if tag.label() == "Negative" => Ok(Self::Negative),
             _ => Err(()),
         }
     }
@@ -415,8 +418,18 @@ impl Label {
         }
     }
 
-    pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<RichTerm> {
-        self.arg_idx.clone().map(|idx| cache.get(idx).body)
+    pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<NickelValue> {
+        self.arg_idx.clone().map(|idx| cache.get(idx).value)
+    }
+
+    /// Same as [`Self::with_diagnostic_message`], but mutate `self` in place.
+    pub fn set_diagnostic_message(&mut self, message: impl Into<String>) {
+        if let Some(current) = self.diagnostics.last_mut() {
+            current.message = Some(message.into());
+        } else {
+            self.diagnostics
+                .push(ContractDiagnostic::new().with_message(message));
+        };
     }
 
     /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
@@ -424,14 +437,18 @@ impl Label {
     ///
     /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
     pub fn with_diagnostic_message(mut self, message: impl Into<String>) -> Self {
+        self.set_diagnostic_message(message);
+        self
+    }
+
+    /// Same as [`Self::with_diagnostic_notes`], but mutate `self` in place.
+    pub fn set_diagnostic_notes(&mut self, notes: Vec<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
-            current.message = Some(message.into());
+            current.notes = notes;
         } else {
             self.diagnostics
-                .push(ContractDiagnostic::new().with_message(message));
+                .push(ContractDiagnostic::new().with_notes(notes));
         };
-
-        self
     }
 
     /// Set the notes of the current diagnostic (the last diagnostic of the stack). Potentially
@@ -439,29 +456,27 @@ impl Label {
     ///
     /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
     pub fn with_diagnostic_notes(mut self, notes: Vec<String>) -> Self {
-        if let Some(current) = self.diagnostics.last_mut() {
-            current.notes = notes;
-        } else {
-            self.diagnostics
-                .push(ContractDiagnostic::new().with_notes(notes));
-        };
-
+        self.set_diagnostic_notes(notes);
         self
     }
 
-    /// Append a note to the current diagnostic (the last diagnostic of the stack). Potentially
-    /// erase the previous value.
+    /// Appends a note to the current diagnostic (the last diagnostic of the stack). Potentially
+    /// erases the previous value.
     ///
     /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given note.
-    pub fn append_diagnostic_note(mut self, note: impl Into<String>) -> Self {
+    pub fn with_append_diagnostic_note(mut self, note: impl Into<String>) -> Self {
+        self.append_diagnostic_note(note);
+        self
+    }
+
+    /// Same as [Self::with_append_diagnostic_note], but mutates `self` in place.
+    pub fn append_diagnostic_note(&mut self, note: impl Into<String>) {
         if let Some(current) = self.diagnostics.last_mut() {
             current.append_note(note);
         } else {
             self.diagnostics
                 .push(ContractDiagnostic::new().with_notes(vec![note.into()]));
-        };
-
-        self
+        }
     }
 
     /// Return a reference to the current contract diagnostic, which is the last element of the

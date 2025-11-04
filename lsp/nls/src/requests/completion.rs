@@ -3,7 +3,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     bytecode::{
-        ast::{primop::PrimOp, record::FieldMetadata, typ::Type, Ast, Import, Node},
+        ast::{Ast, Import, Node, primop::PrimOp, record::FieldMetadata, typ::Type},
         pretty::Allocator,
     },
     cache::{self, InputFormat},

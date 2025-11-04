@@ -23,7 +23,7 @@ use crate::{
 };
 use std::iter;
 
-use indexmap::{map::Entry, IndexMap};
+use indexmap::{IndexMap, map::Entry};
 
 /// Records and their subcomponents that can be resolved.
 pub(super) trait Resolve<'ast> {

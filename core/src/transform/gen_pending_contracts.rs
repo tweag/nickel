@@ -12,11 +12,12 @@
 //! The `gen_pending_contracts` phase implemented by this module must be run before
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
-    match_sharedterm,
+    position::PosTable,
     term::{
+        IndexMap, RuntimeContract, Term,
         record::{Field, RecordData},
-        IndexMap, RichTerm, RuntimeContract, Term,
     },
     typ::UnboundTypeVariableError,
 };
@@ -31,18 +32,21 @@ use crate::{
 ///
 /// The pending contracts are expected to be initially empty. This function will override any
 /// previous pending contract.
-pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariableError> {
+pub fn with_pending_contracts(
+    pos_table: &mut PosTable,
+    field: Field,
+) -> Result<Field, UnboundTypeVariableError> {
     // We simply add the contracts to the pending contract fields
-    let pending_contracts = field.metadata.annotation.pending_contracts()?;
+    let pending_contracts = field.metadata.annotation.pending_contracts(pos_table)?;
     // Type annotations are different: the contract is generated statically, because as opposed
     // to contract annotations, type anntotations don't propagate.
     let value = field
         .value
-        .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
+        .map(|v| -> Result<NickelValue, UnboundTypeVariableError> {
             if let Some(labeled_ty) = &field.metadata.annotation.typ {
-                let pos = v.pos;
-                let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
-                Ok(contract.apply(v, pos))
+                let pos_idx = v.pos_idx();
+                let contract = RuntimeContract::from_static_type(pos_table, labeled_ty.clone())?;
+                Ok(contract.apply(v, pos_idx))
             } else {
                 Ok(v)
             }
@@ -56,64 +60,78 @@ pub fn with_pending_contracts(field: Field) -> Result<Field, UnboundTypeVariable
     })
 }
 
-pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
+pub fn transform_one(
+    pos_table: &mut PosTable,
+    value: NickelValue,
+) -> Result<NickelValue, UnboundTypeVariableError> {
     fn attach_to_fields(
+        pos_table: &mut PosTable,
         fields: IndexMap<LocIdent, Field>,
     ) -> Result<IndexMap<LocIdent, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
-            .map(|(id, field)| Ok((id, with_pending_contracts(field)?)))
+            .map(|(id, field)| Ok((id, with_pending_contracts(pos_table, field)?)))
             .collect()
     }
 
-    let pos = rt.pos;
-    let result = match_sharedterm!(match (rt.term) {
-        Term::RecRecord(record_data, includes, dyn_fields, deps) => {
+    let pos_idx = value.pos_idx();
+
+    Ok(match value.content() {
+        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => lens.restore(),
+        ValueContent::Record(lens) => {
+            // unwrap(): we treated the inline empty record case above.
             let RecordData {
                 fields,
                 attrs,
                 sealed_tail,
-            } = record_data;
+            } = lens.take().into_opt().unwrap();
 
-            let fields = attach_to_fields(fields)?;
-            let dyn_fields = dyn_fields
-                .into_iter()
-                .map(|(id_term, field)| Ok((id_term, with_pending_contracts(field)?)))
-                .collect::<Result<_, _>>()?;
+            let fields = attach_to_fields(pos_table, fields)?;
 
-            RichTerm::new(
-                Term::RecRecord(
-                    RecordData {
-                        fields,
-                        attrs,
-                        sealed_tail,
-                    },
-                    includes,
-                    dyn_fields,
-                    deps,
-                ),
-                pos,
-            )
-        }
-        Term::Record(record_data) => {
-            let RecordData {
-                fields,
-                attrs,
-                sealed_tail,
-            } = record_data;
-
-            let fields = attach_to_fields(fields)?;
-
-            RichTerm::new(
-                Term::Record(RecordData {
+            NickelValue::record(
+                RecordData {
                     fields,
                     attrs,
                     sealed_tail,
-                }),
-                pos,
+                },
+                pos_idx,
             )
         }
-        _ => rt,
-    });
-    Ok(result)
+        ValueContent::Term(lens) => match lens {
+            TermContent::RecRecord(lens) => {
+                let (record_data, includes, dyn_fields, deps, closurized) = lens.take();
+
+                let RecordData {
+                    fields,
+                    attrs,
+                    sealed_tail,
+                } = record_data;
+
+                let fields = attach_to_fields(pos_table, fields)?;
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_term, field)| {
+                        Ok((id_term, with_pending_contracts(pos_table, field)?))
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                NickelValue::term(
+                    Term::RecRecord(
+                        RecordData {
+                            fields,
+                            attrs,
+                            sealed_tail,
+                        },
+                        includes,
+                        dyn_fields,
+                        deps,
+                        closurized,
+                    ),
+                    pos_idx,
+                )
+            }
+            lens => lens.restore(),
+        },
+        lens => lens.restore(),
+    })
 }

@@ -6,7 +6,7 @@
 use crate::files::FileId;
 use codespan::{self, ByteIndex};
 use std::{
-    cmp::{max, min, Ordering},
+    cmp::{Ordering, max, min},
     ops::Range,
 };
 
@@ -144,7 +144,7 @@ impl TermPos {
 
     pub fn as_opt_ref(&self) -> Option<&RawSpan> {
         match self {
-            TermPos::Original(ref pos) | TermPos::Inherited(ref pos) => Some(pos),
+            TermPos::Original(pos) | TermPos::Inherited(pos) => Some(pos),
             TermPos::None => None,
         }
     }
@@ -287,37 +287,33 @@ impl From<Option<RawSpan>> for TermPos {
     }
 }
 
-/// The index of an inline value into the position table. This way, we can attach a compact
-/// position and still fit in one machine word in total (on 64 bits platform, at least).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InlinePosIdx(u32);
+/// An index into the position table.
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub struct PosIdx(u32);
 
-impl Default for InlinePosIdx {
-    fn default() -> Self {
-        Self::NONE
+impl From<PosIdx> for usize {
+    fn from(value: PosIdx) -> Self {
+        usize::try_from(value.0)
+            .expect("Nickel doesn't support architecture with pointer size smaller than 32bits")
     }
 }
 
-impl From<InlinePosIdx> for u32 {
-    fn from(value: InlinePosIdx) -> Self {
-        value.0
-    }
-}
+impl PosIdx {
+    /// A special value indicating that an value doesn't have a position defined. This is the first
+    /// available position index for values.
+    pub const NONE: PosIdx = Self(0);
 
-#[cfg(any(target_pointer_width = "64", target_pointer_width = "32"))]
-impl From<InlinePosIdx> for usize {
-    fn from(value: InlinePosIdx) -> Self {
-        value.0 as usize
-    }
-}
+    /// Returns a new position index pointing to the same position but tagged as inherited,
+    /// if it wasn't already. If `self` refers to a position that is already inherited or `None`,
+    /// it is returned unchanged.
+    pub fn to_inherited(self, table: &mut PosTable) -> Self {
+        let pos = table.get(self);
 
-impl InlinePosIdx {
-    /// A special index indicating that an inline value has no position attached.
-    pub const NONE: InlinePosIdx = Self(0);
-
-    /// Creates an inline position index from a usize, truncating the higher bits if set.
-    pub fn from_usize_truncate(value: usize) -> Self {
-        Self(value as u32)
+        if let TermPos::Original(raw_span) = pos {
+            table.push(TermPos::Inherited(raw_span))
+        } else {
+            self
+        }
     }
 
     /// Same as `usize::from(self)`, but as a `const fn`.
@@ -326,36 +322,6 @@ impl InlinePosIdx {
     }
 }
 
-/// An index into the position table.
-///
-/// On 64 bit archs, the position table uses a unified index encoded on 64 bits. Values smaller or
-/// equals to [`u32::MAX`] are reserved for inline values[^reserved], since inline values need to
-/// fit (together with their index) into one word. The remaining range can be used by value blocks,
-/// which leaves plenty of available indices (`2^64 - 2^32 ~ 2.0e19`).
-///
-/// On 32 bits archs (or less), we use only a single shared `u32` index for both inline values and
-/// value blocks. It doesn't make sense to accomodate more positions that the addressable memory
-/// anyway.
-///
-/// [^reserved]: this is not entirely true, as a value block may re-use an existing index
-///     attributed to an inline value if it inherits its position (as typically the case with some
-///     primitive operations). However, since the inline table index must fit within 32 bits, we
-///     never allocate an index smaller than `u32::MAX` for a value block. Although we are able to
-///     reuse an existing inline index for a value block.
-#[cfg(target_pointer_width = "64")]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(usize);
-#[cfg(not(target_pointer_width = "64"))]
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub struct PosIdx(u32);
-
-impl PosIdx {
-    /// A special value indicating that an inline value or value block doesn't have a position
-    /// defined. This is the first available position index for values.
-    pub const NONE: PosIdx = Self(0);
-}
-
-#[cfg(not(target_pointer_width = "64"))]
 impl PosIdx {
     /// Creates a position index from a usize, truncating the higher bits if set.
     pub fn from_usize_truncate(value: usize) -> Self {
@@ -371,118 +337,32 @@ impl Default for PosIdx {
     }
 }
 
-#[cfg(target_pointer_width = "64")]
-impl TryFrom<PosIdx> for InlinePosIdx {
-    type Error = ();
-
-    fn try_from(pos_idx: PosIdx) -> Result<Self, Self::Error> {
-        Ok(InlinePosIdx(u32::try_from(pos_idx.0).map_err(|_| ())?))
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<PosIdx> for InlinePosIdx {
-    fn from(pos_idx: PosIdx) -> Self {
-        InlinePosIdx(pos_idx.0)
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0 as usize)
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl From<InlinePosIdx> for PosIdx {
-    fn from(pos_idx: InlinePosIdx) -> Self {
-        PosIdx(pos_idx.0)
-    }
-}
-
-/// An immutable table storing the position of values, both inline and blocks, addressed using a
-/// unified indexing scheme.
+/// An immutable table storing the position of values.
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct PosTable {
-    inlines: Vec<TermPos>,
-    // On non-64-bits arch, we use only one common table. See PosIdx.
-    #[cfg(target_pointer_width = "64")]
-    blocks: Vec<TermPos>,
+    positions: Vec<TermPos>,
 }
 
-#[cfg(target_pointer_width = "64")]
 impl PosTable {
-    /// The first available index of a value block position in the range of combined indices.
-    const FIRST_BLOCK_IDX: usize = u32::MAX as usize + 1;
-    /// The maximum index of a value block position inside the [Self::blocks] table (before being
-    /// adjusted into a combined index).
-    const MAX_BLOCK_IDX: usize = usize::MAX - Self::FIRST_BLOCK_IDX;
-
     pub fn new() -> Self {
-        // We always populate the first entry (of the inline table) with `TermPos::None`, so that
-        // we can safely use the index `0` (`PosIdx::NONE` and `InlinePosIdx::NONE`) to mean
-        // unintialized position, without having to special case the undefined position.
+        // We always populate the first entry with `TermPos::None`, so that we can safely use the
+        // index `0` (`PosIdx::NONE`) to mean unintialized position, without having to special case
+        // the undefined position.
         Self {
-            inlines: vec![TermPos::None],
-            blocks: Vec::new(),
+            positions: vec![TermPos::None],
         }
     }
 
-    /// Inserts a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(
-            u32::try_from(next).expect("maximum number of positions reached for inline values"),
-        )
-    }
-
-    /// Inserts a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        let next = self.blocks.len();
-        self.blocks.push(pos);
-        assert!(
-            next <= Self::MAX_BLOCK_IDX,
-            "maximum number of positions reached for value blocks"
-        );
-        PosIdx(next + Self::FIRST_BLOCK_IDX)
+    /// Inserts a new position for value and returns its index.
+    pub fn push(&mut self, pos: TermPos) -> PosIdx {
+        let next = self.positions.len();
+        self.positions.push(pos);
+        PosIdx(u32::try_from(next).expect("maximum number of positions reached for values"))
     }
 
     /// Returns the position at index `idx`.
     pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        let PosIdx(idx) = idx.into();
-        // We're looking at the index of an inline value.
-        if idx < Self::FIRST_BLOCK_IDX {
-            self.inlines[idx]
-        } else {
-            self.blocks[idx - Self::FIRST_BLOCK_IDX]
-        }
-    }
-}
-
-#[cfg(not(target_pointer_width = "64"))]
-impl PosTable {
-    pub fn new() -> Self {
-        Self {
-            inlines: vec![TermPos::None],
-        }
-    }
-
-    /// Pushes a new position for an inline value and returns its index.
-    pub fn push_inline_pos(&mut self, pos: TermPos) -> InlinePosIdx {
-        let next = self.inlines.len();
-        self.inlines.push(pos);
-        InlinePosIdx(u32::try_from(next).expect("maximum number of positions reached for values"))
-    }
-
-    /// Pushes a new position for a value block and returns its index.
-    pub fn push_block_pos(&mut self, pos: TermPos) -> PosIdx {
-        PosIdx(self.push_inline_pos(pos).0)
-    }
-
-    /// Returns the position at index `idx`.
-    pub fn get(&self, idx: impl Into<PosIdx>) -> TermPos {
-        self.inlines[usize::try_from(idx.into().0)
-            .expect("position index out of bounds (doesn't fit in usize)")]
+        self.positions[usize::try_from(idx.into().0)
+            .expect("Nickel doesn't support architecture with pointer size smaller than 32bits")]
     }
 }

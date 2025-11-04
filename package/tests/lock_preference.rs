@@ -1,10 +1,10 @@
 use nickel_lang_core::identifier::Ident;
-use nickel_lang_package::{version::SemVer, PrecisePkg};
+use nickel_lang_package::{PrecisePkg, version::SemVer};
 use tempfile::TempDir;
 
 mod util;
 
-use util::{init_git, test_config, ManifestBuilder, PackageBuilder};
+use util::{ManifestBuilder, PackageBuilder, init_git, test_config};
 
 #[test]
 fn prefer_previously_locked() {

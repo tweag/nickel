@@ -11,7 +11,9 @@ let assertSerInv = fun x =>
 let assertDeserInv = fun x =>
     let assertAux = fun format x =>
       let s = %serialize% format (%force% x) in
-      %serialize% format (%deserialize% format s) == s in
+      # the output of %deserialize% might include `Term::Closurize`, which must
+      # be evaluated away for now
+      %serialize% format (%force% (%deserialize% format s)) == s in
     assertAux 'Json x &&
     assertAux 'Yaml x &&
     assertAux 'Toml x in

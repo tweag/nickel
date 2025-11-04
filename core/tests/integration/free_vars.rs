@@ -1,6 +1,8 @@
 use nickel_lang_core::{
+    eval::value::{ValueContent, lens::TermContent},
     identifier::Ident,
-    term::{record::FieldDeps, IndexMap, Term},
+    position::PosTable,
+    term::{IndexMap, record::FieldDeps},
     transform::free_vars,
 };
 
@@ -36,11 +38,12 @@ fn dyn_free_vars_subset(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) 
 /// Takes a Nickel expression as a string, parses it as a record and checks that the dependencies
 /// of each dynamic field match the ones given in the `expected` argument.
 fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
-    let mut rt = parse(expr).unwrap();
-    free_vars::transform(&mut rt);
+    let mut value = parse(&mut PosTable::new(), expr).unwrap();
+    free_vars::transform(&mut value);
 
-    match rt.term.into_owned() {
-        Term::RecRecord(_, _, dyns, deps) => {
+    match value.content() {
+        ValueContent::Term(TermContent::RecRecord(lens)) => {
+            let (_data, _includes, dyns, deps, _closurized) = lens.take();
             let deps = deps.unwrap();
             dyns.len() == deps.dyn_fields.len() && dyn_free_vars_subset(&deps.dyn_fields, expected)
         }
@@ -51,16 +54,14 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
 /// Takes a string expression, parses it as a record and checks that the dependencies of each
 /// static field and included field match the ones given in the `expected` argument.
 fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) -> bool {
-    let mut rt = parse(expr).unwrap();
-    free_vars::transform(&mut rt);
+    let mut value = parse(&mut PosTable::new(), expr).unwrap();
+    free_vars::transform(&mut value);
 
-    match rt.term.into_owned() {
-        Term::RecRecord(record, includes, _, deps) => {
+    match value.content() {
+        ValueContent::Term(TermContent::RecRecord(lens)) => {
+            let (record, includes, _dyns, deps, _closurized) = lens.take();
             let deps = deps.unwrap();
-            println!(
-                "-- comparing {:#?} **AND* {:#?}",
-                deps.stat_fields, expected
-            );
+
             stat_free_vars_subset(&deps.stat_fields, &mut expected)
             && record.fields.len() + includes.len() == deps.stat_fields.len()
             // the inclusion test functions `xxx_free_vars_incl` above take the free variables out

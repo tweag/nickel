@@ -23,17 +23,17 @@
 //! type.
 //!
 //! For those reasons, the `uniterm` module introduces a new AST definition, that
-//! just wraps `RichTerm` and `Type`, together with dedicated variants for the
+//! just wraps `Ast` and `Type`, together with dedicated variants for the
 //! common constructs that are variables and records. As long as a common
 //! construct is not used in a term or a type context, it can be still
 //! interpreted as both. Once the usage determines the nature of a record or a
-//! variable, it is converted to either a `RichTerm` or a `Type` (although still
+//! variable, it is converted to either a `Ast` or a `Type` (although still
 //! possibly wrapped as a `UniTerm`).
 //!
-//! In consequence, this grammar uses three main types `RichTerm`, `Type` and
+//! In consequence, this grammar uses three main types `Ast`, `Type` and
 //! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
 //!
-//! Rules that are known to only produce `RichTerm` or `Type` may have the
+//! Rules that are known to only produce `Ast` or `Type` may have the
 //! corresponding more precise return type. Other rules that produce or just
 //! propagate general uniterms have to return a `UniTerm`.
 use std::{
@@ -366,7 +366,7 @@ Applicative: UniTerm<'ast> = {
             // function application. However, for convenience, we made the syntax
             // the same. So we now have to detect cases like `'Foo {x=1}` and
             // convert that to a proper enum variant.
-            if let (Node::EnumVariant { ref tag, arg: None }, 1)
+            if let (Node::EnumVariant { tag, arg: None }, 1)
                 = (&head.node, args.len()) {
                 Ok(alloc.enum_variant(*tag, args.pop()).into())
             }

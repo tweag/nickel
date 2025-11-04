@@ -1,6 +1,6 @@
 use std::{
     fmt::Display,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 use metrics::{Counter, Gauge, Key, KeyName, Metadata, SharedString, Unit};

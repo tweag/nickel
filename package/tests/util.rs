@@ -10,11 +10,11 @@ use std::{
 use gix::bstr::ByteSlice as _;
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_package::{
+    Dependency, GitDependency, IndexDependency, ManifestFile,
     config::Config,
     index::{self, PackageIndex},
     manifest::MANIFEST_NAME,
     version::SemVer,
-    Dependency, GitDependency, IndexDependency, ManifestFile,
 };
 use tempfile::TempDir;
 

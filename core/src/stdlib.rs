@@ -1,6 +1,5 @@
 //! Load the Nickel standard library in strings at compile-time.
-use crate::term::make as mk_term;
-use crate::term::RichTerm;
+use crate::{eval::value::NickelValue, term::make as mk_term};
 
 /// This is an array containing all the Nickel standard library modules. Currently, this is one
 /// monolithic `std` module, and the definitions of `internals` living at the toplevel.
@@ -49,7 +48,7 @@ pub struct UnknownStdlibModule;
 
 macro_rules! generate_accessor {
     ($value:ident) => {
-        pub fn $value() -> RichTerm {
+        pub fn $value() -> NickelValue {
             mk_term::var(format!("${}", stringify!($value)))
         }
     };
@@ -60,12 +59,12 @@ pub mod internals {
     use super::*;
 
     // `dyn` is a reserved keyword in rust
-    pub fn dynamic() -> RichTerm {
+    pub fn dynamic() -> NickelValue {
         mk_term::var("$dyn")
     }
 
     // `enum` is a reserved keyword in rust
-    pub fn enumeration() -> RichTerm {
+    pub fn enumeration() -> NickelValue {
         mk_term::var("$enum")
     }
 

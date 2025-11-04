@@ -1,6 +1,6 @@
 use codespan_reporting::diagnostic::Diagnostic;
 
-use crate::error::{primary, secondary, IntoDiagnostics};
+use crate::error::{IntoDiagnostics, primary, secondary};
 use crate::files::{FileId, Files};
 use crate::position::TermPos;
 

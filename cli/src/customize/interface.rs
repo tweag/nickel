@@ -2,13 +2,15 @@
 //! customize mode of the command-line.
 use super::*;
 
+use nickel_lang_core::eval::value::{Container, NickelValue};
+
 /// The interface of a configuration (a Nickel program) which represents all nested field paths
 /// that are accessible from the root term together with their associated metadata.
 ///
 /// Interface is used to derive a command-line interface from a configuration when using the
 /// `customize_mode` option.
 #[derive(Debug, Clone, Default)]
-pub(super) struct TermInterface {
+pub(super) struct ValueInterface {
     pub(super) fields: HashMap<LocIdent, FieldInterface>,
 }
 
@@ -16,13 +18,13 @@ pub(super) struct TermInterface {
 #[derive(Debug, Clone, Default)]
 pub(super) struct FieldInterface {
     /// The interface of the subfields of this field, if it's a record itself.
-    pub(super) subfields: Option<TermInterface>,
+    pub(super) subfields: Option<ValueInterface>,
     pub(super) field: Field,
 }
 
-impl Combine for TermInterface {
+impl Combine for ValueInterface {
     fn combine(first: Self, second: Self) -> Self {
-        let TermInterface { mut fields } = first;
+        let ValueInterface { mut fields } = first;
 
         for (id, field) in second.fields.into_iter() {
             if let Some(prev) = fields.remove(&id) {
@@ -32,7 +34,7 @@ impl Combine for TermInterface {
             }
         }
 
-        TermInterface { fields }
+        ValueInterface { fields }
     }
 }
 
@@ -52,9 +54,9 @@ impl Combine for FieldInterface {
     }
 }
 
-impl From<&RecordData> for TermInterface {
+impl From<&RecordData> for ValueInterface {
     fn from(value: &RecordData) -> Self {
-        TermInterface {
+        ValueInterface {
             fields: value
                 .fields
                 .iter()
@@ -64,36 +66,37 @@ impl From<&RecordData> for TermInterface {
     }
 }
 
-impl From<&Term> for TermInterface {
-    fn from(term: &Term) -> Self {
-        term.extract_interface().unwrap_or_default()
+impl From<&NickelValue> for ValueInterface {
+    fn from(value: &NickelValue) -> Self {
+        value.extract_interface().unwrap_or_default()
     }
 }
 
 trait ExtractInterface {
-    fn extract_interface(&self) -> Option<TermInterface>;
+    fn extract_interface(&self) -> Option<ValueInterface>;
 }
 
-impl ExtractInterface for &Term {
-    fn extract_interface(&self) -> Option<TermInterface> {
-        if let Term::Record(rd) = self {
-            Some(TermInterface::from(rd))
-        } else {
-            None
-        }
+impl ExtractInterface for NickelValue {
+    fn extract_interface(&self) -> Option<ValueInterface> {
+        self.as_record().map(|container| match container {
+            Container::Empty => ValueInterface {
+                fields: HashMap::new(),
+            },
+            Container::Alloc(record) => record.into(),
+        })
     }
 }
 
 impl ExtractInterface for Field {
-    fn extract_interface(&self) -> Option<TermInterface> {
-        self.value.as_ref().map(|t| TermInterface::from(t.as_ref()))
+    fn extract_interface(&self) -> Option<ValueInterface> {
+        self.value.as_ref().map(ValueInterface::from)
     }
 }
 
 impl ExtractInterface for Type {
-    fn extract_interface(&self) -> Option<TermInterface> {
+    fn extract_interface(&self) -> Option<ValueInterface> {
         match &self.typ {
-            TypeF::Record(rrows) => Some(TermInterface {
+            TypeF::Record(rrows) => Some(ValueInterface {
                 fields: rrows
                     .iter()
                     .filter_map(|item| {
@@ -114,13 +117,13 @@ impl ExtractInterface for Type {
 }
 
 impl ExtractInterface for RuntimeContract {
-    fn extract_interface(&self) -> Option<TermInterface> {
-        self.contract.as_ref().extract_interface()
+    fn extract_interface(&self) -> Option<ValueInterface> {
+        self.contract.extract_interface()
     }
 }
 
 impl ExtractInterface for LabeledType {
-    fn extract_interface(&self) -> Option<TermInterface> {
+    fn extract_interface(&self) -> Option<ValueInterface> {
         self.typ.extract_interface()
     }
 }
@@ -198,7 +201,7 @@ impl FieldInterface {
     }
 
     pub(super) fn has_subfields(&self) -> bool {
-        matches!(&self.subfields, Some(ref intf) if !intf.fields.is_empty())
+        matches!(&self.subfields, Some(intf) if !intf.fields.is_empty())
     }
 
     /// Return the list of the type and contract annotations joined as a comma-separated string, if

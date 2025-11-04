@@ -1,9 +1,14 @@
-use nickel_lang_core::bytecode::ast::AstAlloc;
-use nickel_lang_core::mk_app;
-use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
-use nickel_lang_utils::test_program::parse_bytecode_ast;
+use nickel_lang_core::{
+    bytecode::ast::AstAlloc,
+    eval::value::NickelValue,
+    mk_app,
+    position::PosTable,
+    term::{StrChunk, Term, UnaryOp, make},
+};
+
 use nickel_lang_utils::{
     project_root::project_root,
+    test_program::parse_bytecode_ast,
     test_program::{eval, parse},
 };
 
@@ -35,15 +40,16 @@ fn diff(s1: &str, s2: &str) {
 fn check_idempotent(path: &str) {
     let mut buffer = String::new();
     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
+    let mut pos_table = PosTable::new();
 
     file.read_to_string(&mut buffer)
         .expect("Fail to read content of test file");
 
     // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
     // only proceed with samples that do.
-    if let Ok(rt) = parse(&buffer) {
+    if let Ok(rt) = parse(&mut pos_table, &buffer) {
         let pretty_rt = format!("{}", &rt);
-        let double_pretty = format!("{}", &parse(&pretty_rt).unwrap());
+        let double_pretty = format!("{}", &parse(&mut pos_table, &pretty_rt).unwrap());
 
         diff(&pretty_rt, &double_pretty);
     }
@@ -83,7 +89,7 @@ fn pretty_standard_library(path: &str) {
 #[test]
 fn str_vs_strchunks() {
     assert_eq!(
-        format!("{}", Term::Str("string".into())),
+        format!("{}", NickelValue::string_posless("string")),
         format!(
             "{}",
             Term::StrChunks(vec![StrChunk::Literal("string".to_string())])
@@ -97,7 +103,7 @@ fn negative_numbers() {
         "{}",
         mk_app!(
             Term::Op1(UnaryOp::RecordAccess("is_number".into()), make::var("std")),
-            Term::Num((-5).into())
+            NickelValue::number_posless(-5)
         )
     ))
     .unwrap();

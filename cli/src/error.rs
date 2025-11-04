@@ -2,8 +2,8 @@
 
 use nickel_lang_core::{
     error::{
-        report::{report, ColorOpt, ErrorFormat},
         Diagnostic, IntoDiagnostics, ParseError,
+        report::{ColorOpt, ErrorFormat, report},
     },
     files::{FileId, Files},
     program::{FieldOverride, FieldPath},
@@ -88,12 +88,14 @@ impl IntoDiagnostics for CliUsageError {
                     .to_owned(),
             );
 
-            vec![Diagnostic::error()
-                .with_message(format!(
-                    "invalid {method}: unknown field `{path}`",
-                    path = data.path
-                ))
-                .with_notes(notes)]
+            vec![
+                Diagnostic::error()
+                    .with_message(format!(
+                        "invalid {method}: unknown field `{path}`",
+                        path = data.path
+                    ))
+                    .with_notes(notes),
+            ]
         }
 
         match self {
@@ -102,18 +104,20 @@ impl IntoDiagnostics for CliUsageError {
             CliUsageError::CantAssignNonInput {
                 ovd: FieldOverride { path, value, .. },
             } => {
-                vec![Diagnostic::error()
-                    .with_message(format!("invalid assignment: `{path}` isn't an input"))
-                    .with_notes(vec![
-                        format!(
-                            "`{path}` already has a value and thus can't be assigned \
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("invalid assignment: `{path}` isn't an input"))
+                        .with_notes(vec![
+                            format!(
+                                "`{path}` already has a value and thus can't be assigned \
                             without `--override`."
-                        ),
-                        format!(
-                            "If you really want to override this field, please use \
+                            ),
+                            format!(
+                                "If you really want to override this field, please use \
                             `--override '{path}={value}'` instead."
-                        ),
-                    ])]
+                            ),
+                        ]),
+                ]
             }
             CliUsageError::AssignmentParseError { error } => {
                 let mut diags = IntoDiagnostics::into_diagnostics(error, files);

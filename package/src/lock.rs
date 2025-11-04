@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_with::FromInto;
 
 use crate::{
+    Dependency, GitDependency, ManifestFile, PreciseGitPkg, PreciseIndexPkg, PrecisePkg,
     error::{Error, IoResultExt},
     index::{self},
     resolve::Resolution,
     version::SemVer,
-    Dependency, GitDependency, ManifestFile, PreciseGitPkg, PreciseIndexPkg, PrecisePkg,
 };
 
 /// We need to give names to entries in the lock-file, so that we can refer to dependencies.

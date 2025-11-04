@@ -2,10 +2,10 @@ use std::{borrow::Cow, cell::RefCell, collections::HashSet};
 
 use nickel_lang_core::{
     bytecode::ast::{
+        Annotation, Ast, LetMetadata, Node,
         primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
-        typ::{iter::*, EnumRows, RecordRows, Type, TypeF},
-        Annotation, Ast, LetMetadata, Node,
+        typ::{EnumRows, RecordRows, Type, TypeF, iter::*},
     },
     identifier::Ident,
     position::RawSpan,

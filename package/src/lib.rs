@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gix::{bstr::ByteSlice as _, Url};
+use gix::{Url, bstr::ByteSlice as _};
 use index::{LockType, PackageIndex};
 use lock::{LockFileDep, LockPrecisePkg};
 use nickel_lang_core::cache::normalize_abs_path;
@@ -158,7 +158,7 @@ impl From<UnversionedDependency> for Dependency {
 }
 
 mod serde_url {
-    use serde::{de::Error, Deserialize, Serialize as _};
+    use serde::{Deserialize, Serialize as _, de::Error};
 
     pub fn serialize<S: serde::Serializer>(url: &gix::Url, ser: S) -> Result<S::Ok, S::Error> {
         // unwrap: locked urls can only come from nickel strings in the manifest file, which must be

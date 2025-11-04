@@ -1,22 +1,26 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
-use std::ffi::OsString;
-use std::io::Cursor;
-use std::iter::ExactSizeIterator;
+use std::{ffi::OsString, io::Cursor, iter::ExactSizeIterator};
 
 use serde::de::{
     Deserialize, DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
     VariantAccess, Visitor,
 };
 
-use crate::error::{self, NullReporter};
-use crate::eval::cache::CacheImpl;
-use crate::identifier::LocIdent;
-use crate::program::{Input, Program};
-use crate::term::array::Array;
-use crate::term::record::Field;
-use crate::term::{IndexMap, RichTerm, Term};
+use crate::{
+    error::{self, NullReporter},
+    eval::{
+        cache::CacheImpl,
+        value::{
+            Array, ArrayData, Container, InlineValue, NickelValue, RecordData, ValueContent,
+            ValueContentRef,
+        },
+    },
+    identifier::LocIdent,
+    program::{Input, Program},
+    term::{IndexMap, record::Field},
+};
 
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
@@ -24,11 +28,13 @@ macro_rules! deserialize_number {
         where
             V: Visitor<'de>,
         {
-            match unwrap_term(self)? {
-                Term::Num(n) => visitor.$visit($type::rounding_from(&n, RoundingMode::Nearest).0),
-                other => Err(RustDeserializationError::InvalidType {
+            match self.content_ref() {
+                ValueContentRef::Number(n) => {
+                    return visitor.$visit($type::rounding_from(n, RoundingMode::Nearest).0);
+                }
+                _ => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
-                    occurred: RichTerm::from(other).to_string(),
+                    occurred: self.type_of().unwrap_or("Other").to_owned(),
                 }),
             }
         }
@@ -165,7 +171,7 @@ pub enum RustDeserializationError {
     Other(String),
 }
 
-impl<'de> serde::Deserializer<'de> for RichTerm {
+impl<'de> serde::Deserializer<'de> for NickelValue {
     type Error = RustDeserializationError;
 
     /// Catch-all deserialization
@@ -173,27 +179,25 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Null => visitor.visit_unit(),
-            Term::Bool(v) => visitor.visit_bool(v),
-            Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest).0),
-            Term::Str(v) => visitor.visit_string(v.into_inner()),
-            Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
-                variant: v.into_label(),
-                rich_term: None,
-            }),
-            Term::EnumVariant { tag, arg, .. } => visitor.visit_enum(EnumDeserializer {
-                variant: tag.into_label(),
-                rich_term: Some(arg),
-            }),
-            Term::Record(record) => visit_record(record.fields, visitor),
-            Term::Array(v, _) => visit_array(v, visitor),
-            // unreachable(): `unwrap_term` recursively unwraps `Annotated` nodes until it
-            // encounters a different node, or it fails. Thus, if `unwrap_term` succeeds, the
-            // result can't be `Annotated`.
-            Term::Annotated(..) => unreachable!(),
-            other => Err(RustDeserializationError::UnimplementedType {
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+        match self.content() {
+            ValueContent::Null(_) => visitor.visit_unit(),
+            ValueContent::Bool(lens) => visitor.visit_bool(lens.take()),
+            ValueContent::Number(lens) => {
+                visitor.visit_f64(f64::rounding_from(lens.take(), RoundingMode::Nearest).0)
+            }
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
+            ValueContent::EnumVariant(lens) => {
+                let enum_variant = lens.take();
+
+                visitor.visit_enum(EnumDeserializer {
+                    tag: enum_variant.tag.into_label(),
+                    value: enum_variant.arg,
+                })
+            }
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
+            lens => Err(RustDeserializationError::UnimplementedType {
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
@@ -216,13 +220,14 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Null => visitor.visit_none(),
-            some => visitor.visit_some(RichTerm::from(some)),
+        if self.is_null() {
+            visitor.visit_none()
+        } else {
+            visitor.visit_some(self)
         }
     }
 
-    /// deserialize `RichTerm::Enum` tags or `RichTerm::Record`s with a single item.
+    /// deserialize an enum variant or a record with a single item.
     fn deserialize_enum<V>(
         self,
         _name: &str,
@@ -232,12 +237,17 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     where
         V: Visitor<'de>,
     {
-        let (variant, rich_term) = match unwrap_term(self)? {
-            Term::Enum(ident) => (ident.into_label(), None),
-            Term::EnumVariant { tag, arg, .. } => (tag.into_label(), Some(arg)),
-            Term::Record(record) => {
+        let (tag, arg) = match self.content() {
+            ValueContent::EnumVariant(lens) => {
+                let enum_var = lens.take();
+
+                (enum_var.tag.into_label(), enum_var.arg)
+            }
+            ValueContent::Record(lens) => {
+                let record = lens.take().unwrap_or_alloc();
+
                 let mut iter = record.fields.into_iter();
-                let (variant, value) = match iter.next() {
+                let (tag, arg) = match iter.next() {
                     Some((id, Field { value, .. })) => (id, value),
                     None => {
                         return Err(RustDeserializationError::InvalidType {
@@ -246,23 +256,27 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                         });
                     }
                 };
+
                 if iter.next().is_some() {
                     return Err(RustDeserializationError::InvalidType {
                         expected: "Record with single key".to_string(),
                         occurred: "Record with multiple keys".to_string(),
                     });
                 }
-                (variant.into_label(), value)
+
+                (tag.into_label(), arg)
             }
-            other => {
+            lens => {
+                let value = lens.restore();
+
                 return Err(RustDeserializationError::InvalidType {
                     expected: "Enum or Record".to_string(),
-                    occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    occurred: value.type_of().unwrap_or("Other").to_owned(),
                 });
             }
         };
 
-        visitor.visit_enum(EnumDeserializer { variant, rich_term })
+        visitor.visit_enum(EnumDeserializer { tag, value: arg })
     }
 
     /// Deserialize pass-through tuples/structs.
@@ -277,21 +291,22 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         visitor.visit_newtype_struct(self)
     }
 
-    /// Deserialize `RichTerm::Bool`
+    /// Deserialize a boolean value.
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Bool(v) => visitor.visit_bool(v),
-            other => Err(RustDeserializationError::InvalidType {
+        match self.as_inline() {
+            Some(InlineValue::True) => visitor.visit_bool(true),
+            Some(InlineValue::False) => visitor.visit_bool(false),
+            _ => Err(RustDeserializationError::InvalidType {
                 expected: "Bool".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: self.type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
 
-    /// Deserialize `RichTerm::Str` as char
+    /// Deserialize a string as a char.
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -299,29 +314,35 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         self.deserialize_string(visitor)
     }
 
-    /// Deserialize `RichTerm::Str` as str
+    /// Deserialize a string (borrowed).
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_string(visitor)
-    }
-
-    /// Deserialize `RichTerm::Str` as String
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        match unwrap_term(self)? {
-            Term::Str(v) => visitor.visit_string(v.into_inner()),
-            other => Err(RustDeserializationError::InvalidType {
-                expected: "Str".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+        match self.as_string() {
+            Some(s) => visitor.visit_str(s),
+            _ => Err(RustDeserializationError::InvalidType {
+                expected: "String".to_string(),
+                occurred: self.type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
 
-    /// Deserialize `RichTerm::Str` as String or `RichTerm::Array` as array,
+    /// Deserialize a string (owned).
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        match self.content() {
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
+            lens => Err(RustDeserializationError::InvalidType {
+                expected: "String".to_string(),
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
+            }),
+        }
+    }
+
+    /// Deserialize a string value or an array as bytes.
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -329,36 +350,40 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         self.deserialize_byte_buf(visitor)
     }
 
-    /// Deserialize `RichTerm::Str` as String or `RichTerm::Array` as array,
+    /// Deserialize a string value or an array as bytes.
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Str(v) => visitor.visit_string(v.into_inner()),
-            Term::Array(v, _) => visit_array(v, visitor),
-            other => Err(RustDeserializationError::InvalidType {
-                expected: "Str or Array".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
-            }),
+        match self.content() {
+            ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
+            ValueContent::Array(lens) => visit_array(lens.take().unwrap_or_alloc().array, visitor),
+            lens => {
+                let value = lens.restore();
+
+                Err(RustDeserializationError::InvalidType {
+                    expected: "Str or Array".to_string(),
+                    occurred: value.type_of().unwrap_or("Other").to_owned(),
+                })
+            }
         }
     }
 
-    /// Deserialize `RichTerm::Null` as `()`.
+    /// Deserialize `null` as `()`.
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Null => visitor.visit_unit(),
-            other => Err(RustDeserializationError::InvalidType {
+        match self.as_inline() {
+            Some(InlineValue::Null) => visitor.visit_unit(),
+            _ => Err(RustDeserializationError::InvalidType {
                 expected: "Null".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: self.type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
 
-    /// Deserialize `RichTerm::Null` as `()`.
+    /// Deserialize `null` as a unit struct.
     fn deserialize_unit_struct<V>(
         self,
         _name: &'static str,
@@ -370,21 +395,21 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         self.deserialize_unit(visitor)
     }
 
-    /// Deserialize `RichTerm::Array` as `Vec<T>`.
+    /// Deserialize an array as `Vec<T>`.
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Array(v, _) => visit_array(v, visitor),
-            other => Err(RustDeserializationError::InvalidType {
+        match self.content() {
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
+            lens => Err(RustDeserializationError::InvalidType {
                 expected: "Array".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
 
-    /// Deserialize `RichTerm::Array` as `Vec<T>`.
+    /// Deserialize an array as a tuple.
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -392,7 +417,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         self.deserialize_seq(visitor)
     }
 
-    /// Deserialize `RichTerm::Array` as `Vec<T>`.
+    /// Deserialize an array as a tuple struct.
     fn deserialize_tuple_struct<V>(
         self,
         _name: &'static str,
@@ -405,21 +430,21 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         self.deserialize_seq(visitor)
     }
 
-    /// Deserialize `RichTerm::Record` as `HashMap<K, V>`.
+    /// Deserialize a record as a map.
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Record(record) => visit_record(record.fields, visitor),
-            other => Err(RustDeserializationError::InvalidType {
+        match self.content() {
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
+            lens => Err(RustDeserializationError::InvalidType {
                 expected: "Record".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
         }
     }
 
-    /// Deserialize `RichTerm::Record` as `struct`.
+    /// Deserialize a record as a struct.
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
@@ -429,17 +454,21 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
     where
         V: Visitor<'de>,
     {
-        match unwrap_term(self)? {
-            Term::Array(v, _) => visit_array(v, visitor),
-            Term::Record(record) => visit_record(record.fields, visitor),
-            other => Err(RustDeserializationError::InvalidType {
-                expected: "Record".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
-            }),
+        match self.content() {
+            ValueContent::Array(lens) => visit_array_container(lens.take(), visitor),
+            ValueContent::Record(lens) => visit_record_container(lens.take(), visitor),
+            lens => {
+                let value = lens.restore();
+
+                Err(RustDeserializationError::InvalidType {
+                    expected: "Record".to_string(),
+                    occurred: value.type_of().unwrap_or("Other").to_owned(),
+                })
+            }
         }
     }
 
-    /// Deserialize `Ident` as `String`.
+    /// Deserialize an indentifier as a string.
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -489,13 +518,14 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
     }
 }
 
-fn unwrap_term(mut rich_term: RichTerm) -> Result<Term, RustDeserializationError> {
-    loop {
-        rich_term = match Term::from(rich_term) {
-            Term::Annotated(_, value) => value,
-            other => break Ok(other),
-        }
-    }
+fn visit_array_container<'de, V>(
+    container: Container<ArrayData>,
+    visitor: V,
+) -> Result<V::Value, RustDeserializationError>
+where
+    V: Visitor<'de>,
+{
+    visit_array(container.unwrap_or_alloc().array, visitor)
 }
 
 fn visit_array<'de, V>(array: Array, visitor: V) -> Result<V::Value, RustDeserializationError>
@@ -569,6 +599,16 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     }
 }
 
+fn visit_record_container<'de, V>(
+    container: Container<RecordData>,
+    visitor: V,
+) -> Result<V::Value, RustDeserializationError>
+where
+    V: Visitor<'de>,
+{
+    visit_record(container.unwrap_or_alloc().fields, visitor)
+}
+
 fn visit_record<'de, V>(
     record: IndexMap<LocIdent, Field>,
     visitor: V,
@@ -588,14 +628,14 @@ where
 }
 
 struct VariantDeserializer {
-    rich_term: Option<RichTerm>,
+    value: Option<NickelValue>,
 }
 
 impl<'de> VariantAccess<'de> for VariantDeserializer {
     type Error = RustDeserializationError;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
-        match self.rich_term {
+        match self.value {
             Some(value) => Deserialize::deserialize(value),
             None => Ok(()),
         }
@@ -605,7 +645,7 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
     where
         T: DeserializeSeed<'de>,
     {
-        match self.rich_term {
+        match self.value {
             Some(value) => seed.deserialize(value),
             None => Err(RustDeserializationError::MissingValue),
         }
@@ -615,19 +655,20 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
     where
         V: Visitor<'de>,
     {
-        match self.rich_term.map(unwrap_term) {
-            Some(Ok(Term::Array(v, _))) => {
+        match self.value.map(|v| v.content()) {
+            Some(ValueContent::Array(lens)) => {
+                let v = lens.take().unwrap_or_alloc().array;
+
                 if v.is_empty() {
                     visitor.visit_unit()
                 } else {
                     visit_array(v, visitor)
                 }
             }
-            Some(Ok(other)) => Err(RustDeserializationError::InvalidType {
+            Some(lens) => Err(RustDeserializationError::InvalidType {
                 expected: "Array variant".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
-            Some(Err(err)) => Err(err),
             None => Err(RustDeserializationError::MissingValue),
         }
     }
@@ -640,21 +681,20 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
     where
         V: Visitor<'de>,
     {
-        match self.rich_term.map(unwrap_term) {
-            Some(Ok(Term::Record(record))) => visit_record(record.fields, visitor),
-            Some(Ok(other)) => Err(RustDeserializationError::InvalidType {
+        match self.value.map(|v| v.content()) {
+            Some(ValueContent::Record(lens)) => visit_record_container(lens.take(), visitor),
+            Some(lens) => Err(RustDeserializationError::InvalidType {
                 expected: "Array variant".to_string(),
-                occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                occurred: lens.restore().type_of().unwrap_or("Other").to_owned(),
             }),
-            Some(Err(err)) => Err(err),
             None => Err(RustDeserializationError::MissingValue),
         }
     }
 }
 
 struct EnumDeserializer {
-    variant: String,
-    rich_term: Option<RichTerm>,
+    tag: String,
+    value: Option<NickelValue>,
 }
 
 impl<'de> EnumAccess<'de> for EnumDeserializer {
@@ -665,10 +705,8 @@ impl<'de> EnumAccess<'de> for EnumDeserializer {
     where
         V: DeserializeSeed<'de>,
     {
-        let variant = self.variant.into_deserializer();
-        let visitor = VariantDeserializer {
-            rich_term: self.rich_term,
-        };
+        let variant = self.tag.into_deserializer();
+        let visitor = VariantDeserializer { value: self.value };
         seed.deserialize(variant).map(|v| (v, visitor))
     }
 }
@@ -676,10 +714,9 @@ impl<'de> EnumAccess<'de> for EnumDeserializer {
 impl std::fmt::Display for RustDeserializationError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            RustDeserializationError::InvalidType {
-                ref expected,
-                ref occurred,
-            } => write!(f, "invalid type: {occurred}, expected: {expected}"),
+            RustDeserializationError::InvalidType { expected, occurred } => {
+                write!(f, "invalid type: {occurred}, expected: {expected}")
+            }
             RustDeserializationError::MissingValue => write!(f, "missing value"),
             RustDeserializationError::EmptyRecordField => write!(f, "empty Metavalue"),
             RustDeserializationError::InvalidRecordLength(len) => {
@@ -688,10 +725,10 @@ impl std::fmt::Display for RustDeserializationError {
             RustDeserializationError::InvalidArrayLength(len) => {
                 write!(f, "invalid array length, expected {len}")
             }
-            RustDeserializationError::UnimplementedType { ref occurred } => {
+            RustDeserializationError::UnimplementedType { occurred } => {
                 write!(f, "unimplemented conversion from type: {occurred}")
             }
-            RustDeserializationError::Other(ref err) => write!(f, "{err}"),
+            RustDeserializationError::Other(err) => write!(f, "{err}"),
         }
     }
 }
@@ -714,13 +751,13 @@ mod tests {
 
     use nickel_lang_utils::{
         nickel_lang_core::{
-            deserialize::RustDeserializationError, error::NullReporter, term::RichTerm,
+            deserialize::RustDeserializationError, error::NullReporter, eval::value::NickelValue,
         },
         test_program::TestProgram,
     };
     use serde::Deserialize;
 
-    fn eval(source: &str) -> RichTerm {
+    fn eval(source: &str) -> NickelValue {
         TestProgram::new_from_source(
             Cursor::new(source),
             "source",

@@ -4,22 +4,24 @@
 
 use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
-use comrak::{arena_tree::NodeEdge, nodes::AstNode, Arena, ComrakOptions};
+use comrak::{Arena, ComrakOptions, arena_tree::NodeEdge, nodes::AstNode};
 use nickel_lang_core::{
     cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
     error::{
-        report::{report_as_str, report_to_stdout, ColorOpt},
         Error as CoreError, EvalError, Reporter as _,
+        report::{ColorOpt, report_as_str, report_to_stdout},
     },
     eval::{
-        cache::{lazy::CBNCache, CacheImpl},
         Closure, Environment,
+        cache::{CacheImpl, lazy::CBNCache},
+        value::{Container, NickelValue, ValueContent, ValueContentRef, lens::TermContent},
     },
     identifier::{Ident, LocIdent},
     label::Label,
-    match_sharedterm, mk_app, mk_fun,
+    mk_app, mk_fun,
+    position::PosTable,
     program::Program,
-    term::{make, record::RecordData, LabeledType, RichTerm, Term, TypeAnnotation},
+    term::{LabeledType, Term, TypeAnnotation, make, record::RecordData},
     traverse::{Traverse as _, TraverseOrder},
     typ::{Type, TypeF},
     typecheck::TypecheckMode,
@@ -148,7 +150,7 @@ enum ErrorKind {
     /// A doctest was expected to succeed, but it failed.
     UnexpectedFailure { error: Box<EvalError> },
     /// A doctest was expected to fail, but instead it succeeded.
-    UnexpectedSuccess { result: RichTerm },
+    UnexpectedSuccess { result: NickelValue },
     /// A doctest failed with an unexpected message.
     WrongTestFailure { message: String, expected: String },
 }
@@ -163,11 +165,12 @@ fn run_tests(
     prog: &mut Program<CacheImpl>,
     errors: &mut Vec<Error>,
     registry: &TestRegistry,
-    spine: &RichTerm,
+    spine: &NickelValue,
     color: ColorOpt,
 ) {
-    match spine.as_ref() {
-        Term::Record(data) | Term::RecRecord(data, ..) => {
+    match spine.content_ref() {
+        ValueContentRef::Record(Container::Alloc(data))
+        | ValueContentRef::Term(Term::RecRecord(data, ..)) => {
             for (id, field) in &data.fields {
                 if let Some(entry) = registry.tests.get(&id.ident()) {
                     let Some(val) = field.value.as_ref() else {
@@ -182,7 +185,7 @@ fn run_tests(
 
                     // Undo the test's lazy wrapper.
                     let result = prog.eval_deep_closure(Closure {
-                        body: mk_app!(val.clone(), Term::Null),
+                        value: mk_app!(val.clone(), NickelValue::null()),
                         env: Environment::new(),
                     });
 
@@ -292,12 +295,14 @@ impl TestCommand {
     fn prepare_tests(
         &self,
         program: &mut Program<CacheImpl>,
-    ) -> Result<(RichTerm, TestRegistry), CoreError> {
+    ) -> Result<(NickelValue, TestRegistry), CoreError> {
         let mut registry = TestRegistry::default();
         program.typecheck(TypecheckMode::Walk)?;
         program.compile()?;
         program
-            .custom_transform(0, |cache, rt| doctest_transform(cache, &mut registry, rt))
+            .custom_transform(0, |cache, pos_table, rt| {
+                doctest_transform(pos_table, cache, &mut registry, rt)
+            })
             .map_err(|e| e.unwrap_error("transforming doctest"))?;
         Ok((program.eval_closurized_record_spine()?, registry))
     }
@@ -378,14 +383,15 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
 // The main advantage of this approach is that it makes it easy to have the test
 // evaluated in the right environment.
 fn doctest_transform(
+    pos_table: &mut PosTable,
     cache: &mut CacheHub,
     registry: &mut TestRegistry,
-    rt: RichTerm,
-) -> Result<RichTerm, CoreError> {
+    value: NickelValue,
+) -> Result<NickelValue, CoreError> {
     // Get the path that of the current term, so we can pretend that test snippets
     // came from the same path. This allows imports to work.
-    let path = rt
-        .pos
+    let path = value
+        .pos(pos_table)
         .as_opt_ref()
         .and_then(|sp| cache.get_path(sp.src_id))
         .map(PathBuf::from);
@@ -399,14 +405,15 @@ fn doctest_transform(
     // the returned term will get inserted into a bigger term that will be
     // typechecked and transformed.
     fn prepare(
+        pos_table: &mut PosTable,
         cache: &mut CacheHub,
         input: &str,
         source_path: &SourcePath,
-    ) -> Result<RichTerm, CoreError> {
+    ) -> Result<NickelValue, CoreError> {
         let src_id = cache
             .sources
             .add_string(source_path.clone(), input.to_owned());
-        cache.parse_to_term(src_id, InputFormat::Nickel)?;
+        cache.parse_to_term(pos_table, src_id, InputFormat::Nickel)?;
         // unwrap(): we just populated it
         Ok(cache.get(src_id).unwrap())
     }
@@ -415,7 +422,7 @@ fn doctest_transform(
                                     rec_stuff: Option<(Vec<_>, Vec<_>)>,
                                     pos|
      -> Result<_, CoreError> {
-        let mut doc_fields: Vec<(Ident, RichTerm)> = Vec::new();
+        let mut doc_fields: Vec<(Ident, NickelValue)> = Vec::new();
         for (id, field) in &record_data.fields {
             if let Some(doc) = &field.metadata.doc {
                 let arena = Arena::new();
@@ -426,17 +433,17 @@ fn doctest_transform(
                 ));
 
                 for (i, snippet) in snippets.iter().enumerate() {
-                    let mut test_term = prepare(cache, &snippet.input, &source_path)?;
+                    let mut test_term = prepare(pos_table, cache, &snippet.input, &source_path)?;
 
                     if let Expected::Value(s) = &snippet.expected {
                         // Create the contract `std.contract.Equal <expected>` and apply it to the
                         // test term.
-                        let expected_term = prepare(cache, s, &source_path)?;
+                        let expected_term = prepare(pos_table, cache, s, &source_path)?;
                         // unwrap: we just parsed it, so it will have a span
-                        let expected_span = expected_term.pos.into_opt().unwrap();
+                        let expected_span = expected_term.pos(pos_table).into_opt().unwrap();
 
                         let eq = make::static_access(
-                            RichTerm::from(Term::Var("std".into())),
+                            NickelValue::term_posless(Term::Var("std".into())),
                             ["contract", "Equal"],
                         );
                         let eq = mk_app!(eq, expected_term);
@@ -479,26 +486,33 @@ fn doctest_transform(
         // We have to be careful about turning Records into RecRecords, because
         // some places (e.g. compiled match expressions) assume that they have
         // Records.
-        let term = if let Some((includes, dyn_fields)) = rec_stuff {
-            Term::RecRecord(record_data, includes, dyn_fields, None)
+        let value = if let Some((includes, dyn_fields)) = rec_stuff {
+            NickelValue::term(
+                Term::RecRecord(record_data, includes, dyn_fields, None, false),
+                pos,
+            )
         } else {
-            Term::Record(record_data)
+            NickelValue::record(record_data, pos)
         };
 
-        Ok(RichTerm::from(term).with_pos(pos))
+        Ok(value)
     };
 
-    let mut traversal = |rt: RichTerm| -> Result<RichTerm, CoreError> {
-        let term = match_sharedterm!(match (rt.term) {
-            Term::RecRecord(record_data, includes, dyn_fields, _deps) => {
-                record_with_doctests(record_data, Some((includes, dyn_fields)), rt.pos)?
+    let mut traversal = |value: NickelValue| -> Result<NickelValue, CoreError> {
+        let pos_idx = value.pos_idx();
+
+        let value = match value.content() {
+            ValueContent::Term(TermContent::RecRecord(lens)) => {
+                let (record_data, includes, dyn_fields, _deps, _closurized) = lens.take();
+                record_with_doctests(record_data, Some((includes, dyn_fields)), pos_idx)?
             }
-            Term::Record(record_data) => {
-                record_with_doctests(record_data, None, rt.pos)?
+            ValueContent::Record(lens) => {
+                record_with_doctests(lens.take().unwrap_or_alloc(), None, pos_idx)?
             }
-            _ => rt,
-        });
-        Ok(term)
+            lens => lens.restore(),
+        };
+
+        Ok(value)
     };
-    rt.traverse(&mut traversal, TraverseOrder::TopDown)
+    value.traverse(&mut traversal, TraverseOrder::TopDown)
 }

@@ -3,16 +3,20 @@
 //! Using this module, you can define Nickel records using a builder style. For example:
 //!
 //! ```rust
-//! # use nickel_lang_core::term::{MergePriority, Term, RichTerm, make::builder::Record};
+//! # use nickel_lang_core::{
+//! #   eval::value::NickelValue,
+//! #   term::{MergePriority, Term, make::builder::Record},
+//! # };
+//!
 //! let b = Record::new()
 //!     .field("foo")
 //!     .priority(MergePriority::Bottom)
 //!     .doc("foo?")
 //!     .not_exported()
-//!     .value(Term::Str("foo".into()));
-//! let t : RichTerm = b
+//!     .value(NickelValue::string_posless("foo"));
+//! let t : NickelValue = b
 //!     .field("bar")
-//!     .value(Term::Num(42.into()))
+//!     .value(NickelValue::number_posless(42))
 //!     .into();
 //! ```
 //!
@@ -20,12 +24,13 @@ use indexmap::IndexMap;
 
 use crate::{
     combine::Combine,
+    eval::value::NickelValue,
     identifier::{Ident, LocIdent},
     label::Label,
     term::{
+        BinaryOp, LabeledType, MergePriority, Term,
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, MergePriority, RichTerm, Term,
     },
     typ::Type,
 };
@@ -36,7 +41,7 @@ type StaticPath = Vec<Ident>;
 pub struct Incomplete();
 
 /// Typestate style tag for `Field`s that have been finalized
-pub struct Complete(Option<RichTerm>);
+pub struct Complete(Option<NickelValue>);
 
 /// A Nickel record field being constructed
 #[derive(Debug)]
@@ -155,7 +160,7 @@ impl Field<Incomplete> {
     }
 
     /// Finalize the [`Field`] by setting its value
-    pub fn value(self, value: impl Into<RichTerm>) -> Field<Complete> {
+    pub fn value(self, value: impl Into<NickelValue>) -> Field<Complete> {
         Field {
             record: Complete(Some(value.into())),
             path: self.path,
@@ -194,7 +199,7 @@ impl Field<Record> {
     }
 
     /// Finalize the [`Field`] by setting its a value
-    pub fn value(mut self, value: impl Into<RichTerm>) -> Record {
+    pub fn value(mut self, value: impl Into<NickelValue>) -> Record {
         self.record.fields.push((
             self.path,
             record::Field {
@@ -223,16 +228,16 @@ where
     let fst = it.next().unwrap();
 
     let content = it.rev().fold(content, |acc, id| {
-        record::Field::from(RichTerm::from(Term::Record(RecordData {
+        record::Field::from(NickelValue::record_posless(RecordData {
             fields: [(LocIdent::from(id), acc)].into(),
             ..Default::default()
-        })))
+        }))
     });
 
     (fst.into(), content)
 }
 
-fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
+fn build_record<I>(fields: I, attrs: RecordAttrs) -> NickelValue
 where
     I: IntoIterator<Item = (LocIdent, record::Field)>,
 {
@@ -262,7 +267,8 @@ where
             }
         }
     }
-    Term::Record(RecordData::new(static_fields, attrs, None))
+
+    NickelValue::record_posless(RecordData::new(static_fields, attrs, None))
 }
 
 impl Record {
@@ -336,13 +342,21 @@ impl Record {
         self
     }
 
-    /// Finalize the record and turn it into a [`crate::term::RichTerm`]
-    pub fn build(self) -> RichTerm {
+    /// Finalize the record and turn it into a [`crate::term::NickelValue`].
+    ///
+    /// # Closurization
+    ///
+    /// [Self::build] is intended to provide a ready-to-use value, so the built record is wrapped
+    /// into a [crate::term::Term::Closurize] operation. Otherwise, since records are assumed to be
+    /// closurized during evaluation, using a bare record at runtime would either panic or
+    /// introduce subtle bugs.
+    pub fn build(self) -> NickelValue {
         let elaborated = self
             .fields
             .into_iter()
             .map(|(path, rt)| elaborate_field_path(path, rt));
-        build_record(elaborated, self.attrs).into()
+
+        NickelValue::term_posless(Term::Closurize(build_record(elaborated, self.attrs)))
     }
 }
 
@@ -362,7 +376,7 @@ where
     }
 }
 
-impl From<Record> for RichTerm {
+impl From<Record> for NickelValue {
     fn from(val: Record) -> Self {
         val.build()
     }
@@ -372,7 +386,7 @@ impl From<Record> for RichTerm {
 mod tests {
     use crate::{
         position::TermPos,
-        term::{RichTerm, TypeAnnotation},
+        term::{NickelValue, TypeAnnotation},
         typ::{Type, TypeF},
     };
 
@@ -380,49 +394,50 @@ mod tests {
 
     use super::*;
 
-    fn term(t: Term) -> record::Field {
-        record::Field::from(RichTerm::from(t))
+    fn build_closurized_record<I>(fields: I, attrs: RecordAttrs) -> NickelValue
+    where
+        I: IntoIterator<Item = (LocIdent, record::Field)>,
+    {
+        NickelValue::term_posless(Term::Closurize(build_record(fields, attrs)))
     }
 
     #[test]
     fn trivial() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
-            .value(Term::Str("bar".into()))
+            .value(NickelValue::string_posless("bar"))
             .into();
         assert_eq!(
             t,
-            build_record(
-                vec![("foo".into(), term(Term::Str("bar".to_owned().into())))],
+            build_closurized_record(
+                vec![("foo".into(), NickelValue::string_posless("bar").into())],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn from_iter() {
-        let t: RichTerm = Record::from([
-            Field::name("foo").value(Term::Null),
-            Field::name("bar").value(Term::Null),
+        let t: NickelValue = Record::from([
+            Field::name("foo").value(NickelValue::null()),
+            Field::name("bar").value(NickelValue::null()),
         ])
         .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
-                    ("foo".into(), term(Term::Null)),
-                    ("bar".into(), term(Term::Null)),
+                    ("foo".into(), NickelValue::null().into()),
+                    ("bar".into(), NickelValue::null().into()),
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn some_doc() {
-        let t: RichTerm = Record::from([
+        let t: NickelValue = Record::from([
             Field::name("foo").some_doc(Some("foo")).no_value(),
             Field::name("bar").some_doc(None as Option<&str>).no_value(),
             Field::name("baz").doc("baz").no_value(),
@@ -430,7 +445,7 @@ mod tests {
         .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     (
                         "foo".into(),
@@ -450,34 +465,32 @@ mod tests {
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn fields() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .fields([
-                Field::name("foo").value(Term::Str("foo".into())),
-                Field::name("bar").value(Term::Str("bar".into())),
+                Field::name("foo").value(NickelValue::string_posless("foo")),
+                Field::name("bar").value(NickelValue::string_posless("bar")),
             ])
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
-                    ("foo".into(), term(Term::Str("foo".into()))),
-                    ("bar".into(), term(Term::Str("bar".into()))),
+                    ("foo".into(), NickelValue::string_posless("foo").into()),
+                    ("bar".into(), NickelValue::string_posless("bar").into()),
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn fields_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .fields([
                 Field::name("foo").optional().no_value(),
                 Field::name("bar").optional().no_value(),
@@ -485,7 +498,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![
                     (
                         "foo".into(),
@@ -504,35 +517,34 @@ mod tests {
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn overriding() {
-        let t: RichTerm = Record::new()
+        let v: NickelValue = Record::new()
             .path(vec!["terraform", "required_providers"])
             .value(Record::from([
-                Field::name("foo").value(Term::Null),
-                Field::name("bar").value(Term::Null),
+                Field::name("foo").value(NickelValue::null()),
+                Field::name("bar").value(NickelValue::null()),
             ]))
             .path(vec!["terraform", "required_providers", "foo"])
-            .value(Term::Str("hello world!".into()))
+            .value(NickelValue::string_posless("hello world!"))
             .into();
-        eprintln!("{t:?}");
         assert_eq!(
-            t,
-            build_record(
+            v,
+            build_closurized_record(
                 vec![
                     elaborate_field_path(
                         vec!["terraform".into(), "required_providers".into()],
-                        term(build_record(
+                        build_closurized_record(
                             vec![
-                                ("foo".into(), term(Term::Null)),
-                                ("bar".into(), term(Term::Null))
+                                ("foo".into(), NickelValue::null().into()),
+                                ("bar".into(), NickelValue::null().into())
                             ],
                             Default::default()
-                        ))
+                        )
+                        .into()
                     ),
                     elaborate_field_path(
                         vec![
@@ -540,41 +552,39 @@ mod tests {
                             "required_providers".into(),
                             "foo".into(),
                         ],
-                        term(Term::Str("hello world!".into()))
-                    )
+                        NickelValue::string_posless("hello world!").into()
+                    ),
                 ],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn open_record() {
-        let t: RichTerm = Record::new().open().into();
+        let t: NickelValue = Record::new().open().into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![],
                 RecordAttrs {
                     open: true,
                     ..Default::default()
                 }
             )
-            .into()
         );
     }
 
     #[test]
     fn prio_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .priority(MergePriority::Top)
             .no_value()
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(FieldMetadata {
@@ -584,20 +594,19 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn contract() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .contract(TypeF::String)
             .no_value()
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(TypeAnnotation {
@@ -613,13 +622,12 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 
     #[test]
     fn exercise_metadata() {
-        let t: RichTerm = Record::new()
+        let t: NickelValue = Record::new()
             .field("foo")
             .priority(MergePriority::Bottom)
             .doc("foo?")
@@ -631,7 +639,7 @@ mod tests {
             .into();
         assert_eq!(
             t,
-            build_record(
+            build_closurized_record(
                 vec![(
                     "foo".into(),
                     record::Field::from(FieldMetadata {
@@ -659,7 +667,6 @@ mod tests {
                 )],
                 Default::default()
             )
-            .into()
         );
     }
 }

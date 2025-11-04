@@ -94,7 +94,7 @@ impl Files {
     }
 
     /// Returns the list of all standard library modules and their file ids.
-    pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> {
+    pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> + use<> {
         crate::stdlib::modules()
             .into_iter()
             .zip(0..)

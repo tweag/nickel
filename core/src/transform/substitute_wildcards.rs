@@ -9,11 +9,11 @@ use std::{convert::Infallible, rc::Rc};
 use super::Wildcards;
 
 use crate::{
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     label::Label,
-    match_sharedterm,
     term::{
+        LabeledType, Term, TypeAnnotation,
         record::{Field, FieldMetadata, RecordData},
-        LabeledType, RichTerm, Term, TypeAnnotation,
     },
     traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
@@ -21,32 +21,47 @@ use crate::{
 
 /// If the top-level node of the AST is a meta-value with a wildcard type annotation, replace
 /// both the type annotation and the label's type with the inferred type.
-pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
-    let pos = rt.pos;
-    match_sharedterm!(match (rt.term) {
-        Term::Annotated(annot @ TypeAnnotation { typ: Some(_), .. }, inner) => {
-            RichTerm::new(
-                Term::Annotated(annot.subst_wildcards(wildcards), inner),
-                pos,
-            )
-        }
-        Term::RecRecord(record_data, includes, dyn_fields, deps) => {
-            let record_data = record_data.subst_wildcards(wildcards);
-            let dyn_fields = dyn_fields
-                .into_iter()
-                .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
-                .collect();
+pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
+    let pos_idx = value.pos_idx();
 
-            RichTerm::new(
-                Term::RecRecord(record_data, includes, dyn_fields, deps),
-                pos,
-            )
+    match value.content() {
+        ValueContent::Term(term_lens) => {
+            if let Term::Annotated(TypeAnnotation { typ: Some(_), .. }, _) = term_lens.term() {
+                let TermContent::Annotated(value_lens) = term_lens else {
+                    unreachable!("TermContent::Annotated expected")
+                };
+
+                let (annot, inner) = value_lens.take();
+
+                NickelValue::term(
+                    Term::Annotated(annot.subst_wildcards(wildcards), inner),
+                    pos_idx,
+                )
+            } else if let TermContent::RecRecord(record_lens) = term_lens {
+                let (record_data, includes, dyn_fields, deps, closurized) = record_lens.take();
+
+                let record_data = record_data.subst_wildcards(wildcards);
+                let dyn_fields = dyn_fields
+                    .into_iter()
+                    .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
+                    .collect();
+
+                NickelValue::term(
+                    Term::RecRecord(record_data, includes, dyn_fields, deps, closurized),
+                    pos_idx,
+                )
+            } else {
+                term_lens.restore()
+            }
         }
-        Term::Record(record_data) => {
-            RichTerm::new(Term::Record(record_data.subst_wildcards(wildcards)), pos)
+        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => lens.restore(),
+        ValueContent::Record(record_lens) => {
+            // unwrap(): we treated the inline empty record case above
+            let record_data = record_lens.take().into_opt().unwrap();
+            NickelValue::record(record_data.subst_wildcards(wildcards), pos_idx)
         }
-        _ => rt,
-    })
+        lens => lens.restore(),
+    }
 }
 
 /// Get the inferred type for a wildcard, or `Dyn` if no type was inferred.

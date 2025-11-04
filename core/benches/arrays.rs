@@ -1,8 +1,8 @@
 #![cfg_attr(feature = "benchmark-ci", allow(unused_imports))]
 
 use criterion::criterion_main;
-use nickel_lang_core::term::{array::ArrayAttrs, Number, RichTerm, Term};
-use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
+use nickel_lang_core::eval::value::NickelValue;
+use nickel_lang_utils::{bench::EvalMode, bench::criterion_config, ncl_bench_group};
 use pretty::{DocBuilder, Pretty};
 
 /// Generates a pseaudo-random Nickel array as a string.
@@ -19,13 +19,10 @@ fn ncl_random_array(len: usize) -> String {
 
     for _ in 0..len {
         acc = (a * acc + c) % m;
-        numbers.push(RichTerm::from(Term::Num(Number::from(acc))));
+        numbers.push(NickelValue::number_posless(acc));
     }
 
-    let xs = RichTerm::from(Term::Array(
-        numbers.into_iter().collect(),
-        ArrayAttrs::default(),
-    ));
+    let xs = NickelValue::array_posless(numbers.into_iter().collect(), Vec::new());
     let alloc = Allocator::default();
     let doc: DocBuilder<_, ()> = xs.pretty(&alloc);
     let mut out = Vec::new();

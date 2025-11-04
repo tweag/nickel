@@ -1,24 +1,24 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::{position::TermPos, term::SharedTerm};
+use crate::position::PosIdx;
 
-// Update the environment of a term by extending it with a recursive environment. In the general
-// case, the term is expected to be a variable pointing to the element to be patched. Otherwise,
-// it's considered to have no dependencies and is left untouched.
-//
-// This function achieve the same as `patch_field`, but is somehow lower-level, as it operates on a
-// general `RichTerm` instead of a `Field`. In practice, the patched term is either the value of a
-// field or one of its pending contract.
-fn patch_term<C: Cache>(cache: &mut C, term: &mut RichTerm, rec_env: &[(Ident, CacheIndex)]) {
-    if let Term::Closure(ref mut idx) = SharedTerm::make_mut(&mut term.term) {
+/// Updates the environment of an expression by extending it with a recursive environment. In the
+/// general case, the expression is expected to be a variable pointing to the element to be patched.
+/// Otherwise, it's considered to have no dependencies and is left untouched.
+///
+/// This function achieve the same as [patch_field], but is somehow lower-level, as it operates on
+/// a general [crate::bytecode::value::NickelValue] instead of a [crate::term::record::Field]. In
+/// practice, the patched expression is either the value of a field or one of its pending contract.
+fn patch_value<C: Cache>(cache: &mut C, value: &mut NickelValue, rec_env: &[(Ident, CacheIndex)]) {
+    if let ValueContentRefMut::Thunk(idx) = value.content_make_mut() {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
         cache.build_cached(idx, rec_env);
     } else {
-        debug_assert!(term.as_ref().is_constant())
+        debug_assert!(value.is_constant())
     }
 }
 
-/// Build a recursive environment from record bindings. For each field, `rec_env` either extracts
+/// Builds a recursive environment from record bindings. For each field, `rec_env` either extracts
 /// the corresponding cache element from the environment in the general case, or create a closure
 /// on the fly if the field is a constant. The resulting environment is to be passed to the
 /// [`patch_field`] function.
@@ -44,43 +44,36 @@ fn patch_term<C: Cache>(cache: &mut C, term: &mut RichTerm, rec_env: &[(Ident, C
 pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
-    pos_record: TermPos,
+    pos_record: PosIdx,
 ) -> Vec<(Ident, CacheIndex)> {
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
-                let idx = match value.as_ref() {
-                    Term::Closure(idx) => idx.clone(),
-                    _ => {
-                        // If we are in this branch, `value` must be a constant after closurization
-                        // (the evaluation of a recursive record starts by closurizing all fields
-                        // and contracts). Constants don't need an environment, which is why it is
-                        // dropped.
-                        debug_assert!(value.as_ref().is_constant());
-                        let closure = Closure {
-                            body: value.clone(),
-                            env: Environment::new(),
-                        };
+                let idx = if let Some(idx) = value.as_thunk() {
+                    idx.clone()
+                } else {
+                    // If we are in this branch, `value` must be a constant after closurization
+                    // (the evaluation of a recursive record starts by closurizing all fields and
+                    // contracts).
+                    debug_assert!(value.is_constant());
+                    // Constants don't need an environment: they contain no variable.
+                    let closure: Closure = value.clone().into();
 
-                        cache.add(closure, BindingType::Normal)
-                    }
+                    cache.add(closure, BindingType::Normal)
                 };
 
                 // We now need to wrap the binding in a value with contracts applied.
                 let with_ctr_applied = RuntimeContract::apply_all(
-                    RichTerm::new(Term::Closure(idx), value.pos),
+                    NickelValue::thunk(idx, value.pos_idx()),
                     field.pending_contracts.iter().cloned(),
-                    value.pos,
+                    value.pos_idx(),
                 );
 
-                let final_closure = Closure {
-                    body: with_ctr_applied,
-                    env: Environment::new(),
-                };
+                let final_closure: Closure = with_ctr_applied.into();
 
                 (id.ident(), cache.add(final_closure, BindingType::Normal))
             } else {
-                let error = EvalError::MissingFieldDef {
+                let error = EvalErrorData::MissingFieldDef {
                     id: *id,
                     metadata: field.metadata.clone(),
                     pos_record,
@@ -89,13 +82,10 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     //
                     // This field is filled later by the evaluation function if this
                     // `MissingFieldDef` is ever extracted from the environment.
-                    pos_access: TermPos::None,
+                    pos_access: PosIdx::NONE,
                 };
 
-                let closure = Closure {
-                    body: RichTerm::from(Term::RuntimeError(error)),
-                    env: Environment::new(),
-                };
+                let closure: Closure = NickelValue::from(Term::RuntimeError(error)).into();
 
                 (id.ident(), cache.add(closure, BindingType::Normal))
             }
@@ -114,7 +104,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 /// all the recursive environment. See [`crate::transform::free_vars`].
 pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident, CacheIndex)]) {
     if let Some(ref mut value) = field.value {
-        patch_term(cache, value, rec_env);
+        patch_value(cache, value, rec_env);
     }
 
     // We must patch the contracts contained in the fields' pending contracts as well, since they
@@ -135,7 +125,7 @@ pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident
     //
     // Here, `Variant` depends on `tag` recursively.
     for ctr in field.pending_contracts.iter_mut() {
-        patch_term(cache, &mut ctr.contract, rec_env);
+        patch_value(cache, &mut ctr.contract, rec_env);
     }
 }
 
@@ -167,5 +157,7 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     //
     // Include expressions are transformed to normal fields the very first time they are seen. They
     // aren't reconstructed, so the result of a merge never has any include expressions.
-    Term::RecRecord(record_data, Vec::new(), Vec::new(), None)
+    //
+    // The fields are already closurized.
+    Term::RecRecord(record_data, Vec::new(), Vec::new(), None, true)
 }

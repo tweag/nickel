@@ -310,7 +310,7 @@ impl<'ast> Record<'ast> {
         self
     }
 
-    /// Finalize the record and turn it into a [`crate::term::RichTerm`]
+    /// Finalize the record and turn it into a [`super::Ast`]
     pub fn build(self, alloc: &'ast AstAlloc) -> Ast<'ast> {
         alloc
             .record(record::Record {
@@ -359,7 +359,7 @@ macro_rules! app {
 }
 
 #[macro_export]
-/// Multi-ary application for types implementing `Into<RichTerm>`.
+/// Multi-ary application for types implementing `Into<NickelValue>`.
 macro_rules! primop_app {
     // We avoid a vec allocation for unary primop applications, which are relatively common.
     ( $alloc:expr, $op:expr , $arg:expr $(,)?) => {
@@ -383,7 +383,7 @@ macro_rules! primop_app {
 
 #[macro_export]
 /// Multi argument function for types implementing `Into<Ident>` (for the identifiers), and
-/// `Into<RichTerm>` for the body.
+/// `Into<NickelValue>` for the body.
 macro_rules! fun {
     // Auxiliary form for `fun!` where the arguments are clearly delimited syntactically by
     // brackets. The issue with the general interface of `fun!` is that it must extract its last

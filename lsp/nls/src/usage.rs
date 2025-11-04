@@ -2,8 +2,8 @@ use std::collections::hash_map::{Entry, HashMap};
 
 use nickel_lang_core::{
     bytecode::ast::{
-        pattern::bindings::Bindings as _, record::FieldPathElem, typ::Type, Ast, AstAlloc, Match,
-        Node,
+        Ast, AstAlloc, Match, Node, pattern::bindings::Bindings as _, record::FieldPathElem,
+        typ::Type,
     },
     environment::Environment as GenericEnvironment,
     identifier::Ident,

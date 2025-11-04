@@ -2,6 +2,4 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: record/insert: tried to extend a record with the field bar, but it already exists
-
-
+error: record/insert_with_opts: tried to extend a record with the field bar, but it already exists

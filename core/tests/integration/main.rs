@@ -2,17 +2,19 @@ use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
     error::{
-        Error, EvalError, ExportError, ExportErrorData, ImportError, NullReporter, ParseError,
-        TypecheckErrorData,
+        Error, EvalError, EvalErrorData, ExportErrorData, ImportError, NullReporter, ParseError,
+        PointedExportErrorData, TypecheckErrorData,
     },
-    term::Term,
+    eval::value::NickelValue,
     typecheck::TypecheckMode,
 };
+
 use nickel_lang_utils::{
-    annotated_test::{read_annotated_test_case, TestCase},
+    annotated_test::{TestCase, read_annotated_test_case},
     project_root::project_root,
     test_program::TestProgram,
 };
+
 use serde::Deserialize;
 use test_generator::test_resources;
 
@@ -84,10 +86,10 @@ fn run_test(test_case: TestCase<Test>, path: String) {
                 assert_eq!(expected_err, err, "wrong error evaluating file {path}")
             }
             Expectation::Pass => {
-                let result = eval_strategy.eval_program_to_term(p);
+                let result = eval_strategy.eval_program(p);
                 assert_eq!(
                     result,
-                    Term::Bool(true),
+                    NickelValue::bool_true(),
                     "unexpected error evaluating file {path}",
                 )
             }
@@ -117,14 +119,16 @@ enum EvalStrategy {
 }
 
 impl EvalStrategy {
-    fn eval_program_to_term(&self, mut p: TestProgram) -> Term {
+    fn eval_program(&self, mut p: TestProgram) -> NickelValue {
         match self {
-            EvalStrategy::Full => p.eval_full().map(Term::from),
-            EvalStrategy::Standard => p.eval().map(Term::from),
-            EvalStrategy::TypeCheck => p.typecheck(TypecheckMode::Walk).map(|_| Term::Bool(true)),
+            EvalStrategy::Full => p.eval_full(),
+            EvalStrategy::Standard => p.eval(),
+            EvalStrategy::TypeCheck => p
+                .typecheck(TypecheckMode::Walk)
+                .map(|_| NickelValue::bool_true()),
             EvalStrategy::TypeCheckStrict => p
                 .typecheck(TypecheckMode::Enforce)
-                .map(|_| Term::Bool(true)),
+                .map(|_| NickelValue::bool_true()),
         }
         .expect("Expected evaluation to succeed but got an error")
     }
@@ -238,38 +242,102 @@ impl PartialEq<Error> for ErrorExpectation {
     fn eq(&self, other: &Error) -> bool {
         use ErrorExpectation::*;
         match (self, other) {
-            (EvalBlameError, Error::EvalError(EvalError::BlameError { .. }))
+            (
+                EvalBlameError,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::BlameError { .. },
+                    ctxt: _,
+                }),
+            )
             | (
                 EvalIllegalPolymorphicTailAccess,
-                Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::IllegalPolymorphicTailAccess { .. },
+                    ctxt: _,
+                }),
             )
-            | (EvalTypeError, Error::EvalError(EvalError::TypeError { .. }))
-            | (EvalIncomparableValues, Error::EvalError(EvalError::IncomparableValues { .. }))
-            | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
+            | (
+                EvalTypeError,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::TypeError { .. },
+                    ctxt: _,
+                }),
+            )
+            | (
+                EvalIncomparableValues,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::IncomparableValues { .. },
+                    ctxt: _,
+                }),
+            )
+            | (
+                EvalNAryPrimopTypeError,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::NAryPrimopTypeError { .. },
+                    ctxt: _,
+                }),
+            )
             | (
                 EvalUnaryPrimopTypeError,
-                Error::EvalError(EvalError::UnaryPrimopTypeError { .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::UnaryPrimopTypeError { .. },
+                    ctxt: _,
+                }),
             )
-            | (EvalInfiniteRecursion, Error::EvalError(EvalError::InfiniteRecursion(..)))
+            | (
+                EvalInfiniteRecursion,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::InfiniteRecursion(..),
+                    ctxt: _,
+                }),
+            )
             | (
                 EvalMergeIncompatibleArgs,
-                Error::EvalError(EvalError::MergeIncompatibleArgs { .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::MergeIncompatibleArgs { .. },
+                    ctxt: _,
+                }),
             )
-            | (EvalOther, Error::EvalError(EvalError::Other(..)))
-            | (EvalNonExhaustiveMatch, Error::EvalError(EvalError::NonExhaustiveMatch { .. }))
+            | (
+                EvalOther,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::Other(..),
+                    ctxt: _,
+                }),
+            )
+            | (
+                EvalNonExhaustiveMatch,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::NonExhaustiveMatch { .. },
+                    ctxt: _,
+                }),
+            )
             | (
                 EvalNonExhaustiveEnumMatch,
-                Error::EvalError(EvalError::NonExhaustiveEnumMatch { .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::NonExhaustiveEnumMatch { .. },
+                    ctxt: _,
+                }),
             )
-            | (EvalFailedDestructuring, Error::EvalError(EvalError::FailedDestructuring { .. }))
+            | (
+                EvalFailedDestructuring,
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::FailedDestructuring { .. },
+                    ctxt: _,
+                }),
+            )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
             | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
             | (
                 SerializeNumberOutOfRange,
-                Error::EvalError(EvalError::SerializationError(ExportError {
-                    data: ExportErrorData::NumberOutOfRange { .. },
-                    ..
-                })),
+                Error::EvalError(EvalError {
+                    error:
+                        EvalErrorData::SerializationError(PointedExportErrorData {
+                            error: ExportErrorData::NumberOutOfRange { .. },
+                            ..
+                        }),
+                    ctxt: _,
+                }),
             ) => true,
             (e, Error::ParseErrors(es)) => {
                 let first_error = es
@@ -291,11 +359,17 @@ impl PartialEq<Error> for ErrorExpectation {
             }
             (
                 EvalFieldMissing { field },
-                Error::EvalError(EvalError::FieldMissing { id: name, .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::FieldMissing { id: name, .. },
+                    ctxt: _,
+                }),
             ) => field == name.label(),
             (
                 EvalMissingFieldDef { field },
-                Error::EvalError(EvalError::MissingFieldDef { id, .. }),
+                Error::EvalError(EvalError {
+                    error: EvalErrorData::MissingFieldDef { id, .. },
+                    ctxt: _,
+                }),
             ) => field == id.label(),
             (_, Error::TypecheckError(tc_err)) => self == tc_err.borrow_error(),
             (_, _) => false,

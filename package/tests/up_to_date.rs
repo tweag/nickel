@@ -1,11 +1,11 @@
 use nickel_lang_core::identifier::Ident;
 use nickel_lang_git::Target;
-use nickel_lang_package::{snapshot::Snapshot, Dependency};
+use nickel_lang_package::{Dependency, snapshot::Snapshot};
 use tempfile::TempDir;
 
 mod util;
 
-use util::{add_git_file, init_git, init_pkg, test_config, ManifestBuilder};
+use util::{ManifestBuilder, add_git_file, init_git, init_pkg, test_config};
 
 #[test]
 fn empty_up_to_date() {

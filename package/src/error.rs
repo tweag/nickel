@@ -4,10 +4,10 @@ use gix::ObjectId;
 use nickel_lang_core::{error::INTERNAL_ERROR_MSG, files::Files, identifier::Ident};
 
 use crate::{
+    UnversionedDependency,
     index::{self, path::RelativePathError},
     resolve::ResolveError,
     version::SemVer,
-    UnversionedDependency,
 };
 
 /// Errors related to package management.

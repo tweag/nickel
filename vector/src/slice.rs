@@ -1,8 +1,8 @@
 use std::ops::Index;
 
 use crate::{
-    vector::{IntoIter, Iter, IterMut},
     Const, ValidBranchingConstant,
+    vector::{IntoIter, Iter, IterMut},
 };
 
 use super::Vector;

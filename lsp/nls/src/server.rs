@@ -7,10 +7,6 @@ use lsp_server::{
     Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
 };
 use lsp_types::{
-    notification::{
-        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
-    },
-    request::{Request as RequestTrait, *},
     CodeActionParams, CompletionOptions, CompletionParams, DiagnosticOptions,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
@@ -20,6 +16,10 @@ use lsp_types::{
     RelatedFullDocumentDiagnosticReport, RenameParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     WorkDoneProgressOptions,
+    notification::{
+        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
+    },
+    request::{Request as RequestTrait, *},
 };
 use nickel_lang_core::files::FileId;
 

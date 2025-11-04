@@ -4,14 +4,14 @@ use anyhow::Result;
 use log::info;
 use lsp_server::RequestId;
 use lsp_types::{
-    notification::{DidCloseTextDocument, DidOpenTextDocument, Notification},
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
+    notification::{DidCloseTextDocument, DidOpenTextDocument, Notification},
 };
 use nickel_lang_core::files::FileId;
 
 use crate::{
     error::Error,
-    trace::{param::FileUpdate, Enrich, Trace},
+    trace::{Enrich, Trace, param::FileUpdate},
 };
 
 use super::server::Server;

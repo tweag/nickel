@@ -21,21 +21,28 @@
 //! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    bytecode::ast::{compat::ToMainline, AstAlloc},
+    bytecode::ast::{AstAlloc, compat::ToMainline},
     cache::*,
     closurize::Closurize as _,
-    error::{warning::Warning, Error, EvalError, IOError, ParseError, Reporter},
-    eval::{cache::Cache as EvalCache, Closure, VirtualMachine, VmContext},
+    error::{
+        Error, EvalError, EvalErrorData, IOError, ParseError, ParseErrors, Reporter,
+        warning::Warning,
+    },
+    eval::{
+        Closure, VirtualMachine, VmContext,
+        cache::Cache as EvalCache,
+        value::{Container, NickelValue, ValueContent},
+    },
     files::{FileId, Files},
     identifier::LocIdent,
     label::Label,
     metrics::{increment, measure_runtime},
     package::PackageMap,
-    position::{RawSpan, TermPos},
+    position::{PosIdx, PosTable, RawSpan},
     term::{
+        BinaryOp, Import, MergePriority, RuntimeContract, Term,
         make::{self as mk_term, builder},
         record::Field,
-        BinaryOp, Import, MergePriority, RichTerm, RuntimeContract, Term,
     },
     typecheck::TypecheckMode,
 };
@@ -69,7 +76,7 @@ impl FieldPath {
     /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
     pub fn parse(caches: &mut CacheHub, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
-            grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParserCompat,
+            ErrorTolerantParserCompat, grammar::StaticFieldPathParser, lexer::Lexer,
         };
 
         let input_id = caches.replace_string(SourcePath::Query, input);
@@ -77,7 +84,9 @@ impl FieldPath {
 
         let parser = StaticFieldPathParser::new();
         let field_path = parser
-            .parse_strict_compat(input_id, Lexer::new(s))
+            // This doesn't use the position table at all, since `LocIdent` currently stores a
+            // TermPos directly
+            .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
@@ -131,10 +140,10 @@ impl FieldOverride {
     /// Parse an assignment `path.to.field=value` to a field override, with the priority given as a
     /// separate argument.
     ///
-    /// Internally, the parser entirely parses the `value` part to a [crate::term::RichTerm] (have
-    /// it accept anything after the equal sign is in fact harder than actually parsing it), but
-    /// what we need at this point is just a string. Thus, `parse` uses the span to extract back
-    /// the `value` part of the input string.
+    /// Internally, the parser entirely parses the `value` part to a [NickelValue] (have it accept
+    /// anything after the equal sign is in fact harder than actually parsing it), but what we need
+    /// at this point is just a string. Thus, `parse` uses the span to extract back the `value`
+    /// part of the input string.
     ///
     /// Theoretically, this means we parse two times the same string (the value part of an
     /// assignment). In practice, we expect this cost to be completely negligible.
@@ -152,9 +161,9 @@ impl FieldOverride {
         priority: MergePriority,
     ) -> Result<Self, ParseError> {
         use crate::parser::{
+            ErrorTolerantParserCompat,
             grammar::{CliFieldAssignmentParser, StaticFieldPathParser},
             lexer::{Lexer, NormalToken, Token},
-            ErrorTolerantParserCompat,
         };
 
         let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
@@ -174,7 +183,8 @@ impl FieldOverride {
                 Some(Ok((start_at, Token::Normal(NormalToken::At), _))),
             ) if end_eq == start_at => {
                 let path = StaticFieldPathParser::new()
-                    .parse_strict_compat(input_id, Lexer::new(&s[..start_eq]))
+                    // we don't use the position table for pure field paths
+                    .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(&s[..start_eq]))
                     // We just need to report one error here
                     .map_err(|mut errs| {
                         errs.errors.pop().expect(
@@ -192,7 +202,9 @@ impl FieldOverride {
             }
             _ => {
                 let (path, _, span_value) = CliFieldAssignmentParser::new()
-                    .parse_strict_compat(input_id, Lexer::new(s))
+                    // once again, we ditch the value, so no PosIdx leaks outside of
+                    // `parse_strict_compat` and we can thus ignore the position table entirely
+                    .parse_strict_compat(&mut PosTable::new(), input_id, Lexer::new(s))
                     // We just need to report one error here
                     .map_err(|mut errs| {
                         errs.errors.pop().expect(
@@ -333,7 +345,7 @@ impl<EC: EvalCache> Program<EC> {
                     let path = path.into();
                     let format = InputFormat::from_path(&path).unwrap_or_default();
 
-                    RichTerm::from(Term::Import(Import::Path { path, format }))
+                    NickelValue::from(Term::Import(Import::Path { path, format }))
                 }
                 Input::Source(source, name) => {
                     let name = name.into();
@@ -347,7 +359,7 @@ impl<EC: EvalCache> Program<EC> {
                         .sources
                         .add_source(SourcePath::Path(name.into(), InputFormat::Nickel), source)
                         .unwrap();
-                    RichTerm::from(Term::Import(Import::Path {
+                    NickelValue::from(Term::Import(Import::Path {
                         path: import_path,
                         format: InputFormat::Nickel,
                     }))
@@ -511,8 +523,8 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Only parse the program (and any additional attached contracts), don't typecheck or
-    /// evaluate. Returns the [`RichTerm`] AST
-    pub fn parse(&mut self) -> Result<RichTerm, Error> {
+    /// evaluate. Returns the [`NickelValue`] AST
+    pub fn parse(&mut self) -> Result<NickelValue, Error> {
         self.vm_ctxt
             .import_resolver
             .parse_to_ast(self.main_id)
@@ -549,11 +561,13 @@ impl<EC: EvalCache> Program<EC> {
         mut transform: F,
     ) -> Result<(), TermCacheError<E>>
     where
-        F: FnMut(&mut CacheHub, RichTerm) -> Result<RichTerm, E>,
+        F: FnMut(&mut CacheHub, &mut PosTable, NickelValue) -> Result<NickelValue, E>,
     {
-        self.vm_ctxt
-            .import_resolver
-            .custom_transform(self.main_id, transform_id, &mut transform)
+        self.vm_ctxt.import_resolver.custom_transform(
+            self.main_id,
+            transform_id,
+            &mut |cache, value| transform(cache, &mut self.vm_ctxt.pos_table, value),
+        )
     }
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
@@ -607,15 +621,18 @@ impl<EC: EvalCache> Program<EC> {
                         ("env", None) => match std::env::var(&value) {
                             Ok(env_var) => {
                                 record = record.path(ovd.path.0).priority(ovd.priority).value(
-                                    RichTerm::new(
-                                        Term::Str(env_var.into()),
-                                        RawSpan::from_range(
-                                            value_file_id,
-                                            value_sep + 1..value_unparsed.len(),
-                                        )
-                                        .into(),
+                                    NickelValue::string(
+                                        env_var,
+                                        self.vm_ctxt.pos_table.push(
+                                            RawSpan::from_range(
+                                                value_file_id,
+                                                value_sep + 1..value_unparsed.len(),
+                                            )
+                                            .into(),
+                                        ),
                                     ),
                                 );
+
                                 Ok(())
                             }
                             Err(std::env::VarError::NotPresent) => Err(Error::IOError(IOError(
@@ -681,18 +698,18 @@ impl<EC: EvalCache> Program<EC> {
                     ProgramContract::Term(contract) => Ok(contract.clone()),
                     ProgramContract::Source(file_id) => {
                         let cache = &mut self.vm_ctxt.import_resolver;
-                        cache.prepare(*file_id)?;
+                        cache.prepare(&mut self.vm_ctxt.pos_table, *file_id)?;
 
                         // unwrap(): we just prepared the file above, so it must be in the cache.
-                        let term = cache.terms.get_owned(*file_id).unwrap();
+                        let value = cache.terms.get_owned(*file_id).unwrap();
 
                         // The label needs a position to show where the contract application is coming from.
                         // Since it's not really coming from source code, we reconstruct the CLI argument
                         // somewhere in the source cache.
-                        let pos = term.pos;
+                        let pos = value.pos_idx();
                         let typ = crate::typ::Type {
-                            typ: crate::typ::TypeF::Contract(term.clone()),
-                            pos,
+                            typ: crate::typ::TypeF::Contract(value.clone()),
+                            pos: self.vm_ctxt.pos_table.get(pos),
                         };
 
                         let source_name = cache.sources.name(*file_id).to_string_lossy();
@@ -704,7 +721,7 @@ impl<EC: EvalCache> Program<EC> {
                         let span = cache.sources.files().source_span(arg_id);
 
                         Ok(RuntimeContract::new(
-                            term,
+                            value,
                             Label {
                                 typ: std::rc::Rc::new(typ),
                                 span: Some(span),
@@ -716,10 +733,9 @@ impl<EC: EvalCache> Program<EC> {
             })
             .collect();
 
-        prepared_body =
-            RuntimeContract::apply_all(prepared_body, runtime_contracts?, TermPos::None);
+        prepared_body = RuntimeContract::apply_all(prepared_body, runtime_contracts?, PosIdx::NONE);
 
-        let prepared = Closure::atomic_closure(prepared_body);
+        let prepared: Closure = prepared_body.into();
 
         let result = if for_query {
             prepared
@@ -737,24 +753,24 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
-    pub fn eval(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
-        Ok(self.new_vm().eval_closure(prepared)?.body)
+        Ok(self.new_vm().eval_closure(prepared)?.value)
     }
 
     /// Evaluate a closure using the same virtual machine (and import resolver)
     /// as the main term. The closure should already have been prepared for
     /// evaluation, with imports resolved and any necessary transformations
     /// applied.
-    pub fn eval_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
-        Ok(self.new_vm().eval_closure(closure)?.body)
+    pub fn eval_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
+        Ok(self.new_vm().eval_closure(closure)?.value)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
-    pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_full(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
-        Ok(self.new_vm().eval_full_closure(prepared)?.body)
+        Ok(self.new_vm().eval_full_closure(prepared)?.value)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -770,14 +786,14 @@ impl<EC: EvalCache> Program<EC> {
     ///   A stub record is then built, which has all fields defined by `overrides`, and values are
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
-    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_full_for_export(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         Ok(self.new_vm().eval_full_for_export_closure(prepared)?)
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
-    pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_deep(&mut self) -> Result<NickelValue, Error> {
         let prepared = self.prepare_eval()?;
 
         Ok(self.new_vm().eval_deep_closure(prepared)?)
@@ -786,7 +802,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Same as `eval_closure`, but does a full evaluation and does not substitute all variables.
     ///
     /// (Or, same as `eval_deep` but takes a closure.)
-    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<NickelValue, EvalError> {
         self.new_vm().eval_deep_closure(closure)
     }
 
@@ -859,10 +875,12 @@ impl<EC: EvalCache> Program<EC> {
         cache.load_stdlib()?;
         cache.parse_to_ast(self.main_id)?;
         // unwrap(): We just loaded the stdlib, so it should be there
-        cache.compile_stdlib().unwrap();
-        cache.compile(self.main_id).map_err(|cache_err| {
-            cache_err.unwrap_error("program::compile(): we just parsed the program")
-        })?;
+        cache.compile_stdlib(&mut self.vm_ctxt.pos_table).unwrap();
+        cache
+            .compile(&mut self.vm_ctxt.pos_table, self.main_id)
+            .map_err(|cache_err| {
+                cache_err.unwrap_error("program::compile(): we just parsed the program")
+            })?;
 
         Ok(())
     }
@@ -905,14 +923,14 @@ impl<EC: EvalCache> Program<EC> {
     /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
     /// - If the result is a record, we recursively evaluate subfields to record spines
     /// - If the result isn't a record, it is returned as it is
-    /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
+    /// - If the evaluation fails with [EvalErrorData::MissingFieldDef], the original
     ///   term is returned unevaluated[^missing-field-def]
     /// - If any other error occurs, the evaluation fails and returns the error.
     ///
     /// [^missing-field-def]: Because we want to handle partial configurations as well,
-    /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
-    /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
-    pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
+    /// [EvalErrorData::MissingFieldDef] errors are _ignored_: if this is encountered when
+    /// evaluating a field, this field is just left as it is and the evaluation proceeds.
+    pub fn eval_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(false)
     }
 
@@ -935,15 +953,17 @@ impl<EC: EvalCache> Program<EC> {
     /// particular, the closurized version is more useful if you intend to
     /// further evaluate any record fields, while the non-closurized version is
     /// more useful if you intend to do further static analysis.
-    pub fn eval_closurized_record_spine(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_closurized_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(true)
     }
 
-    fn maybe_closurized_eval_record_spine(&mut self, closurize: bool) -> Result<RichTerm, Error> {
+    fn maybe_closurized_eval_record_spine(
+        &mut self,
+        closurize: bool,
+    ) -> Result<NickelValue, Error> {
         use crate::{
             eval::Environment,
-            match_sharedterm,
-            term::{record::RecordData, RuntimeContract},
+            term::{RuntimeContract, record::RecordData},
         };
 
         let prepared = self.prepare_eval()?;
@@ -991,13 +1011,13 @@ impl<EC: EvalCache> Program<EC> {
         // hands over the meat of the work to `do_eval`.
         fn eval_guarded<EC: EvalCache>(
             vm_ctxt: &mut VmContext<CacheHub, EC>,
-            term: RichTerm,
+            term: NickelValue,
             env: Environment,
             closurize: bool,
-        ) -> Result<RichTerm, Error> {
-            let curr_thunk = term.as_ref().try_as_closure();
+        ) -> Result<NickelValue, Error> {
+            let curr_thunk = term.as_thunk();
 
-            if let Some(thunk) = curr_thunk.as_ref() {
+            if let Some(thunk) = curr_thunk {
                 // If the thunk is already locked, it's the thunk of some parent field, and we stop
                 // here to avoid infinite recursion.
                 if !thunk.lock() {
@@ -1009,7 +1029,7 @@ impl<EC: EvalCache> Program<EC> {
 
             // Once we're done evaluating all the children, or if there was an error, we unlock the
             // current thunk
-            if let Some(thunk) = curr_thunk.as_ref() {
+            if let Some(thunk) = curr_thunk {
                 thunk.unlock();
             }
 
@@ -1023,7 +1043,10 @@ impl<EC: EvalCache> Program<EC> {
             // instead of resulting in documentation being silently skipped.
             if matches!(
                 result,
-                Err(Error::EvalError(EvalError::MissingFieldDef { .. }))
+                Err(Error::EvalError(EvalError {
+                    error: EvalErrorData::MissingFieldDef { .. },
+                    ..
+                }))
             ) {
                 return Ok(term);
             }
@@ -1035,14 +1058,20 @@ impl<EC: EvalCache> Program<EC> {
         // contracts.
         fn do_eval<EC: EvalCache>(
             vm_ctxt: &mut VmContext<CacheHub, EC>,
-            term: RichTerm,
+            term: NickelValue,
             env: Environment,
             closurize: bool,
-        ) -> Result<RichTerm, Error> {
-            let evaled = VirtualMachine::new(vm_ctxt).eval_closure(Closure { body: term, env })?;
+        ) -> Result<NickelValue, Error> {
+            let evaled = VirtualMachine::new(vm_ctxt).eval_closure(Closure { value: term, env })?;
+            let pos_idx = evaled.value.pos_idx();
 
-            match_sharedterm!(match (evaled.body.term) {
-                Term::Record(data) => {
+            match evaled.value.content() {
+                ValueContent::Record(lens) => {
+                    let Container::Alloc(data) = lens.take() else {
+                        //unwrap(): will go away
+                        return Ok(NickelValue::empty_record().with_pos_idx(pos_idx));
+                    };
+
                     let fields = data
                         .fields
                         .into_iter()
@@ -1073,31 +1102,34 @@ impl<EC: EvalCache> Program<EC> {
                         })
                         .collect::<Result<_, Error>>()?;
 
-                    Ok(RichTerm::new(
-                        Term::Record(RecordData { fields, ..data }),
-                        evaled.body.pos,
-                    ))
+                    Ok(NickelValue::record(RecordData { fields, ..data }, pos_idx))
                 }
-                _ =>
+                lens => {
+                    let value = lens.restore();
+
                     if closurize {
-                        Ok(evaled.body.closurize(&mut vm_ctxt.cache, evaled.env))
+                        Ok(value.closurize(&mut vm_ctxt.cache, evaled.env))
                     } else {
-                        Ok(evaled.body)
-                    },
-            })
+                        Ok(value)
+                    }
+                }
+            }
         }
 
-        eval_guarded(&mut self.vm_ctxt, prepared.body, prepared.env, closurize)
+        eval_guarded(&mut self.vm_ctxt, prepared.value, prepared.env, closurize)
     }
 
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
-        use crate::error::ExportErrorData;
+        use crate::error::{ExportError, ExportErrorData};
 
         let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
-            ExportErrorData::NoDocumentation(term.clone()).into(),
+            ExportError {
+                pos_table: self.vm_ctxt.pos_table.clone(),
+                data: ExportErrorData::NoDocumentation(term.clone()).into(),
+            },
         ))
     }
 
@@ -1121,9 +1153,13 @@ impl<EC: EvalCache> Program<EC> {
             .import_resolver
             .sources
             .parse_nickel(&ast_alloc, self.main_id)?;
-        let rt = measure_runtime!("runtime:ast_conversion", ast.to_mainline());
+        let rt = measure_runtime!(
+            "runtime:ast_conversion",
+            ast.to_mainline(&mut self.vm_ctxt.pos_table)
+        );
         let rt = if apply_transforms {
-            transform(rt, None).map_err(EvalError::from)?
+            transform(&mut self.vm_ctxt.pos_table, rt, None)
+                .map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))?
         } else {
             rt
         };
@@ -1138,20 +1174,33 @@ impl<EC: EvalCache> Program<EC> {
     pub fn files(&self) -> Files {
         self.vm_ctxt.import_resolver.files().clone()
     }
+
+    /// Returns a reference to the position table.
+    pub fn pos_table(&self) -> &PosTable {
+        &self.vm_ctxt.pos_table
+    }
 }
 
 #[cfg(feature = "doc")]
 mod doc {
-    use crate::error::{Error, ExportErrorData, IOError};
-    use crate::term::{RichTerm, Term};
-    use comrak::arena_tree::{Children, NodeEdge};
-    use comrak::nodes::{
-        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+    use crate::{
+        error::{Error, ExportError, ExportErrorData, IOError},
+        eval::value::{Container, NickelValue, ValueContentRef},
+        position::PosTable,
+        term::Term,
     };
-    use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
+
+    use comrak::{Arena, ComrakOptions, format_commonmark, parse_document};
+    use comrak::{
+        arena_tree::{Children, NodeEdge},
+        nodes::{
+            Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+        },
+    };
+
     use serde::{Deserialize, Serialize};
-    use std::collections::HashMap;
-    use std::io::Write;
+
+    use std::{collections::HashMap, io::Write};
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(transparent)]
@@ -1181,9 +1230,13 @@ mod doc {
     }
 
     impl ExtractedDocumentation {
-        pub fn extract_from_term(rt: &RichTerm) -> Option<Self> {
-            match rt.term.as_ref() {
-                Term::Record(record) | Term::RecRecord(record, ..) => {
+        pub fn extract_from_term(value: &NickelValue) -> Option<Self> {
+            match value.content_ref() {
+                ValueContentRef::Record(Container::Empty) => Some(Self {
+                    fields: HashMap::new(),
+                }),
+                ValueContentRef::Record(Container::Alloc(record))
+                | ValueContentRef::Term(Term::RecRecord(record, ..)) => {
                     let fields = record
                         .fields
                         .iter()
@@ -1229,8 +1282,12 @@ mod doc {
         }
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
-            serde_json::to_writer(out, self)
-                .map_err(|e| Error::ExportError(ExportErrorData::Other(e.to_string()).into()))
+            serde_json::to_writer(out, self).map_err(|e| {
+                Error::ExportError(ExportError {
+                    data: ExportErrorData::Other(e.to_string()).into(),
+                    pos_table: PosTable::new(),
+                })
+            })
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
@@ -1440,24 +1497,20 @@ mod doc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{EvalError, NullReporter};
-    use crate::eval::cache::CacheImpl;
-    use crate::identifier::LocIdent;
-    use crate::position::TermPos;
-    use crate::term::array::ArrayAttrs;
+    use crate::{error::NullReporter, eval::cache::CacheImpl};
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
-    fn eval_full(s: &str) -> Result<RichTerm, Error> {
+    fn eval_full(s: &str) -> Result<NickelValue, Error> {
         let src = Cursor::new(s);
 
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError::Other(
-                        format!("IO error: {io_err}"),
-                        TermPos::None,
-                    ))
+                    Error::EvalError(EvalError {
+                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                        ctxt: Default::default(),
+                    })
                 },
             )?;
         p.eval_full()
@@ -1469,10 +1522,10 @@ mod tests {
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError::Other(
-                        format!("IO error: {io_err}"),
-                        TermPos::None,
-                    ))
+                    Error::EvalError(EvalError {
+                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                        ctxt: Default::default(),
+                    })
                 },
             )?;
         p.typecheck(TypecheckMode::Walk)
@@ -1480,17 +1533,14 @@ mod tests {
 
     #[test]
     fn evaluation_full() {
-        use crate::{
-            mk_array, mk_record,
-            term::{make as mk_term, Term},
-        };
+        use crate::{mk_array, mk_record, term::make as mk_term};
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
 
         // [2, "ab", [1, [3]]]
         let expd = mk_array!(
             mk_term::integer(2),
-            Term::Str("ab".into()),
+            NickelValue::string_posless("ab"),
             mk_array!(mk_term::integer(1), mk_array!(mk_term::integer(3)))
         );
 

@@ -8,23 +8,23 @@ use std::{
 use nickel_lang_core::{
     cache::normalize_rel_path,
     error::NullReporter,
-    eval::cache::CacheImpl,
+    eval::{cache::CacheImpl, value::NickelValue},
     identifier::Ident,
     label::Label,
     program::{Program, ProgramContract},
-    term::{make, RichTerm, RuntimeContract, Term},
+    term::{RuntimeContract, Term, make},
 };
 use serde::Deserialize;
 
 use crate::{
+    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
     config::Config,
     error::{Error, IoResultExt},
-    index::{self, path::RelativePathError, PackageIndex},
+    index::{self, PackageIndex, path::RelativePathError},
     lock::{LockFile, LockFileEntry},
     resolve::{self, Resolution},
     snapshot::Snapshot,
     version::{FullSemVer, SemVer, SemVerPrefix, VersionReq},
-    Dependency, GitDependency, IndexDependency, UnversionedPrecisePkg,
 };
 
 pub const MANIFEST_NAME: &str = "Nickel-pkg.ncl";
@@ -375,8 +375,8 @@ impl ManifestFile {
         Snapshot::new(config, &self.parent_dir, self)
     }
 
-    // Convert from a `RichTerm` (that we assume was evaluated deeply).
-    fn from_term(path: &Path, rt: &RichTerm) -> Result<Self, Error> {
+    // Convert from a `NickelValue` (that we assume was evaluated deeply).
+    fn from_term(path: &Path, value: &NickelValue) -> Result<Self, Error> {
         // This is only ever called with terms that have passed the `std.package.Manifest`
         // contract, so we can assume that they have the right fields.
         let ManifestFileFormat {
@@ -388,7 +388,7 @@ impl ManifestFile {
             description,
             keywords,
             license,
-        } = ManifestFileFormat::deserialize(rt.clone()).map_err(|e| {
+        } = ManifestFileFormat::deserialize(value.clone()).map_err(|e| {
             Error::InternalManifestError {
                 path: path.to_owned(),
                 msg: e.to_string(),

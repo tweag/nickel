@@ -12,8 +12,8 @@ use nickel_lang_core::{
     identifier::LocIdent,
     program::{FieldPath, Program},
     term::{
+        LabeledType, MergePriority, RuntimeContract,
         record::{Field, RecordData},
-        LabeledType, MergePriority, RuntimeContract, Term,
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
@@ -25,7 +25,7 @@ use crate::{
 
 pub mod interface;
 
-use interface::{FieldInterface, TermInterface};
+use interface::{FieldInterface, ValueInterface};
 
 /// The value name used through the CLI to indicate that an option accepts any Nickel expression as
 /// a value.
@@ -178,7 +178,7 @@ struct CustomizableFields {
 
 impl CustomizableFields {
     /// Create data from a term interface.
-    fn new(term_iface: TermInterface) -> Self {
+    fn new(term_iface: ValueInterface) -> Self {
         let mut this = Self::default();
 
         for (id, field_iface) in term_iface.fields {
@@ -287,7 +287,7 @@ impl CustomizeOptions {
                 return CliResult::Err(Error::CliUsage {
                     error,
                     files: program.files(),
-                })
+                });
             }
         };
 
@@ -318,7 +318,7 @@ impl CustomizeOptions {
                 return CliResult::Err(Error::CliUsage {
                     error,
                     files: program.files(),
-                })
+                });
             }
         };
 
@@ -342,7 +342,7 @@ impl CustomizeMode {
                 files: program.files(),
             })?;
 
-        let customizable_fields = CustomizableFields::new(TermInterface::from(evaled.as_ref()));
+        let customizable_fields = CustomizableFields::new(ValueInterface::from(&evaled));
         let opts = CustomizeOptions::parse_from(self.customize_mode.iter());
 
         match opts.command {

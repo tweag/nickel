@@ -4,8 +4,8 @@
 use crate::eval::merge::merge_doc;
 
 use super::{
-    record::{FieldMetadata, MergePriority},
     Annotation, AstAlloc,
+    record::{FieldMetadata, MergePriority},
 };
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).

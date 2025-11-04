@@ -2,13 +2,17 @@ use std::{fs, io::Write, path::PathBuf};
 
 use nickel_lang_core::{
     error::{Error, IOError, Reporter as _},
-    eval::cache::lazy::CBNCache,
+    eval::{
+        cache::CacheImpl,
+        value::{Container, ValueContentRef},
+    },
     identifier::{Ident, LocIdent},
+    position::PosTable,
     pretty::PrettyPrintCap,
     program::Program,
     repl::query_print,
     serialize::{self, MetadataExportFormat},
-    term::{record::Field, LabeledType, MergePriority, Term},
+    term::{LabeledType, MergePriority, Term, record::Field},
 };
 use serde::Serialize;
 
@@ -72,14 +76,16 @@ struct QueryResult {
 
 impl From<Field> for QueryResult {
     fn from(field: Field) -> Self {
-        let sub_fields = match field.value {
-            Some(ref val) => match val.as_ref() {
-                Term::Record(record) if !record.fields.is_empty() => {
+        let sub_fields = field.value.as_ref().and_then(|val| {
+            match val.content_ref() {
+                ValueContentRef::Record(Container::Alloc(record)) if !record.fields.is_empty() => {
                     let mut fields: Vec<_> = record.fields.keys().collect();
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                Term::RecRecord(record, includes, dyn_fields, ..) if !record.fields.is_empty() => {
+                ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..))
+                    if !record.fields.is_empty() =>
+                {
                     let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
                     fields.extend(includes.iter().map(|incl| incl.ident.ident()));
                     fields.sort();
@@ -88,12 +94,13 @@ impl From<Field> for QueryResult {
                     Some(fields)
                 }
                 // Empty record has empty sub_fields
-                Term::Record(..) | Term::RecRecord(..) => Some(Vec::new()),
+                ValueContentRef::Record(..) | ValueContentRef::Term(Term::RecRecord(..)) => {
+                    Some(Vec::new())
+                }
                 // Non-record has no concept of sub-field
                 _ => None,
-            },
-            None => None,
-        };
+            }
+        });
 
         QueryResult {
             doc: field.metadata.doc,
@@ -130,7 +137,12 @@ impl QueryCommand {
         }
     }
 
-    fn export<T>(&self, res: T, format: MetadataExportFormat) -> Result<(), Error>
+    fn export<T>(
+        &self,
+        pos_table: &PosTable,
+        res: T,
+        format: MetadataExportFormat,
+    ) -> Result<(), Error>
     where
         T: Serialize,
     {
@@ -142,13 +154,15 @@ impl QueryCommand {
 
         if let Some(file) = &self.output {
             let mut file = fs::File::create(file).map_err(IOError::from)?;
-            serialize::to_writer_metadata(&mut file, format, &res)?;
+            serialize::to_writer_metadata(&mut file, format, &res)
+                .map_err(|error| error.with_pos_table(pos_table.clone()))?;
 
             if trailing_newline {
                 writeln!(file).map_err(IOError::from)?;
             }
         } else {
-            serialize::to_writer_metadata(std::io::stdout(), format, &res)?;
+            serialize::to_writer_metadata(std::io::stdout(), format, &res)
+                .map_err(|error| error.with_pos_table(pos_table.clone()))?;
 
             if trailing_newline {
                 println!();
@@ -168,13 +182,15 @@ impl QueryCommand {
 
     fn output(
         &self,
-        program: &mut Program<CBNCache>,
+        program: &mut Program<CacheImpl>,
     ) -> Result<(), nickel_lang_core::error::Error> {
         use MetadataExportFormat::*;
         match self.format {
             Markdown => {
                 if self.output.is_some() {
-                    eprintln!("Output query result in markdown format to a file is currently not supported.")
+                    eprintln!(
+                        "Output query result in markdown format to a file is currently not supported."
+                    )
                 } else {
                     let found = program.query().map(|field| {
                         query_print::write_query_result(
@@ -194,7 +210,7 @@ impl QueryCommand {
                 let _ = &program
                     .query()
                     .map(QueryResult::from)
-                    .map(|res| self.export(res, format))?;
+                    .map(|res| self.export(program.pos_table(), res, format))?;
             }
         }
         Ok(())

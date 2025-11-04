@@ -4,11 +4,12 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
+    eval::value::{Container, NickelValue, ValueContentRefMut},
     identifier::Ident,
     term::pattern::*,
     term::{
+        IndexMap, MatchBranch, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
-        IndexMap, MatchBranch, RichTerm, SharedTerm, StrChunk, Term, TypeAnnotation,
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
@@ -16,8 +17,8 @@ use crate::{
 use std::collections::HashSet;
 
 /// Apply the full free var transformation on a term.
-pub fn transform(rt: &mut RichTerm) {
-    rt.collect_free_vars(&mut HashSet::new())
+pub fn transform(value: &mut NickelValue) {
+    value.collect_free_vars(&mut HashSet::new())
 }
 
 pub trait CollectFreeVars {
@@ -26,22 +27,56 @@ pub trait CollectFreeVars {
     fn collect_free_vars(&mut self, working_set: &mut HashSet<Ident>);
 }
 
-impl CollectFreeVars for RichTerm {
+impl CollectFreeVars for NickelValue {
     fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
-        match SharedTerm::make_mut(&mut self.term) {
+        match self.content_make_mut() {
+            ValueContentRefMut::Null(_)
+            | ValueContentRefMut::Bool(_)
+            | ValueContentRefMut::Array(Container::Empty)
+            | ValueContentRefMut::Record(Container::Empty)
+            | ValueContentRefMut::Number(_)
+            | ValueContentRefMut::String(_)
+            | ValueContentRefMut::ForeignId(_)
+            | ValueContentRefMut::SealingKey(_)
+            | ValueContentRefMut::Label(_) => (),
+            ValueContentRefMut::Array(Container::Alloc(array_data)) => {
+                for t in array_data.array.iter_mut() {
+                    t.collect_free_vars(free_vars);
+                }
+            }
+            ValueContentRefMut::Record(Container::Alloc(record)) => {
+                for t in record.fields.values_mut() {
+                    t.collect_free_vars(free_vars);
+                }
+            }
+            ValueContentRefMut::Term(term) => term.collect_free_vars(free_vars),
+            ValueContentRefMut::EnumVariant(enum_variant) => {
+                if let Some(arg) = &mut enum_variant.arg {
+                    arg.collect_free_vars(free_vars);
+                }
+            }
+            ValueContentRefMut::CustomContract(ctr) => {
+                ctr.collect_free_vars(free_vars);
+            }
+            ValueContentRefMut::Type(type_data) => {
+                type_data.typ.collect_free_vars(free_vars);
+                type_data.contract.collect_free_vars(free_vars);
+            }
+            ValueContentRefMut::Thunk(_) => {
+                unreachable!("should never see closures at the transformation stage")
+            }
+        }
+    }
+}
+
+impl CollectFreeVars for Term {
+    fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
+        match self {
             Term::Var(id) => {
                 free_vars.insert(id.ident());
             }
             Term::ParseError(_)
             | Term::RuntimeError(_)
-            | Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::Lbl(_)
-            | Term::ForeignId(_)
-            | Term::SealingKey(_)
-            | Term::Enum(_)
             | Term::Import { .. }
             | Term::ResolvedImport(_) => (),
             Term::Fun(id, t) => {
@@ -119,21 +154,13 @@ impl CollectFreeVars for RichTerm {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t)
-            | Term::Sealed(_, t, _)
-            | Term::EnumVariant { arg: t, .. }
-            | Term::CustomContract(t) => t.collect_free_vars(free_vars),
+            Term::Op1(_, t) | Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
             Term::OpN(_, ts) => {
                 for t in ts {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::Record(record) => {
-                for t in record.fields.values_mut() {
-                    t.collect_free_vars(free_vars);
-                }
-            }
-            Term::RecRecord(record, includes, dyn_fields, deps) => {
+            Term::RecRecord(record, includes, dyn_fields, deps, _) => {
                 let mut rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.ident()).collect();
                 // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
@@ -192,11 +219,6 @@ impl CollectFreeVars for RichTerm {
                 // any case.
                 *deps = Some(new_deps);
             }
-            Term::Array(ts, _) => {
-                for t in ts {
-                    t.collect_free_vars(free_vars);
-                }
-            }
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
                     if let StrChunk::Expr(t, _) = chunk {
@@ -211,13 +233,7 @@ impl CollectFreeVars for RichTerm {
 
                 t.collect_free_vars(free_vars);
             }
-            Term::Type { typ, contract } => {
-                typ.collect_free_vars(free_vars);
-                contract.collect_free_vars(free_vars);
-            }
-            Term::Closure(_) => {
-                unreachable!("should never see closures at the transformation stage");
-            }
+            Term::Value(v) | Term::Closurize(v) => v.collect_free_vars(free_vars),
         }
     }
 }
@@ -245,7 +261,7 @@ impl CollectFreeVars for Type {
                 ty1.as_mut().collect_free_vars(set);
                 ty2.as_mut().collect_free_vars(set);
             }
-            TypeF::Contract(ref mut rt) => rt.collect_free_vars(set),
+            TypeF::Contract(rt) => rt.collect_free_vars(set),
         }
     }
 }

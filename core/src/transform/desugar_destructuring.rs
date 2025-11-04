@@ -4,10 +4,11 @@
 use smallvec::SmallVec;
 
 use crate::{
-    error::EvalError,
+    error::EvalErrorData,
+    eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
-    match_sharedterm,
-    term::{make, pattern::*, record::RecordData, BinaryOp, BindingType, LetAttrs, RichTerm, Term},
+    position::PosTable,
+    term::{BinaryOp, BindingType, LetAttrs, Term, make, pattern::*},
 };
 
 use self::{bindings::Bindings, compile::CompilePart};
@@ -17,13 +18,23 @@ use self::{bindings::Bindings, compile::CompilePart};
 /// As other `transform_one` variants, this transformation is not recursive and only desugars the
 /// top-level constructor of the pattern. It might return a term which still contains simpler
 /// destructuring patterns to be desugared in children nodes.
-pub fn transform_one(rt: RichTerm) -> RichTerm {
-    match_sharedterm!(match (rt.term) {
-        Term::LetPattern(bindings, body, attrs) =>
-            RichTerm::new(desugar_let(bindings, body, attrs.rec), rt.pos),
-        Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
-        _ => rt,
-    })
+pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValue {
+    let pos_idx = value.pos_idx();
+
+    match value.content() {
+        ValueContent::Term(term) => match term {
+            TermContent::LetPattern(lens) => {
+                let (bindings, body, attrs) = lens.take();
+                NickelValue::term(desugar_let(pos_table, bindings, body, attrs.rec), pos_idx)
+            }
+            TermContent::FunPattern(lens) => {
+                let (pat, body) = lens.take();
+                NickelValue::term(desugar_fun(pat, body), pos_idx)
+            }
+            lens => lens.restore(),
+        },
+        lens => lens.restore(),
+    }
 }
 
 /// Desugar a destructuring function.
@@ -31,20 +42,19 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// A function `fun <pat> => body` is desugared to `fun x => let <pat> = x in body`. The inner
 /// destructuring let isn't desugared further, as the general program transformation machinery will
 /// take care of transforming the body of the function in a second step.
-pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
+pub fn desugar_fun(mut pat: Pattern, body: NickelValue) -> Term {
     let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
-    let pos_body = body.pos;
+    let pos_idx_body = body.pos_idx();
 
     Term::Fun(
         id,
-        RichTerm::new(
+        NickelValue::term(
             Term::LetPattern(
                 std::iter::once((pat, Term::Var(id).into())).collect(),
                 body,
                 LetAttrs::default(),
             ),
-            // TODO: should we use rt.pos?
-            pos_body,
+            pos_idx_body,
         ),
     )
 }
@@ -89,8 +99,9 @@ pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
 /// A recursive let-binding is desugared almost the same way, except that everything is
 /// shoved into a single let-rec block instead of three nested blocks.
 pub fn desugar_let(
-    bindings: SmallVec<[(Pattern, RichTerm); 1]>,
-    body: RichTerm,
+    pos_table: &mut PosTable,
+    bindings: SmallVec<[(Pattern, NickelValue); 1]>,
+    body: NickelValue,
     rec: bool,
 ) -> Term {
     // Outer bindings are the ones we called %b1 and %b2, and %empty_record_id in the doc above.
@@ -102,24 +113,27 @@ pub fn desugar_let(
     let mut error_tests = Vec::new();
 
     let empty_record_id = LocIdent::fresh();
-    outer_bindings.push((empty_record_id, Term::Record(RecordData::empty()).into()));
+    outer_bindings.push((empty_record_id, NickelValue::empty_record()));
     for (pat, rhs) in bindings {
-        let pos = pat.pos.fuse(rhs.pos);
+        let pos = pos_table.get(pat.pos).fuse(pos_table.get(rhs.pos_idx()));
         let outer_id = LocIdent::fresh();
         outer_bindings.push((outer_id, rhs.clone()));
 
         let mid_id = LocIdent::fresh();
-        mid_bindings.push((mid_id, pat.compile_part(outer_id, empty_record_id)));
+        mid_bindings.push((
+            mid_id,
+            pat.compile_part(pos_table, outer_id, empty_record_id),
+        ));
 
-        let error_case = RichTerm::new(
-            Term::RuntimeError(EvalError::FailedDestructuring {
+        let error_case = NickelValue::term(
+            Term::RuntimeError(EvalErrorData::FailedDestructuring {
                 value: rhs.clone(),
                 pattern: pat.clone(),
             }),
-            pos,
+            pos_table.push(pos),
         );
 
-        let is_record_null = make::op2(BinaryOp::Eq, Term::Var(mid_id), Term::Null);
+        let is_record_null = make::op2(BinaryOp::Eq, Term::Var(mid_id), NickelValue::null());
         error_tests.push((is_record_null, error_case));
 
         for (_path, id, _field) in pat.bindings() {

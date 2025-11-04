@@ -1,5 +1,5 @@
 use criterion::criterion_main;
-use nickel_lang_utils::{bench::criterion_config, bench::EvalMode, ncl_bench_group};
+use nickel_lang_utils::{bench::EvalMode, bench::criterion_config, ncl_bench_group};
 
 ncl_bench_group! {
     name = benches;
