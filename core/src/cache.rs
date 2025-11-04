@@ -19,7 +19,7 @@ use crate::{
     metrics::measure_runtime,
     package::PackageMap,
     parser::{ErrorTolerantParser, ExtendedTerm, lexer::Lexer},
-    position::{PosTable, TermPos},
+    position::{PosIdx, PosTable, TermPos},
     program::FieldPath,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self},
@@ -2008,8 +2008,7 @@ pub trait ImportResolver {
         pos_table: &mut PosTable,
         import: &term::Import,
         parent: Option<FileId>,
-        //TODO[RFC007]: do we really need a position here, or just a pos idx?
-        pos: &TermPos,
+        pos_idx: PosIdx,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
     /// Return a reference to the file database.
@@ -2039,8 +2038,10 @@ impl ImportResolver for CacheHub {
         pos_table: &mut PosTable,
         import: &term::Import,
         parent: Option<FileId>,
-        pos: &TermPos,
+        pos_idx: PosIdx,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
+        let pos = pos_table.get(pos_idx);
+
         let (possible_parents, path, pkg_id, format) = match import {
             term::Import::Path { path, format } => {
                 // `parent` is the file that did the import. We first look in its containing directory, followed by
@@ -2065,11 +2066,11 @@ impl ImportResolver for CacheHub {
                     .sources
                     .package_map
                     .as_ref()
-                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                    .ok_or(ImportError::NoPackageMap { pos })?;
                 let parent_path = parent
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
-                let pkg_path = package_map.get(parent_path, *id, *pos)?;
+                let pkg_path = package_map.get(parent_path, *id, pos)?;
                 (
                     vec![pkg_path.to_owned()],
                     Path::new("main.ncl"),
@@ -2099,7 +2100,7 @@ impl ImportResolver for CacheHub {
                 ImportError::IOError(
                     path.to_string_lossy().into_owned(),
                     format!("could not find import (looked in [{}])", parents.join(", ")),
-                    *pos,
+                    pos,
                 )
             })?;
 
@@ -2119,11 +2120,11 @@ impl ImportResolver for CacheHub {
                 .entry(file_id)
                 .or_default()
                 .entry(parent)
-                .or_insert(*pos);
+                .or_insert(pos);
         }
 
         self.parse_to_term(pos_table, file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err, *pos))?;
+            .map_err(|err| ImportError::ParseErrors(err, pos))?;
 
         if let Some(pkg_id) = pkg_id {
             self.sources.packages.insert(file_id, pkg_id);
@@ -2443,7 +2444,7 @@ pub mod resolvers {
             _pos_table: &mut PosTable,
             _import: &Import,
             _parent: Option<FileId>,
-            _pos: &TermPos,
+            _pos_idx: PosIdx,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
@@ -2494,11 +2495,13 @@ pub mod resolvers {
             pos_table: &mut PosTable,
             import: &Import,
             _parent: Option<FileId>,
-            pos: &TermPos,
+            pos_idx: PosIdx,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let Import::Path { path, .. } = import else {
                 panic!("simple resolver doesn't support packages");
             };
+
+            let pos = pos_table.get(pos_idx);
 
             let file_id = self
                 .file_cache
@@ -2508,7 +2511,7 @@ pub mod resolvers {
                     ImportError::IOError(
                         path.to_string_lossy().into_owned(),
                         String::from("Import not found by the mockup resolver."),
-                        *pos,
+                        pos,
                     )
                 })?;
 
@@ -2518,7 +2521,7 @@ pub mod resolvers {
 
                 let ast = parser::grammar::TermParser::new()
                     .parse_strict(&alloc, file_id, Lexer::new(buf))
-                    .map_err(|e| ImportError::ParseErrors(e, *pos))?;
+                    .map_err(|e| ImportError::ParseErrors(e, pos))?;
                 e.insert(ast.to_mainline(pos_table));
 
                 Ok((

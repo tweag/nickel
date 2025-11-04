@@ -160,9 +160,11 @@ pub mod tolerant {
     {
         match value.content_ref() {
             ValueContentRef::Term(Term::Import(import)) => {
-                match resolver.resolve(pos_table, import, parent, &value.pos(pos_table)) {
+                let pos_idx = value.pos_idx();
+
+                match resolver.resolve(pos_table, import, parent, pos_idx) {
                     Ok((_, file_id)) => (
-                        NickelValue::term(Term::ResolvedImport(file_id), value.pos_idx()),
+                        NickelValue::term(Term::ResolvedImport(file_id), pos_idx),
                         None,
                     ),
                     Err(err) => (value, Some(err)),
