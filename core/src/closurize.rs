@@ -113,7 +113,7 @@ impl Closurize for NickelValue {
                 let id = *id;
                 // Albeit we should always find a generated variable in the environment,
                 // `env.get` is technically fallible, while this method is not. We thus wrap a
-                // potential error in a new closure which will propagate the  unbound
+                // potential error in a new closure which will propagate the unbound
                 // identifier error upon evaluation.
                 env.get(&id.ident()).cloned().unwrap_or_else(move || {
                     debug_assert!(false, "missing generated variable {id} in environment");
