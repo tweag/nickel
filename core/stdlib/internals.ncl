@@ -239,10 +239,10 @@
         if %typeof% value == 'Record then
           # [^split-right-tail]: Note that `record/split_pair` propagates the
           # record tails. `field_contracts` is built by the interpreter, and
-          # should never have a tail, but `value` will have a tail for if the
+          # should never have a tail, but `value` will have a tail if the
           # original record type had a tail and this contract is activated in
           # positive position. We must be mindful of that when checking
-          # emptyness, for example.
+          # emptiness, for example.
           let split_result = %record/split_pair% field_contracts value in
 
           if split_result.left_only != {} then
