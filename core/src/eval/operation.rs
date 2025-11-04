@@ -364,14 +364,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Label", value = lens.restore())
                 }
             },
-            // match_sharedterm!(match (t) {
-            //     Term::Lbl(label) => Err(EvalErrorData::BlameError {
-            //         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-            //         label,
-            //         call_stack: std::mem::take(&mut self.call_stack),
-            //     }),
-            //     _ => mk_type_error!("Label"),
-            // }),
             UnaryOp::EnumEmbed(_id) => {
                 if value.as_enum_variant().is_some() {
                     Ok(value.with_pos_idx(pos_op_inh).into())
