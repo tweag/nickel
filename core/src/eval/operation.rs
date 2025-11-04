@@ -1242,7 +1242,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let record = lens.take().unwrap_alloc();
 
                         // It's not clear what the semantics of freezing a record with a sealed tail
-                        // would be, as their might be dependencies between the sealed part and the
+                        // would be, as there might be dependencies between the sealed part and the
                         // unsealed part. Merging is disallowed on records with tail, so we disallow
                         // freezing as well.
                         if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
