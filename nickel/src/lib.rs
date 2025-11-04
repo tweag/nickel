@@ -80,7 +80,7 @@ pub mod capi;
 
 /// The main entry point.
 ///
-/// The context hold state that needs to be persisted across evaluations.
+/// The context holds state that needs to be persisted across evaluations.
 ///
 /// Note that there is currently no requirement to only have one alive context at any time: you may
 /// very well start several threads of evaluation, each with its own context. This can be useful if
