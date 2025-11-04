@@ -147,7 +147,6 @@ macro_rules! ncl_bench_group {
             let mut pos_table = PosTable::new();
             let mut eval_cache = CacheImpl::new();
             cache.prepare_stdlib(&mut pos_table).unwrap();
-            let eval_env = cache.mk_eval_env(&mut eval_cache);
 
             $(
                 let bench = $crate::ncl_bench!$b;
@@ -187,14 +186,30 @@ macro_rules! ncl_bench_group {
                                     pos_table,
                             };
 
-                            (vm_ctxt, id, runner)
+                            // We need to make a new eval environment for each instance. First,
+                            // envs contain thunks, which are shared state and will have different
+                            // behavior between the first evaluation (which will update them) and
+                            // subsequent ones. From there one could consider that the first
+                            // evaluation acts as a warm-up and that it's ok (it's defendable that
+                            // updating thunks in the stdenv is maybe not what we really want to
+                            // measure).
+                            //
+                            // However, a second, more serious issue is that those updated thunks
+                            // leak position indices allocated in a previous run (the VM allocates
+                            // indices dynamically, typically for inherited indices), thus pointing
+                            // to a different pos_table clone. This can cause (and has caused in
+                            // the past) panics. To avoid any form of state sharing between runs,
+                            // we use distinct, fresh environments.
+                            let eval_env = vm_ctxt.import_resolver.mk_eval_env(&mut eval_cache);
+
+                            (vm_ctxt, eval_env, id, runner)
                         },
-                        |(mut vm_ctxt, id, runner)| {
+                        |(mut vm_ctxt, eval_env, id, runner)| {
                             if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 vm_ctxt.import_resolver.typecheck(id, TypecheckMode::Walk).unwrap();
                             } else {
                                 let mut vm = VirtualMachine::new_empty_env(&mut vm_ctxt)
-                                .with_initial_env(eval_env.clone());
+                                .with_initial_env(eval_env);
 
                                 if let Err(e) = vm.eval(runner) {
                                     report(
