@@ -305,7 +305,7 @@ impl Context {
     /// This is fallible because enum variants have no canonical conversion to
     /// JSON: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_json(&self, expr: &Expr) -> Result<String, Error> {
+    pub fn expr_to_json(&self, expr: &Expr) -> Result<String, Error> {
         expr.export(ExportFormat::Json)
             .map_err(|error| self.wrap_pointed_export_error(error))
     }
@@ -315,7 +315,7 @@ impl Context {
     /// This is fallible because enum variants have no canonical conversion to
     /// YAML: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_yaml(&self, expr: &Expr) -> Result<String, Error> {
+    pub fn expr_to_yaml(&self, expr: &Expr) -> Result<String, Error> {
         expr.export(ExportFormat::Yaml)
             .map_err(|error| self.wrap_pointed_export_error(error))
     }
@@ -325,7 +325,7 @@ impl Context {
     /// This is fallible because enum variants have no canonical conversion to
     /// TOML: if the expression contains any enum variants, this will fail.
     /// This also fails if the expression contains any unevaluated sub-expressions.
-    pub fn to_toml(&self, expr: &Expr) -> Result<String, Error> {
+    pub fn expr_to_toml(&self, expr: &Expr) -> Result<String, Error> {
         expr.export(ExportFormat::Toml)
             .map_err(|error| self.wrap_pointed_export_error(error))
     }

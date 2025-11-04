@@ -64,7 +64,7 @@
 #![deny(missing_docs)]
 
 use std::{
-    ffi::{CStr, c_char, c_int, c_void},
+    ffi::{c_char, c_int, c_void, CStr},
     io::Write,
     ptr,
 };
@@ -860,7 +860,7 @@ unsafe fn export_result(
 /// JSON: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_context_to_json(
+pub unsafe extern "C" fn nickel_context_expr_to_json(
     mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
@@ -869,7 +869,7 @@ pub unsafe extern "C" fn nickel_context_to_json(
     // Safety: function pre-conditions
     unsafe {
         export_result(
-            nickel_context::as_rust_mut(&mut ctx).to_json(nickel_expr::as_rust(&expr)),
+            nickel_context::as_rust_mut(&mut ctx).expr_to_json(nickel_expr::as_rust(&expr)),
             out_string,
             out_err,
         )
@@ -882,7 +882,7 @@ pub unsafe extern "C" fn nickel_context_to_json(
 /// YAML: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_context_to_yaml(
+pub unsafe extern "C" fn nickel_context_expr_to_yaml(
     mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
@@ -891,7 +891,7 @@ pub unsafe extern "C" fn nickel_context_to_yaml(
     // Safety: function pre-conditions
     unsafe {
         export_result(
-            nickel_context::as_rust_mut(&mut ctx).to_yaml(nickel_expr::as_rust(&expr)),
+            nickel_context::as_rust_mut(&mut ctx).expr_to_yaml(nickel_expr::as_rust(&expr)),
             out_string,
             out_err,
         )
@@ -904,7 +904,7 @@ pub unsafe extern "C" fn nickel_context_to_yaml(
 /// TOML: if the expression contains any enum variants, this will fail.
 /// This also fails if the expression contains any unevaluated sub-expressions.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nickel_context_to_toml(
+pub unsafe extern "C" fn nickel_context_expr_to_toml(
     mut ctx: *mut nickel_context,
     expr: *const nickel_expr,
     out_string: *mut nickel_string,
@@ -913,7 +913,7 @@ pub unsafe extern "C" fn nickel_context_to_toml(
     // Safety: function pre-conditions
     unsafe {
         export_result(
-            nickel_context::as_rust_mut(&mut ctx).to_toml(nickel_expr::as_rust(&expr)),
+            nickel_context::as_rust_mut(&mut ctx).expr_to_toml(nickel_expr::as_rust(&expr)),
             out_string,
             out_err,
         )
