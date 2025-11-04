@@ -508,7 +508,7 @@ impl RecordData {
     }
 
     /// Checks if this record is empty (including the sealed tail). Whether the record is open or
-    /// not doesn't impact emptyness: `{..}` is considered empty.
+    /// not doesn't impact emptiness: `{..}` is considered empty.
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty() && self.sealed_tail.is_none()
     }
