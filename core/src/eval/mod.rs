@@ -661,7 +661,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     }
 
     /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
-    /// `?` operator on [crate::error::EvalErrorData], and only at the missing context to make it
+    /// `?` operator on [crate::error::EvalErrorData], and only add the missing context to make it
     /// an [crate:error::EvalError] once at the end.
     fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, EvalErrorData> {
         #[cfg(feature = "metrics")]
