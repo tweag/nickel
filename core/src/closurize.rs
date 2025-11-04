@@ -16,7 +16,7 @@ use crate::{
     eval::{
         Closure, Environment,
         cache::Cache,
-        value::{Array, ArrayData, Container, NickelValue, ValueContentRef},
+        value::{Array, ArrayData, NickelValue, ValueContentRef},
     },
     term::{
         BindingType, RuntimeContract, Term,
@@ -251,25 +251,36 @@ impl Closurize for RecordData {
     }
 }
 
+/// Decides is an expression is worth being wrapped in a thunk. This is almos the same as asking if
+/// the expression is a weak head normal form, in which case it's already evaluated and doesn't
+/// need to be cached, but with some subtle differences.
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {
         ValueContentRef::Term(Term::Var(_)
             | Term::Fun(_, _)
             // match acts like a function, and is a WHNF
             | Term::Match(_)) => false,
-        ValueContentRef::Term(_) => true,
+        ValueContentRef::Term(_)
+        // In general types are WHNF that shouldn't be shared, but currently the have an additional
+        // field storing their conversion to a contract. In order to take advantage of this local
+        // cache, we need to share them.
+        | ValueContentRef::Type(_) => true,
         ValueContentRef::Null
         | ValueContentRef::Bool(_)
-        | ValueContentRef::Array(Container::Empty)
-        | ValueContentRef::Record(Container::Empty)
+        // Now that arrays and records have proper constructors and are assumed to be closurized,
+        // they are effectively WHNFs (they used to represent both arrays and records, and the
+        // equivalent of today's `Term::Closurize(array_or_record)`, the latter not being a WHNF)
+        | ValueContentRef::Array(_)
+        | ValueContentRef::Record(_)
         | ValueContentRef::Number(_)
         | ValueContentRef::String(_)
         | ValueContentRef::Label(_)
         | ValueContentRef::SealingKey(_)
+        | ValueContentRef::ForeignId(_)
         | ValueContentRef::Thunk(_)
-        | ValueContentRef::Type(_) => false,
+        // a custom contract is a function, and is thus a WHNF
+        | ValueContentRef::CustomContract(_) => false,
         ValueContentRef::EnumVariant(enum_variant) => enum_variant.arg.is_some(),
-        _ => true,
     }
 }
 
