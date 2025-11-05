@@ -994,17 +994,17 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Term::FunPattern(data) => {
                 allocator.function(allocator.pat_with_parens(&data.pattern), &data.body)
             }
-            Term::Let(bindings, body, attrs) => docs![
+            Term::Let(data) => docs![
                 allocator,
                 "let",
                 allocator.space(),
-                if attrs.rec {
+                if data.attrs.rec {
                     docs![allocator, "rec", allocator.space()]
                 } else {
                     allocator.nil()
                 },
                 allocator.intersperse(
-                    bindings
+                    data.bindings
                         .iter()
                         .map(|(k, v)| allocator.binding(*k, v.clone())),
                     docs![allocator, ",", allocator.line()]
@@ -1015,19 +1015,19 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .nest(2)
             .group()
             .append(allocator.line())
-            .append(body.pretty(allocator).nest(2))
+            .append(data.body.pretty(allocator).nest(2))
             .group(),
-            Term::LetPattern(bindings, body, attrs) => docs![
+            Term::LetPattern(data) => docs![
                 allocator,
                 "let",
                 allocator.space(),
-                if attrs.rec {
+                if data.attrs.rec {
                     docs![allocator, "rec", allocator.space()]
                 } else {
                     allocator.nil()
                 },
                 allocator.intersperse(
-                    bindings
+                    data.bindings
                         .iter()
                         .map(|(k, v)| allocator.binding(k, v.clone())),
                     docs![allocator, ",", allocator.line()]
@@ -1038,7 +1038,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .nest(2)
             .group()
             .append(allocator.line())
-            .append(body.pretty(allocator).nest(2))
+            .append(data.body.pretty(allocator).nest(2))
             .group(),
             Term::App(head, arg) => match head.as_term() {
                 Some(Term::App(iop, t))

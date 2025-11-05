@@ -8,7 +8,9 @@ use crate::{
     eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
     position::PosTable,
-    term::{BinaryOp, BindingType, FunPatternData, LetAttrs, Term, make, pattern::*},
+    term::{
+        BinaryOp, BindingType, FunPatternData, LetAttrs, LetPatternData, Term, make, pattern::*,
+    },
 };
 
 use self::{bindings::Bindings, compile::CompilePart};
@@ -24,8 +26,8 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValu
     match value.content() {
         ValueContent::Term(term) => match term {
             TermContent::LetPattern(lens) => {
-                let (bindings, body, attrs) = lens.take();
-                NickelValue::term(desugar_let(pos_table, bindings, body, attrs.rec), pos_idx)
+                let data = lens.take();
+                NickelValue::term(desugar_let(pos_table, *data), pos_idx)
             }
             TermContent::FunPattern(lens) => NickelValue::term(desugar_fun(*lens.take()), pos_idx),
             lens => lens.restore(),
@@ -46,7 +48,7 @@ pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term
     Term::fun(
         id,
         NickelValue::term(
-            Term::LetPattern(
+            Term::let_pattern(
                 std::iter::once((pattern, Term::Var(id).into())).collect(),
                 body,
                 LetAttrs::default(),
@@ -97,9 +99,11 @@ pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term
 /// shoved into a single let-rec block instead of three nested blocks.
 pub fn desugar_let(
     pos_table: &mut PosTable,
-    bindings: SmallVec<[(Pattern, NickelValue); 1]>,
-    body: NickelValue,
-    rec: bool,
+    LetPatternData {
+        bindings,
+        body,
+        attrs,
+    }: LetPatternData,
 ) -> Term {
     // Outer bindings are the ones we called %b1 and %b2, and %empty_record_id in the doc above.
     let mut outer_bindings = SmallVec::new();
@@ -150,10 +154,10 @@ pub fn desugar_let(
 
     let attrs = LetAttrs {
         binding_type: BindingType::Normal,
-        rec,
+        rec: attrs.rec,
     };
-    if rec {
-        Term::Let(
+    if attrs.rec {
+        Term::let_in(
             outer_bindings
                 .into_iter()
                 .chain(mid_bindings)
@@ -163,11 +167,11 @@ pub fn desugar_let(
             attrs,
         )
     } else {
-        Term::Let(
+        Term::let_in(
             outer_bindings,
-            Term::Let(
+            Term::let_in(
                 mid_bindings,
-                Term::Let(inner_bindings, checked_body, attrs.clone()).into(),
+                Term::let_in(inner_bindings, checked_body, attrs.clone()).into(),
                 attrs.clone(),
             )
             .into(),

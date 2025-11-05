@@ -68,6 +68,20 @@ pub struct FunData {
     pub body: NickelValue,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct LetData {
+    pub bindings: SmallVec<[(LocIdent, NickelValue); 4]>,
+    pub body: NickelValue,
+    pub attrs: LetAttrs,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LetPatternData {
+    pub bindings: SmallVec<[(Pattern, NickelValue); 1]>,
+    pub body: NickelValue,
+    pub attrs: LetAttrs,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -106,14 +120,9 @@ pub enum Term {
 
     /// A let binding. Adds the binding to the environment and proceeds with the evaluation of the
     /// body.
-    Let(
-        SmallVec<[(LocIdent, NickelValue); 4]>,
-        NickelValue,
-        LetAttrs,
-    ),
-
+    Let(Box<LetData>),
     /// A destructuring let-binding.
-    LetPattern(SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs),
+    LetPattern(Box<LetPatternData>),
 
     /// An application. Push the argument on the stack and proceed with the evaluation of the head.
     App(NickelValue, NickelValue),
@@ -975,6 +984,30 @@ impl Term {
     pub fn fun_pattern(pattern: Pattern, body: NickelValue) -> Self {
         Term::FunPattern(Box::new(FunPatternData { pattern, body }))
     }
+
+    pub fn let_in(
+        bindings: SmallVec<[(LocIdent, NickelValue); 4]>,
+        body: NickelValue,
+        attrs: LetAttrs,
+    ) -> Self {
+        Term::Let(Box::new(LetData {
+            bindings,
+            body,
+            attrs,
+        }))
+    }
+
+    pub fn let_pattern(
+        bindings: SmallVec<[(Pattern, NickelValue); 1]>,
+        body: NickelValue,
+        attrs: LetAttrs,
+    ) -> Self {
+        Term::LetPattern(Box::new(LetPatternData {
+            bindings,
+            body,
+            attrs,
+        }))
+    }
 }
 
 /// Primitive unary operators.
@@ -1828,21 +1861,25 @@ impl Traverse<NickelValue> for Term {
                 data.body = data.body.traverse(f, order)?;
                 Term::FunPattern(data)
             }
-            Term::Let(bindings, body, attrs) => {
-                let bindings = bindings
+            Term::Let(mut data) => {
+                data.bindings = data
+                    .bindings
                     .into_iter()
                     .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
                     .collect::<Result<_, E>>()?;
-                let body = body.traverse(f, order)?;
-                Term::Let(bindings, body, attrs)
+                data.body = data.body.traverse(f, order)?;
+
+                Term::Let(data)
             }
-            Term::LetPattern(bindings, body, attrs) => {
-                let bindings = bindings
+            Term::LetPattern(mut data) => {
+                data.bindings = data
+                    .bindings
                     .into_iter()
                     .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
                     .collect::<Result<_, E>>()?;
-                let body = body.traverse(f, order)?;
-                Term::LetPattern(bindings, body, attrs)
+                data.body = data.body.traverse(f, order)?;
+
+                Term::LetPattern(data)
             }
             Term::App(head, arg) => {
                 let head = head.traverse(f, order)?;
@@ -1980,14 +2017,16 @@ impl Traverse<NickelValue> for Term {
             | Term::Value(t)
             | Term::Closurize(t) => t.traverse_ref(f, state),
             Term::FunPattern(data) => data.body.traverse_ref(f, state),
-            Term::Let(bindings, body, _) => bindings
+            Term::Let(data) => data
+                .bindings
                 .iter()
                 .find_map(|(_id, t)| t.traverse_ref(f, state))
-                .or_else(|| body.traverse_ref(f, state)),
-            Term::LetPattern(bindings, body, _) => bindings
+                .or_else(|| data.body.traverse_ref(f, state)),
+            Term::LetPattern(data) => data
+                .bindings
                 .iter()
                 .find_map(|(_pat, t)| t.traverse_ref(f, state))
-                .or_else(|| body.traverse_ref(f, state)),
+                .or_else(|| data.body.traverse_ref(f, state)),
             Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
@@ -2127,17 +2166,16 @@ pub mod make {
         I: Into<LocIdent>,
         Iter: IntoIterator<Item = (I, T1)>,
     {
-        let attrs = LetAttrs {
-            binding_type: BindingType::Normal,
-            rec,
-        };
-        Term::Let(
+        Term::let_in(
             bindings
                 .into_iter()
                 .map(|(id, t)| (id.into(), t.into()))
                 .collect(),
             t2.into(),
-            attrs,
+            LetAttrs {
+                binding_type: BindingType::Normal,
+                rec,
+            },
         )
         .into()
     }
@@ -2166,7 +2204,7 @@ pub mod make {
         T2: Into<NickelValue>,
         D: Into<Pattern>,
     {
-        Term::LetPattern(
+        Term::let_pattern(
             std::iter::once((pat.into(), t1.into())).collect(),
             t2.into(),
             LetAttrs::default(),
@@ -2181,17 +2219,16 @@ pub mod make {
         D: Into<Pattern>,
         Iter: IntoIterator<Item = (D, T1)>,
     {
-        let attrs = LetAttrs {
-            binding_type: BindingType::Normal,
-            rec,
-        };
-        Term::LetPattern(
+        Term::let_pattern(
             bindings
                 .into_iter()
                 .map(|(pat, t)| (pat.into(), t.into()))
                 .collect(),
             body.into(),
-            attrs,
+            LetAttrs {
+                binding_type: BindingType::Normal,
+                rec,
+            },
         )
         .into()
     }
