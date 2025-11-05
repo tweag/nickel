@@ -8,7 +8,8 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        FunData, FunPatternData, IndexMap, MatchBranch, StrChunk, Term, TypeAnnotation,
+        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, StrChunk, Term,
+        TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -81,42 +82,8 @@ impl CollectFreeVars for Term {
             | Term::ResolvedImport(_) => (),
             Term::Fun(data) => data.collect_free_vars(free_vars),
             Term::FunPattern(data) => data.collect_free_vars(free_vars),
-            Term::Let(bindings, body, attrs) => {
-                let mut fresh = HashSet::new();
-
-                for (_id, rt) in bindings.iter_mut() {
-                    if attrs.rec {
-                        rt.collect_free_vars(&mut fresh);
-                    } else {
-                        rt.collect_free_vars(free_vars);
-                    }
-                }
-
-                body.collect_free_vars(&mut fresh);
-                for (id, _rt) in bindings {
-                    fresh.remove(&id.ident());
-                }
-
-                free_vars.extend(fresh);
-            }
-            Term::LetPattern(bindings, body, attrs) => {
-                let mut fresh = HashSet::new();
-
-                for (_pat, rt) in bindings.iter_mut() {
-                    if attrs.rec {
-                        rt.collect_free_vars(&mut fresh);
-                    } else {
-                        rt.collect_free_vars(free_vars);
-                    }
-                }
-
-                body.collect_free_vars(&mut fresh);
-                for (pat, _rt) in bindings {
-                    pat.remove_bindings(&mut fresh);
-                }
-
-                free_vars.extend(fresh);
-            }
+            Term::Let(data) => data.collect_free_vars(free_vars),
+            Term::LetPattern(data) => data.collect_free_vars(free_vars),
             Term::App(t1, t2) | Term::Op2(_, t1, t2) => {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
@@ -310,6 +277,48 @@ impl CollectFreeVars for FunPatternData {
 
         self.body.collect_free_vars(&mut fresh);
         self.pattern.remove_bindings(&mut fresh);
+
+        set.extend(fresh);
+    }
+}
+
+impl CollectFreeVars for LetData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        let mut fresh = HashSet::new();
+
+        for (_id, value) in self.bindings.iter_mut() {
+            if self.attrs.rec {
+                value.collect_free_vars(&mut fresh);
+            } else {
+                value.collect_free_vars(set);
+            }
+        }
+
+        self.body.collect_free_vars(&mut fresh);
+        for (id, _value) in &self.bindings {
+            fresh.remove(&id.ident());
+        }
+
+        set.extend(fresh);
+    }
+}
+
+impl CollectFreeVars for LetPatternData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        let mut fresh = HashSet::new();
+
+        for (_pat, value) in self.bindings.iter_mut() {
+            if self.attrs.rec {
+                value.collect_free_vars(&mut fresh);
+            } else {
+                value.collect_free_vars(set);
+            }
+        }
+
+        self.body.collect_free_vars(&mut fresh);
+        for (pat, _value) in &self.bindings {
+            pat.remove_bindings(&mut fresh);
+        }
 
         set.extend(fresh);
     }

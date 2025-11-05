@@ -84,7 +84,7 @@ use crate::{
     position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
-        BinaryOp, BindingType, FunData, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
+        BinaryOp, BindingType, FunData, Import, MatchBranch, MatchData, RecordOpKind,
         RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
         pattern::compile::Compile,
         record::{Field, RecordData},
@@ -754,24 +754,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Let(
-                    bindings,
-                    body,
-                    LetAttrs { binding_type, rec },
-                )) => {
+                ValueContentRef::Term(Term::Let(data)) => {
                     let mut indices = Vec::new();
                     let init_env = env.clone();
 
-                    for (x, bound) in bindings {
+                    for (x, bound) in &data.bindings {
                         let bound_closure = Closure {
                             value: bound.clone(),
                             env: init_env.clone(),
                         };
 
-                        let idx = self.context.cache.add(bound_closure, binding_type.clone());
+                        let idx = self
+                            .context
+                            .cache
+                            .add(bound_closure, data.attrs.binding_type.clone());
 
                         // Patch the environment with the (x <- closure) binding
-                        if *rec {
+                        if data.attrs.rec {
                             indices.push(idx.clone());
                         }
 
@@ -783,7 +782,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
 
                     Closure {
-                        value: body.clone(),
+                        value: data.body.clone(),
                         env,
                     }
                 }
@@ -1544,11 +1543,15 @@ pub fn subst<C: Cache>(
                 | TermContent::Import(_)
                 | TermContent::ResolvedImport(_)) => lens.restore(),
                                 TermContent::Let(lens) => {
-                    let (bindings, body, attrs) = lens.take();
-                    let bindings = bindings.into_iter().map(|(key, val)| (key, subst(pos_table, cache, val, initial_env, env))).collect();
-                    let body = subst(pos_table, cache, body, initial_env, env);
+                    let mut data = lens.take();
 
-                    NickelValue::term(Term::Let(bindings, body, attrs), pos_idx)
+                    for (_key, val) in &mut data.bindings {
+                        let prev = std::mem::take(val);
+                        *val = subst(pos_table, cache, prev, initial_env, env);
+                    }
+                    data.body = subst(pos_table, cache, data.body, initial_env, env);
+
+                    NickelValue::term(Term::Let(data), pos_idx)
                 }
                 lens @ (TermContent::LetPattern(..) | TermContent::FunPattern(..)) => panic!(
                     "Pattern {:?} has not been transformed before evaluation", lens.restore()
