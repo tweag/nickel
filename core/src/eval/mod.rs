@@ -84,7 +84,7 @@ use crate::{
     position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
-        BinaryOp, BindingType, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
+        BinaryOp, BindingType, FunData, Import, LetAttrs, MatchBranch, MatchData, RecordOpKind,
         RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
         pattern::compile::Compile,
         record::{Field, RecordData},
@@ -1130,7 +1130,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
-                ValueContentRef::Term(Term::Fun(arg, body)) if !has_cont_on_stack => {
+                ValueContentRef::Term(Term::Fun(FunData { arg, body })) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
                     {
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);

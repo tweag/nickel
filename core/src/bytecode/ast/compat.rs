@@ -376,10 +376,10 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }))
             }
-            t @ (Term::Fun(_, body) | Term::FunPattern(_, body)) => {
-                let fst_arg = match t {
-                    Term::Fun(id, _) => Pattern::any(*id),
-                    Term::FunPattern(pat, _) => pat.to_ast(alloc, pos_table),
+            t @ (Term::Fun(..) | Term::FunPattern(..)) => {
+                let (fst_arg, body) = match t {
+                    Term::Fun(data) => (Pattern::any(data.arg), &data.body),
+                    Term::FunPattern(data) => (data.pattern.to_ast(alloc, pos_table), &data.body),
                     // unreachable!(): we are in a match arm that matches either Fun or FunPattern
                     _ => unreachable!(),
                 };
@@ -389,13 +389,13 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 let final_body = loop {
                     match maybe_next_fun.as_term() {
-                        Some(Term::Fun(next_id, next_body)) => {
-                            args.push(Pattern::any(*next_id));
-                            maybe_next_fun = next_body;
+                        Some(Term::Fun(data)) => {
+                            args.push(Pattern::any(data.arg));
+                            maybe_next_fun = &data.body;
                         }
-                        Some(Term::FunPattern(next_pat, next_body)) => {
-                            args.push(next_pat.to_ast(alloc, pos_table));
-                            maybe_next_fun = next_body;
+                        Some(Term::FunPattern(data)) => {
+                            args.push(data.pattern.to_ast(alloc, pos_table));
+                            maybe_next_fun = &data.body;
                         }
                         _ => break maybe_next_fun,
                     }
@@ -1446,8 +1446,8 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     .rev()
                     .fold(NickelValue::from_ast(body, pos_table), |acc, arg| {
                         let term = match arg.data {
-                            PatternData::Any(id) => Term::Fun(id, acc),
-                            _ => term::Term::FunPattern((*arg).to_mainline(pos_table), acc),
+                            PatternData::Any(id) => Term::fun(id, acc),
+                            _ => Term::fun_pattern((*arg).to_mainline(pos_table), acc),
                         };
 
                         // [^nary-constructors-unrolling]: this case is a bit annoying: we need to

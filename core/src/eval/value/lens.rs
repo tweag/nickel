@@ -10,8 +10,8 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        BinaryOp, Import, LetAttrs, MatchData, NAryOp, SealingKey, StrChunk, Term, TypeAnnotation,
-        UnaryOp,
+        BinaryOp, FunData, FunPatternData, Import, LetAttrs, MatchData, NAryOp, SealingKey,
+        StrChunk, Term, TypeAnnotation, UnaryOp,
         pattern::Pattern,
         record::{Field, Include, RecordData, RecordDeps},
     },
@@ -197,8 +197,8 @@ pub type RecRecordData = (
 pub enum TermContent {
     Value(ValueLens<NickelValue>),
     StrChunks(ValueLens<Vec<StrChunk<NickelValue>>>),
-    Fun(ValueLens<(LocIdent, NickelValue)>),
-    FunPattern(ValueLens<(Pattern, NickelValue)>),
+    Fun(ValueLens<FunData>),
+    FunPattern(ValueLens<Box<FunPatternData>>),
     Let(ValueLens<LetData>),
     LetPattern(ValueLens<LetPatternData>),
     App(ValueLens<(NickelValue, NickelValue)>),
@@ -381,7 +381,7 @@ impl ValueLens<Vec<StrChunk<NickelValue>>> {
     }
 }
 
-impl ValueLens<(LocIdent, NickelValue)> {
+impl ValueLens<FunData> {
     /// Creates a new lens extracting [crate::term::Term::Fun].
     ///
     /// # Safety
@@ -396,18 +396,18 @@ impl ValueLens<(LocIdent, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::Fun].
-    fn term_fun_extractor(value: NickelValue) -> (LocIdent, NickelValue) {
+    fn term_fun_extractor(value: NickelValue) -> FunData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Fun(arg, body) = term {
-            (arg, body)
+        if let Term::Fun(data) = term {
+            data
         } else {
             unreachable!()
         }
     }
 }
 
-impl ValueLens<(Pattern, NickelValue)> {
+impl ValueLens<Box<FunPatternData>> {
     /// Creates a new lens extracting [crate::term::Term::FunPattern].
     ///
     /// # Safety
@@ -422,11 +422,11 @@ impl ValueLens<(Pattern, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::FunPattern].
-    fn term_fun_pat_extractor(value: NickelValue) -> (Pattern, NickelValue) {
+    fn term_fun_pat_extractor(value: NickelValue) -> Box<FunPatternData> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::FunPattern(pat, body) = term {
-            (pat, body)
+        if let Term::FunPattern(data) = term {
+            data
         } else {
             unreachable!()
         }

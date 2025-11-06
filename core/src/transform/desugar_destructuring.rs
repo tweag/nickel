@@ -8,7 +8,7 @@ use crate::{
     eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
     position::PosTable,
-    term::{BinaryOp, BindingType, LetAttrs, Term, make, pattern::*},
+    term::{BinaryOp, BindingType, FunPatternData, LetAttrs, Term, make, pattern::*},
 };
 
 use self::{bindings::Bindings, compile::CompilePart};
@@ -27,10 +27,7 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValu
                 let (bindings, body, attrs) = lens.take();
                 NickelValue::term(desugar_let(pos_table, bindings, body, attrs.rec), pos_idx)
             }
-            TermContent::FunPattern(lens) => {
-                let (pat, body) = lens.take();
-                NickelValue::term(desugar_fun(pat, body), pos_idx)
-            }
+            TermContent::FunPattern(lens) => NickelValue::term(desugar_fun(*lens.take()), pos_idx),
             lens => lens.restore(),
         },
         lens => lens.restore(),
@@ -42,15 +39,15 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValu
 /// A function `fun <pat> => body` is desugared to `fun x => let <pat> = x in body`. The inner
 /// destructuring let isn't desugared further, as the general program transformation machinery will
 /// take care of transforming the body of the function in a second step.
-pub fn desugar_fun(mut pat: Pattern, body: NickelValue) -> Term {
-    let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
+pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term {
+    let id = pattern.alias.take().unwrap_or_else(LocIdent::fresh);
     let pos_idx_body = body.pos_idx();
 
-    Term::Fun(
+    Term::fun(
         id,
         NickelValue::term(
             Term::LetPattern(
-                std::iter::once((pat, Term::Var(id).into())).collect(),
+                std::iter::once((pattern, Term::Var(id).into())).collect(),
                 body,
                 LetAttrs::default(),
             ),

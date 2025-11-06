@@ -220,7 +220,7 @@ impl ThunkData {
                 // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need
                 // a reverse fold.
                 let as_function = args.rfold(body, |built, id| {
-                    NickelValue::from(Term::Fun(id.into(), built))
+                    NickelValue::from(Term::fun(id.into(), built))
                 });
 
                 ThunkData::new(Closure {
