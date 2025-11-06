@@ -414,7 +414,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // they are seen, and there's no way back. We always set them to empty here.
                     //
                     // The result is already closurized, so we set `closurized` to true.
-                    Term::RecRecord(
+                    Term::rec_record(
                         RecordData::new(m, attrs, None),
                         Vec::new(),
                         Vec::new(),

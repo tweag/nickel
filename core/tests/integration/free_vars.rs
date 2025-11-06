@@ -43,9 +43,10 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
 
     match value.content() {
         ValueContent::Term(TermContent::RecRecord(lens)) => {
-            let (_data, _includes, dyns, deps, _closurized) = lens.take();
-            let deps = deps.unwrap();
-            dyns.len() == deps.dyn_fields.len() && dyn_free_vars_subset(&deps.dyn_fields, expected)
+            let data = lens.take();
+            let deps = data.deps.unwrap();
+            data.dyn_fields.len() == deps.dyn_fields.len()
+                && dyn_free_vars_subset(&deps.dyn_fields, expected)
         }
         _ => panic!("{expr} hasn't been parsed as a record"),
     }
@@ -59,11 +60,11 @@ fn check_stat_and_includes(expr: &str, mut expected: IndexMap<&str, Vec<&str>>) 
 
     match value.content() {
         ValueContent::Term(TermContent::RecRecord(lens)) => {
-            let (record, includes, _dyns, deps, _closurized) = lens.take();
-            let deps = deps.unwrap();
+            let data = lens.take();
+            let deps = data.deps.unwrap();
 
             stat_free_vars_subset(&deps.stat_fields, &mut expected)
-            && record.fields.len() + includes.len() == deps.stat_fields.len()
+            && data.record.fields.len() + data.includes.len() == deps.stat_fields.len()
             // the inclusion test functions `xxx_free_vars_incl` above take the free variables out
             // of expected as they are matched, so we expect that at the end of the test,
             // `expected` is empty (there was no extra field specified in `expected`)

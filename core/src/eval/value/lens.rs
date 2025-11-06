@@ -11,8 +11,7 @@ use crate::{
     label::Label,
     term::{
         BinaryOp, FunData, FunPatternData, Import, LetData, LetPatternData, MatchData, NAryOp,
-        SealingKey, StrChunk, Term, TypeAnnotation, UnaryOp,
-        record::{Field, Include, RecordData, RecordDeps},
+        RecRecordData, SealingKey, StrChunk, Term, TypeAnnotation, UnaryOp,
     },
 };
 
@@ -168,16 +167,6 @@ impl ValueLens<bool> {
     }
 }
 
-// Those aliases are there to appease clippy, but what we should really do is to define a proper
-// `LetData` structure instead and use it the corresponding term variant.
-pub type RecRecordData = (
-    RecordData,
-    Vec<Include>,
-    Vec<(NickelValue, Field)>,
-    Option<RecordDeps>,
-    bool,
-);
-
 /// Counterpart of [super::ValueContent] for [crate::term::Term] representing the inner term stored in a block
 /// value. This makes it possible to conditionally take data out depending not only on the type of
 /// the block, but on the specific constructor of the term inside that block as well.
@@ -193,7 +182,7 @@ pub enum TermContent {
     LetPattern(ValueLens<Box<LetPatternData>>),
     App(ValueLens<(NickelValue, NickelValue)>),
     Var(ValueLens<LocIdent>),
-    RecRecord(ValueLens<RecRecordData>),
+    RecRecord(ValueLens<Box<RecRecordData>>),
     Closurize(ValueLens<NickelValue>),
     Match(ValueLens<MatchData>),
     Op1(ValueLens<(UnaryOp, NickelValue)>),
@@ -527,7 +516,7 @@ impl ValueLens<LocIdent> {
     }
 }
 
-impl ValueLens<RecRecordData> {
+impl ValueLens<Box<RecRecordData>> {
     /// Creates a new lens extracting [crate::term::Term::RecRecord].
     ///
     /// # Safety
@@ -542,11 +531,11 @@ impl ValueLens<RecRecordData> {
     }
 
     /// Extractor for [crate::term::Term::RecRecord].
-    fn term_rec_record_extractor(value: NickelValue) -> RecRecordData {
+    fn term_rec_record_extractor(value: NickelValue) -> Box<RecRecordData> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::RecRecord(data, includes, fields, deps, bool) = term {
-            (data, includes, fields, deps, bool)
+        if let Term::RecRecord(data) = term {
+            data
         } else {
             unreachable!()
         }

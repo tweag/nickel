@@ -80,6 +80,21 @@ pub struct LetPatternData {
     pub attrs: LetAttrs,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecRecordData {
+    pub record: RecordData,
+    /// Fields defined through `include` expressions.
+    pub includes: Vec<Include>,
+    /// Dynamic fields, whose name is defined by interpolation.
+    pub dyn_fields: Vec<(NickelValue, Field)>,
+    /// Dependency tracking between fields. It is filled by the free var transformation, and is
+    /// `None` before.
+    pub deps: Option<RecordDeps>,
+    /// If the recursive record has been closurized already (currently this is mostly the case for
+    /// records coming out from merging.
+    pub closurized: bool,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -130,13 +145,7 @@ pub enum Term {
 
     /// A recursive record, where the fields can reference each others. Computes the fixpoint and
     /// produces a record value with the proper recursive environment.
-    RecRecord(
-        RecordData,
-        Vec<Include>,              /* fields defined through `include` expressions */
-        Vec<(NickelValue, Field)>, /* field whose name is defined by interpolation */
-        Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
-        bool,               /* is it closurized */
-    ),
+    RecRecord(Box<RecRecordData>),
 
     /// A container value (array or record) that has yet to be closurized. This will closurize each
     /// elements of the container in the current environment.
@@ -860,6 +869,22 @@ impl Term {
             bindings,
             body,
             attrs,
+        }))
+    }
+
+    pub fn rec_record(
+        record: RecordData,
+        includes: Vec<Include>,
+        dyn_fields: Vec<(NickelValue, Field)>,
+        deps: Option<RecordDeps>,
+        closurized: bool,
+    ) -> Self {
+        Term::RecRecord(Box::new(RecRecordData {
+            record,
+            includes,
+            dyn_fields,
+            deps,
+            closurized,
         }))
     }
 }
@@ -1774,16 +1799,19 @@ impl Traverse<NickelValue> for Term {
                 let inner = inner.traverse(f, order)?;
                 Term::Sealed(key, inner, label)
             }
-            Term::RecRecord(record, includes, dyn_fields, deps, closurized) => {
+            Term::RecRecord(mut data) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
+                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = data
+                    .record
                     .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
-                let dyn_fields_res: Result<Vec<(NickelValue, Field)>, E> = dyn_fields
+
+                data.dyn_fields = data
+                    .dyn_fields
                     .into_iter()
                     .map(|(id_t, field)| {
                         let id_t = id_t.traverse(f, order)?;
@@ -1791,14 +1819,15 @@ impl Traverse<NickelValue> for Term {
 
                         Ok((id_t, field))
                     })
-                    .collect();
-                Term::RecRecord(
-                    RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
-                    includes,
-                    dyn_fields_res?,
-                    deps,
-                    closurized,
-                )
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                data.record = RecordData::new(
+                    static_fields_res?,
+                    data.record.attrs,
+                    data.record.sealed_tail,
+                );
+
+                Term::RecRecord(data)
             }
             Term::StrChunks(chunks) => {
                 let chunks_res: Result<Vec<StrChunk<NickelValue>>, E> = chunks
@@ -1871,12 +1900,13 @@ impl Traverse<NickelValue> for Term {
             Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
-            Term::RecRecord(data, _, dyn_data, _, _) => data
+            Term::RecRecord(data) => data
+                .record
                 .fields
                 .values()
                 .find_map(|field| field.traverse_ref(f, state))
                 .or_else(|| {
-                    dyn_data.iter().find_map(|(id, field)| {
+                    data.dyn_fields.iter().find_map(|(id, field)| {
                         id.traverse_ref(f, state)
                             .or_else(|| field.traverse_ref(f, state))
                     })

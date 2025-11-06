@@ -71,26 +71,26 @@ pub fn repl(histfile: Option<PathBuf>, color_opt: ColorOpt) -> Result<(), InitEr
                                 container.len()
                             )
                         }
-                        ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..)) => {
-                            if !dyn_fields.is_empty() {
+                        ValueContentRef::Term(Term::RecRecord(data)) => {
+                            if !data.dyn_fields.is_empty() {
                                 println!(
                                     "Warning: loading dynamic fields is currently not supported. \
                                     {} symbols ignored",
-                                    dyn_fields.len()
+                                    data.dyn_fields.len()
                                 );
                             }
 
-                            if !includes.is_empty() {
+                            if !data.includes.is_empty() {
                                 println!(
                                     "Warning: loading record with `include` expressions is currently not supported. \
                                     {} symbols ignored",
-                                    includes.len()
+                                    data.includes.len()
                                 );
                             }
 
                             println!(
                                 "Loaded {} symbol(s) in the environment.",
-                                record.fields.len()
+                                data.record.fields.len()
                             )
                         }
                         _ => (),
