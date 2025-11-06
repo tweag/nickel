@@ -49,7 +49,7 @@ use super::{
     ExtendedTerm,
     utils::*,
     lexer::{Token, NormalToken, StringToken, MultiStringToken, SymbolicStringStart},
-    error::ParseError,
+    error::{ParseError, ParseOrLexError},
     uniterm::*,
 };
 
@@ -57,20 +57,21 @@ use crate::{
     files::FileId,
     identifier::{Ident, LocIdent},
     combine::CombineAlloc,
-    bytecode::ast::{
+    ast::{
         Ast, Node, Annotation, LetMetadata, AstAlloc, LetBinding, MatchBranch,
-        builder, StringChunk, MergePriority, Number, TryConvert,
+        builder, StringChunk, MergeKind, MergePriority, TryConvert,
+        RecordOpKind,
         record::{FieldMetadata, FieldDef, FieldPathElem, Include},
         pattern::*,
         typ::*,
-        primop::{PrimOp, RecordOpKind},
+        primop::PrimOp,
     },
+    Number,
     typ::{VarKind, DictTypeFlavour},
     position::{TermPos, RawSpan},
     app,
     primop_app,
     fun,
-    label::MergeKind,
 };
 
 use malachite::base::num::basic::traits::Zero;
@@ -78,7 +79,7 @@ use malachite::base::num::basic::traits::Zero;
 grammar<'input, 'ast, 'err, 'wcard>(
     alloc: &'ast AstAlloc,
     src_id: FileId,
-    errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
+    errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseOrLexError>>,
     next_wildcard_id: &'wcard mut usize,
 );
 
@@ -104,11 +105,11 @@ WithPos<Rule>: Rule = <left: @L> <t: Rule> <right: @R> =>
 
 AsTerm<Rule>: Ast<'ast> = <ut: WithPos<Rule>> =>?
     Ast::try_convert(alloc, ut)
-        .map_err(|e| lalrpop_util::ParseError::User{error: e});
+        .map_err(lalrpop_util::ParseError::from);
 
 AsType<Rule>: Type<'ast> = <ut: WithPos<Rule>> =>?
     Type::try_convert(alloc, ut)
-        .map_err(|e| lalrpop_util::ParseError::User{error: e});
+        .map_err(lalrpop_util::ParseError::from);
 
 // Repeat a rule zero times or more with a separator interspersed, such that the last
 // separator is optional: for example, RepeatSep<Term, ","> will both accept
@@ -359,7 +360,7 @@ Applicative: UniTerm<'ast> = {
             // For a general application, we need the head to be a term. We
             // don't support general type applications yet - `Array T` is
             // special cased as a type constructor.
-            let head = Ast::try_convert(alloc, head) .map_err(|e| lalrpop_util::ParseError::User{error: e})?;
+            let head = Ast::try_convert(alloc, head).map_err(lalrpop_util::ParseError::from)?;
 
             // We special case the application of an enum tag here. In principle, an
             // enum variant applied to an argument is of different nature than a
@@ -437,15 +438,15 @@ UniRecord: UniRecord<'ast> = {
 
         let mut handle_include = |include: Include<'ast>| -> Result<(), _> {
             if let Some(prev_id) = includes_seen.get(&include.ident) {
-                return Err(lalrpop_util::ParseError::User {
-                    error: ParseError::MultipleFieldDecls {
+                return Err(lalrpop_util::ParseError::from(
+                    ParseError::MultipleFieldDecls {
                         ident: include.ident.ident(),
                         // unwrap(): we expect positions to be defined for
                         // freshly parsed ident
                         include_span: prev_id.pos.unwrap(),
                         other_span: include.ident.pos.unwrap(),
                     }
-                });
+                ));
             }
 
             includes_seen.insert(include.ident);
@@ -474,8 +475,8 @@ UniRecord: UniRecord<'ast> = {
         }
 
         if let Some(id) = defs_seen.intersection(&includes_seen).next() {
-            Err(lalrpop_util::ParseError::User {
-                error: ParseError::MultipleFieldDecls {
+            Err(lalrpop_util::ParseError::from(
+                ParseError::MultipleFieldDecls {
                     ident: id.ident(),
                     // unwrap(): we expect the identifier to be in both hash
                     // sets since it's in the intersection
@@ -484,7 +485,7 @@ UniRecord: UniRecord<'ast> = {
                     include_span: includes_seen.get(id).unwrap().pos.unwrap(),
                     other_span: defs_seen.get(id).unwrap().pos.unwrap(),
                 }
-            })
+            ))
         }
         else {
             Ok(UniRecord {
@@ -611,6 +612,7 @@ pub StaticFieldPath: Vec<LocIdent> = <l: @L> <field_path: FieldPath> <r: @R> =>?
             // actually static identifiers. If we end up here, we have actual
             // dynamic interpolation.
             FieldPathElem::Expr(expr) => Err(ParseError::InterpolationInStaticPath {
+                input: String::new(),
                 path_elem_span: expr.pos
                     .into_opt()
                     .unwrap_or_else(|| mk_span(src_id, l, r)),
@@ -1278,12 +1280,11 @@ UOp: PrimOp = {
         }
         #[cfg(not(feature = "nix-experimental"))]
         {
-            Err(lalrpop_util::ParseError::User {
-                error: ParseError::DisabledFeature {
+            Err(ParseError::DisabledFeature {
                     feature: String::from("nix-experimental"),
                     span: mk_span(src_id, l, r),
-                }
-            })
+                }.into()
+            )
         }
     },
     "enum/get_arg" => PrimOp::EnumGetArg,
@@ -1588,7 +1589,7 @@ SignedNumLiteral: Number = <sign: "-"?> <value: NumberLiteral> => {
 
 extern {
     type Location = usize;
-    type Error = ParseError;
+    type Error = ParseOrLexError;
 
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),

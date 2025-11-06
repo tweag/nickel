@@ -1,8 +1,6 @@
 //! Define a `Combine` trait that takes an allocator, two AST components, and returns a new AST
 //! component.
 
-use crate::eval::merge::merge_doc;
-
 use super::{
     Annotation, AstAlloc,
     record::{FieldMetadata, MergePriority},
@@ -64,4 +62,13 @@ impl<'ast> Combine<'ast> for Annotation<'ast> {
 
         alloc.annotation(typ, contracts)
     }
+}
+
+/// Merge two optional documentations.
+pub(crate) fn merge_doc<'ast>(
+    doc1: Option<&'ast str>,
+    doc2: Option<&'ast str>,
+) -> Option<&'ast str> {
+    //FIXME: how to merge documentation? Just concatenate?
+    doc1.or(doc2)
 }

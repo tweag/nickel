@@ -28,7 +28,7 @@ repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm
 doc = ["dep:comrak"]
 format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
-nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
+nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config", "nickel-lang-parser/nix-experimental" ]
 benchmark-ci = []
 
 [build-dependencies]
@@ -47,6 +47,7 @@ colorchoice.workspace = true
 cxx = { workspace = true, optional = true }
 json_scanner.workspace = true
 logos.workspace = true
+nickel-lang-parser.workspace = true
 nickel-lang-vector.workspace = true
 ouroboros.workspace = true
 saphyr-parser.workspace = true

@@ -1,7 +1,7 @@
 //! Pattern analysis. The trait defined here is mostly used by the LSP.
 
 use crate::{
-    bytecode::ast::{pattern::*, record::FieldMetadata},
+    ast::{pattern::*, record::FieldMetadata},
     identifier::LocIdent,
 };
 

@@ -302,7 +302,7 @@ pub(crate) mod tests {
     use super::PositionLookup;
 
     pub fn parse<'ast>(alloc: &'ast AstAlloc, s: &str) -> (FileId, Ast<'ast>) {
-        let id = Files::new().add("<test>", String::from(s));
+        let id = Files::empty().add("<test>", String::from(s));
 
         let term = grammar::TermParser::new()
             .parse_strict(alloc, id, lexer::Lexer::new(s))

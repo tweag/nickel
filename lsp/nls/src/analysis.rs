@@ -1211,7 +1211,7 @@ mod tests {
 
         // The field that fails to parse should have a record as its parent.
         let s = "{ field. }";
-        let file = Files::new().add("<test>", s.to_owned());
+        let file = Files::empty().add("<test>", s.to_owned());
 
         let (ast, _errors) = grammar::TermParser::new().parse_fully_tolerant(
             &alloc,

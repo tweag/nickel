@@ -30,10 +30,10 @@
 //! go back to string mode. In our example, this is the second `}`: at this point, the lexer knows
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use super::{
-    error::{LexicalError, ParseError},
+    error::LexicalError,
     utils::{parse_number_base, parse_number_sci},
 };
-use crate::term::Number;
+use crate::Number;
 use logos::Logos;
 use std::ops::Range;
 
@@ -789,7 +789,7 @@ impl<'input> Lexer<'input> {
         &mut self,
         span: Range<usize>,
         token: NormalToken<'input>,
-    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+    ) -> Option<Result<SpannedToken<'input>, LexicalError>> {
         match token {
             NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin => self.enter_str(),
             NormalToken::MultiStringStart(delim_size)
@@ -809,9 +809,7 @@ impl<'input> Lexer<'input> {
                 let data = self.normal_mode_data_mut();
                 if data.brace_count == 0 {
                     if self.modes.is_empty() {
-                        return Some(Err(ParseError::Lexical(LexicalError::UnmatchedCloseBrace(
-                            span.start,
-                        ))));
+                        return Some(Err(LexicalError::UnmatchedCloseBrace(span.start)));
                     }
 
                     self.leave_normal();
@@ -822,7 +820,7 @@ impl<'input> Lexer<'input> {
             // Ignore comment
             NormalToken::LineComment => return self.next(),
             NormalToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
+                return Some(Err(LexicalError::Generic(span)));
             }
             _ => (),
         };
@@ -836,7 +834,7 @@ impl<'input> Lexer<'input> {
         &mut self,
         span: Range<usize>,
         token: StringToken<'input>,
-    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+    ) -> Option<Result<SpannedToken<'input>, LexicalError>> {
         let result = match token {
             StringToken::DoubleQuote => {
                 self.leave_str();
@@ -853,22 +851,18 @@ impl<'input> Lexer<'input> {
                 if let Some(esc) = escape_char(c) {
                     Token::Str(StringToken::EscapedChar(esc))
                 } else {
-                    return Some(Err(ParseError::Lexical(
-                        LexicalError::InvalidEscapeSequence(span.start + 1),
-                    )));
+                    return Some(Err(LexicalError::InvalidEscapeSequence(span.start + 1)));
                 }
             }
             StringToken::EscapedAscii(code) => {
                 if let Some(esc) = escape_ascii(code) {
                     Token::Str(StringToken::EscapedChar(esc))
                 } else {
-                    return Some(Err(ParseError::Lexical(
-                        LexicalError::InvalidAsciiEscapeCode(span.start + 2),
-                    )));
+                    return Some(Err(LexicalError::InvalidAsciiEscapeCode(span.start + 2)));
                 }
             }
             StringToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
+                return Some(Err(LexicalError::Generic(span)));
             }
             token => Token::Str(token),
         };
@@ -881,7 +875,7 @@ impl<'input> Lexer<'input> {
         &mut self,
         mut span: Range<usize>,
         token: MultiStringToken<'input>,
-    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+    ) -> Option<Result<SpannedToken<'input>, LexicalError>> {
         let data = self.multistring_mode_data();
 
         let result = match token {
@@ -943,12 +937,10 @@ impl<'input> Lexer<'input> {
             // modulo operator `%` - which will fail anyway at runtime with a type error).
             // Thus, we prefer to emit a proper error right here.
             MultiStringToken::CandidateEnd(s) if s.len() > data.percent_count => {
-                return Some(Err(ParseError::Lexical(
-                    LexicalError::StringDelimiterMismatch {
-                        opening_delimiter: data.opening_delimiter.clone(),
-                        closing_delimiter: span,
-                    },
-                )));
+                return Some(Err(LexicalError::StringDelimiterMismatch {
+                    opening_delimiter: data.opening_delimiter.clone(),
+                    closing_delimiter: span,
+                }));
             }
             // If we encounter a `CandidateEnd` token with the same number of `%`s as the
             // starting token then it is the end of a multiline string
@@ -963,7 +955,7 @@ impl<'input> Lexer<'input> {
             }
             // Early report errors for now. This could change in the future
             MultiStringToken::Error => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))));
+                return Some(Err(LexicalError::Generic(span)));
             }
             token => Token::MultiStr(token),
         };
@@ -1007,7 +999,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Result<SpannedToken<'input>, ParseError>;
+    type Item = Result<SpannedToken<'input>, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.lexer.as_mut().unwrap() {
@@ -1056,7 +1048,7 @@ impl<'input> OffsetLexer<'input> {
 }
 
 impl<'input> Iterator for OffsetLexer<'input> {
-    type Item = Result<SpannedToken<'input>, ParseError>;
+    type Item = Result<SpannedToken<'input>, LexicalError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.lexer.next().map(|result| {

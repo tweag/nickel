@@ -1,10 +1,8 @@
 //! Representation of Nickel types in the AST.
 use super::{Ast, AstAlloc, TermPos};
-use crate::{
-    identifier::Ident, impl_display_from_bytecode_pretty, traverse::*, typ as mainline_typ,
-};
+pub use crate::typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
+use crate::{identifier::Ident, impl_display_from_bytecode_pretty, traverse::*};
 use iter::*;
-pub use mainline_typ::{EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF};
 
 /// The recursive unrolling of a type, that is when we "peel off" the top-level layer to find the actual
 /// structure represented by an instantiation of `TypeF`.

@@ -3,9 +3,7 @@
 
 use std::fmt;
 
-use crate::{identifier::LocIdent, label::MergeKind};
-
-pub use crate::term::RecordOpKind;
+use crate::{ast::MergeKind, ast::RecordOpKind, identifier::LocIdent};
 
 /// Nickel primitive operations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -115,7 +113,7 @@ pub enum PrimOp {
 
     /// Go to the domain in the type path of a label.
     ///
-    /// If the argument is a label with a [type path][crate::label::TyPath) representing some
+    /// If the argument is a label with a type path (see `nickel_lang_core::label::TyPath`) representing some
     /// subtype of the type of the original contract, as in:
     ///
     /// ```text
@@ -715,7 +713,7 @@ pub enum PrimOp {
 
     /// Access the n-th element of an array.
     ///
-    /// Warning: the arguments are swapped compared to [crate::term::BinaryOp::ArrayAt].
+    /// Warning: the arguments are swapped compared to `nickel_lang_core::term::BinaryOp::ArrayAt`.
     ///
     /// # Arguments
     ///
@@ -723,8 +721,8 @@ pub enum PrimOp {
     /// 2. The array.
     ArrayAt,
 
-    /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
-    /// [crate::label::MergeKind] flavour, which carries additional information for error-reporting
+    /// The merge operator (see `eval::merge` in `nickel_lang_core`). `Merge` is parametrized by a
+    /// [crate::ast::MergeKind] flavour, which carries additional information for error-reporting
     /// purpose.
     ///
     /// # Arguments
@@ -770,7 +768,7 @@ pub enum PrimOp {
 
     /// Determine if a string is a substring of another one.
     ///
-    /// Warning: the arguments are swapped compared to [crate::term::BinaryOp::StringContains].
+    /// Warning: the arguments are swapped compared to `nickel_lang_core::term::BinaryOp::StringContains`.
     ///
     /// # Arguments
     ///
@@ -848,8 +846,8 @@ pub enum PrimOp {
     /// 2. The label.
     LabelAppendNote,
 
-    /// Look up the [`crate::label::TypeVarData`] associated with a sealing key in the type
-    /// environment of a [label](crate::label::Label).
+    /// Look up the `nickel_lang_core::label::TypeVarData` associated with a sealing key in the type
+    /// environment of a `nickel_lang_core::label::Label`.
     ///
     /// # Arguments
     ///
@@ -878,7 +876,7 @@ pub enum PrimOp {
 
     /// Return a substring of an original string.
     ///
-    /// Warning: the argument order is different than [crate::term::NAryOp::StringSubstr].
+    /// Warning: the argument order is different than `nickel_lang_core::term::NAryOp::StringSubstr`.
     ///
     /// # Arguments
     ///
@@ -887,7 +885,7 @@ pub enum PrimOp {
     /// 3. The string to slice.
     StringSubstr,
 
-    /// The merge operator in contract mode (see [crate::eval::merge]).
+    /// The merge operator in contract mode (see `eval::merge` in `nickel_lang_core`).
     ///
     /// # Arguments
     ///
@@ -918,12 +916,12 @@ pub enum PrimOp {
     /// 3. The record whose tail we wish to unseal.
     RecordUnsealTail,
 
-    /// Insert type variable data into the `type_environment` of a [`crate::label::Label`]
+    /// Insert type variable data into the `type_environment` of a label.
     ///
     /// # Arguments
     ///
     /// 1. The sealing key assigned to the type variable.
-    /// 2. The introduction polarity](crate::label::Polarity) of the type variable
+    /// 2. The introduction polarity](nickel_lang_core::label::Polarity) of the type variable
     /// 3. The [kind](crate::typ::VarKind) of the type variable
     /// 4. A label on which to operate.
     LabelInsertTypeVar,

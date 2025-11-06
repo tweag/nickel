@@ -4,8 +4,8 @@ use std::collections::{HashMap, hash_map::Entry};
 use super::{Annotation, Ast, Number};
 
 use crate::{
-    identifier::LocIdent, impl_display_from_bytecode_pretty, parser::error::ParseError,
-    position::TermPos, traverse::*,
+    error::ParseError, identifier::LocIdent, impl_display_from_bytecode_pretty, position::TermPos,
+    traverse::*,
 };
 
 pub mod bindings;

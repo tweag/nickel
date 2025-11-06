@@ -6,6 +6,9 @@
 //! different subcaches that can be borrowed independently.
 pub use ast_cache::AstCache;
 
+// TODO(parser migration): compatibility shim
+pub use nickel_lang_parser::ast::InputFormat;
+
 use crate::{
     bytecode::ast::{
         self, Ast, AstAlloc, TryConvert,
@@ -49,79 +52,6 @@ use ouroboros::self_referencing;
 /// Error when trying to add bindings to the typing context where the given term isn't a record
 /// literal.
 pub struct NotARecord;
-
-/// Supported input formats.
-#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
-pub enum InputFormat {
-    #[default]
-    Nickel,
-    Json,
-    Yaml,
-    Toml,
-    #[cfg(feature = "nix-experimental")]
-    Nix,
-    Text,
-}
-
-impl InputFormat {
-    /// Returns an [InputFormat] based on the file extension of a path.
-    pub fn from_path(path: impl AsRef<Path>) -> Option<InputFormat> {
-        match path.as_ref().extension().and_then(OsStr::to_str) {
-            Some("ncl") => Some(InputFormat::Nickel),
-            Some("json") => Some(InputFormat::Json),
-            Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
-            Some("toml") => Some(InputFormat::Toml),
-            #[cfg(feature = "nix-experimental")]
-            Some("nix") => Some(InputFormat::Nix),
-            Some("txt") => Some(InputFormat::Text),
-            _ => None,
-        }
-    }
-
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            InputFormat::Nickel => "Nickel",
-            InputFormat::Json => "Json",
-            InputFormat::Yaml => "Yaml",
-            InputFormat::Toml => "Toml",
-            InputFormat::Text => "Text",
-            #[cfg(feature = "nix-experimental")]
-            InputFormat::Nix => "Nix",
-        }
-    }
-
-    /// Extracts format embedded in SourcePath
-    pub fn from_source_path(source_path: &SourcePath) -> Option<InputFormat> {
-        if let SourcePath::Path(_p, fmt) = source_path {
-            Some(*fmt)
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Display for InputFormat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
-    }
-}
-
-impl std::str::FromStr for InputFormat {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "Json" => InputFormat::Json,
-            "Nickel" => InputFormat::Nickel,
-            "Text" => InputFormat::Text,
-            "Yaml" => InputFormat::Yaml,
-            "Toml" => InputFormat::Toml,
-            #[cfg(feature = "nix-experimental")]
-            "Nix" => InputFormat::Nix,
-            _ => return Err(()),
-        })
-    }
-}
 
 /// The term cache stores the parsed values (the runtime representation) of sources.
 #[derive(Debug, Clone)]
@@ -325,8 +255,10 @@ pub struct SourceCache {
 
 impl SourceCache {
     pub fn new() -> Self {
+        let files =
+            Files::new(crate::stdlib::modules().map(|m| (m.file_name().to_owned(), m.content())));
         SourceCache {
-            files: Files::new(),
+            files,
             file_paths: HashMap::new(),
             file_ids: HashMap::new(),
             import_paths: Vec::new(),
@@ -669,7 +601,8 @@ impl SourceCache {
 
     /// Returns the list of file ids corresponding to the standard library modules.
     pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> + use<> {
-        self.files.stdlib_modules()
+        let ids = self.files.stdlib_modules();
+        crate::stdlib::modules().into_iter().zip(ids)
     }
 
     /// Return the format of a given source. Returns `None` if there is no entry in the source
@@ -1013,7 +946,7 @@ impl CacheHub {
             .sources
             .file_paths
             .get(&file_id)
-            .and_then(InputFormat::from_source_path)
+            .and_then(Option::<InputFormat>::from)
             .unwrap_or_default();
 
         if let InputFormat::Nickel = format {
@@ -1931,6 +1864,16 @@ impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
         match value {
             SourcePath::Path(p, _) | SourcePath::Snippet(p) => Ok(p.as_os_str()),
             _ => Err(()),
+        }
+    }
+}
+
+impl From<&SourcePath> for Option<InputFormat> {
+    fn from(source_path: &SourcePath) -> Option<InputFormat> {
+        if let SourcePath::Path(_p, fmt) = source_path {
+            Some(*fmt)
+        } else {
+            None
         }
     }
 }

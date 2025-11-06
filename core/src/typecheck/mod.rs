@@ -3307,50 +3307,6 @@ impl CloneTo for UnifType<'_> {
     }
 }
 
-impl CloneTo for UnifTypeUnr<'_> {
-    type Data<'a> = UnifTypeUnr<'a>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            TypeF::Dyn => TypeF::Dyn,
-            TypeF::Number => TypeF::Number,
-            TypeF::Bool => TypeF::Bool,
-            TypeF::String => TypeF::String,
-            TypeF::Symbol => TypeF::Symbol,
-            TypeF::ForeignId => TypeF::ForeignId,
-            TypeF::Contract((ast, env)) => TypeF::Contract((
-                dest.clone_ref_from::<Ast>(ast),
-                dest.clone_from::<TermEnv>(env),
-            )),
-            TypeF::Arrow(src, tgt) => TypeF::Arrow(
-                Box::new(dest.clone_from::<UnifType>(*src)),
-                Box::new(dest.clone_from::<UnifType>(*tgt)),
-            ),
-            TypeF::Var(id) => TypeF::Var(id),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => TypeF::Forall {
-                var,
-                var_kind,
-                body: Box::new(dest.clone_from::<UnifType>(*body)),
-            },
-            TypeF::Enum(erows) => TypeF::Enum(dest.clone_from::<UnifEnumRows>(erows)),
-            TypeF::Record(rrows) => TypeF::Record(dest.clone_from::<UnifRecordRows>(rrows)),
-            TypeF::Dict {
-                type_fields,
-                flavour,
-            } => TypeF::Dict {
-                type_fields: Box::new(dest.clone_from::<UnifType>(*type_fields)),
-                flavour,
-            },
-            TypeF::Array(ty) => TypeF::Array(Box::new(dest.clone_from::<UnifType>(*ty))),
-            TypeF::Wildcard(wildcard_id) => TypeF::Wildcard(wildcard_id),
-        }
-    }
-}
-
 impl CloneTo for TermEnv<'_> {
     type Data<'a> = TermEnv<'a>;
 
@@ -3390,34 +3346,6 @@ impl CloneTo for UnifEnumRows<'_> {
     }
 }
 
-impl CloneTo for UnifEnumRowsUnr<'_> {
-    type Data<'a> = UnifEnumRowsUnr<'a>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            EnumRowsF::Empty => EnumRowsF::Empty,
-            EnumRowsF::Extend { row, tail } => EnumRowsF::Extend {
-                row: dest.clone_from::<UnifEnumRow>(row),
-                tail: Box::new(dest.clone_from::<UnifEnumRows>(*tail)),
-            },
-            EnumRowsF::TailVar(loc_ident) => EnumRowsF::TailVar(loc_ident),
-        }
-    }
-}
-
-impl CloneTo for UnifEnumRow<'_> {
-    type Data<'ast> = UnifEnumRow<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        UnifEnumRow {
-            id: data.id,
-            typ: data
-                .typ
-                .map(|ty| Box::new(dest.clone_from::<UnifType>(*ty))),
-        }
-    }
-}
-
 impl CloneTo for UnifRecordRows<'_> {
     type Data<'a> = UnifRecordRows<'a>;
 
@@ -3434,33 +3362,6 @@ impl CloneTo for UnifRecordRows<'_> {
             UnifRecordRows::UnifVar { id, init_level } => {
                 UnifRecordRows::UnifVar { id, init_level }
             }
-        }
-    }
-}
-
-impl CloneTo for UnifRecordRowsUnr<'_> {
-    type Data<'ast> = UnifRecordRowsUnr<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        match data {
-            RecordRowsF::Empty => RecordRowsF::Empty,
-            RecordRowsF::Extend { row, tail } => RecordRowsF::Extend {
-                row: dest.clone_from::<UnifRecordRow>(row),
-                tail: Box::new(dest.clone_from::<UnifRecordRows>(*tail)),
-            },
-            RecordRowsF::TailVar(loc_ident) => RecordRowsF::TailVar(loc_ident),
-            RecordRowsF::TailDyn => RecordRowsF::TailDyn,
-        }
-    }
-}
-
-impl CloneTo for UnifRecordRow<'_> {
-    type Data<'ast> = UnifRecordRow<'ast>;
-
-    fn clone_to<'to>(data: Self::Data<'_>, dest: &'to AstAlloc) -> Self::Data<'to> {
-        UnifRecordRow {
-            id: data.id,
-            typ: Box::new(dest.clone_from::<UnifType>(*data.typ)),
         }
     }
 }

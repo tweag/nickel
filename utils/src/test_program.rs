@@ -34,7 +34,7 @@ pub fn eval_file(f: &str) -> Result<NickelValue, Error> {
 }
 
 pub fn parse(pos_table: &mut PosTable, s: &str) -> Result<NickelValue, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
     grammar::TermParser::new()
         .parse_strict_compat(pos_table, id, lexer::Lexer::new(s))
@@ -42,7 +42,7 @@ pub fn parse(pos_table: &mut PosTable, s: &str) -> Result<NickelValue, ParseErro
 }
 
 pub fn parse_bytecode_ast<'a>(alloc: &'a AstAlloc, s: &str) -> Result<Ast<'a>, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
     grammar::TermParser::new()
         .parse_strict(alloc, id, lexer::Lexer::new(s))
@@ -53,7 +53,7 @@ pub fn parse_extended(
     pos_table: &mut PosTable,
     s: &str,
 ) -> Result<ExtendedTerm<NickelValue>, ParseError> {
-    let id = Files::new().add("<test>", String::from(s));
+    let id = Files::empty().add("<test>", String::from(s));
 
     grammar::ExtendedTermParser::new()
         .parse_strict_compat(pos_table, id, lexer::Lexer::new(s))

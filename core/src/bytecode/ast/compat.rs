@@ -16,6 +16,21 @@ use crate::{
     term, typ as mline_type,
 };
 use indexmap::IndexMap;
+use nickel_lang_parser::{
+    ast::{
+        pattern::{
+            ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
+            OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
+        },
+        record::Record,
+        typ::{
+            EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
+        },
+    },
+    error::ParseError,
+    identifier::LocIdent,
+    typ::{EnumRowF, RecordRowF},
+};
 use smallvec::SmallVec;
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
@@ -1195,13 +1210,13 @@ impl<'ast> FromAst<EnumRowsUnr<'ast>> for MainlineEnumRowsUnr {
 
 impl<'ast> FromAst<EnumRow<'ast>> for mline_type::EnumRow {
     fn from_ast(erow: &EnumRow<'ast>, pos_table: &mut PosTable) -> Self {
-        mline_type::EnumRow {
+        mline_type::EnumRow(EnumRowF {
             id: erow.id,
             typ: erow
                 .typ
                 .as_ref()
                 .map(|ty| Box::new((*ty).to_mainline(pos_table))),
-        }
+        })
     }
 }
 
@@ -1217,10 +1232,10 @@ impl<'ast> FromAst<RecordRowsUnr<'ast>> for MainlineRecordRowsUnr {
 
 impl<'ast> FromAst<RecordRow<'ast>> for mline_type::RecordRow {
     fn from_ast(rrow: &RecordRow<'ast>, pos_table: &mut PosTable) -> Self {
-        mline_type::RecordRowF {
+        mline_type::RecordRow(RecordRowF {
             id: rrow.id,
             typ: Box::new(rrow.typ.to_mainline(pos_table)),
-        }
+        })
     }
 }
 

@@ -39,19 +39,17 @@ pub use malachite::{
     rational::Rational,
 };
 
+// TODO(parser migration): compatibility shim
+pub use nickel_lang_parser::Number;
+pub use nickel_lang_parser::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
+
 use serde::{Serialize, Serializer};
 
 // Because we use `IndexMap` for records, consumer of Nickel (as a library) might have to
 // manipulate values of this type, so we re-export it.
 pub use indexmap::IndexMap;
 
-use std::{
-    cmp::{Ordering, PartialOrd},
-    ffi::OsString,
-    fmt,
-    ops::Deref,
-    rc::Rc,
-};
+use std::{ffi::OsString, fmt, ops::Deref, rc::Rc};
 
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
@@ -224,22 +222,6 @@ pub enum Import {
 
 /// A unique sealing key, introduced by polymorphic contracts.
 pub type SealingKey = i32;
-
-/// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
-/// rationals.
-///
-/// Basic arithmetic operations are exact, without loss of precision (within the limits of available
-/// memory).
-///
-/// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
-/// operands to 64-bits floats, performing the floating-point power operation, and converting back
-/// to rationals, which can incur a loss of precision.
-///
-/// [^number-serialization]: Conversion to string and serialization try to first convert the
-///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations
-///     don't lose precision. Otherwise, the number is converted to the nearest 64bit float and then
-///     serialized/printed, which can incur a loss of information.
-pub type Number = Rational;
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible cache elements at evaluation, which are devices used for the implementation of
@@ -427,97 +409,6 @@ impl From<LetMetadata> for record::FieldMetadata {
             doc: let_metadata.doc,
             ..Default::default()
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum MergePriority {
-    /// The priority of default values that are overridden by everything else.
-    Bottom,
-
-    /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
-    /// provided.
-    ///
-    /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
-    /// testing. The only way to discriminate this variant is to pattern match on it.
-    Neutral,
-
-    /// A numeral priority.
-    Numeral(Number),
-
-    /// The priority of values that override everything else and can't be overridden.
-    Top,
-}
-
-impl PartialOrd for MergePriority {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for MergePriority {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (MergePriority::Bottom, MergePriority::Bottom)
-            | (MergePriority::Neutral, MergePriority::Neutral)
-            | (MergePriority::Top, MergePriority::Top) => true,
-            (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1 == p2,
-            (MergePriority::Neutral, MergePriority::Numeral(p))
-            | (MergePriority::Numeral(p), MergePriority::Neutral)
-                if p == &Number::ZERO =>
-            {
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-impl Eq for MergePriority {}
-
-impl Ord for MergePriority {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            // Equalities
-            (MergePriority::Bottom, MergePriority::Bottom)
-            | (MergePriority::Top, MergePriority::Top)
-            | (MergePriority::Neutral, MergePriority::Neutral) => Ordering::Equal,
-            (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1.cmp(p2),
-
-            // Top and bottom.
-            (MergePriority::Bottom, _) | (_, MergePriority::Top) => Ordering::Less,
-            (MergePriority::Top, _) | (_, MergePriority::Bottom) => Ordering::Greater,
-
-            // Neutral and numeral.
-            (MergePriority::Neutral, MergePriority::Numeral(n)) => Number::ZERO.cmp(n),
-            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Number::ZERO),
-        }
-    }
-}
-
-impl Default for MergePriority {
-    fn default() -> Self {
-        Self::Neutral
-    }
-}
-
-impl fmt::Display for MergePriority {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MergePriority::Bottom => write!(f, "default"),
-            MergePriority::Neutral => write!(f, "{}", Number::ZERO),
-            MergePriority::Numeral(p) => write!(f, "{p}"),
-            MergePriority::Top => write!(f, "force"),
-        }
-    }
-}
-
-impl Serialize for MergePriority {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
     }
 }
 
@@ -796,43 +687,6 @@ impl Traverse<NickelValue> for TypeAnnotation {
             .iter()
             .find_map(|c| c.traverse_ref(f, state))
             .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f, state)))
-    }
-}
-
-/// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
-/// interpolated expression.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum StrChunk<E> {
-    /// A string literal.
-    Literal(String),
-
-    /// An interpolated expression.
-    Expr(
-        E,     /* the expression */
-        usize, /* the indentation level (see parser::utils::strip_indent) */
-    ),
-}
-
-impl<E> StrChunk<E> {
-    #[cfg(test)]
-    pub fn expr(e: E) -> Self {
-        StrChunk::Expr(e, 0)
-    }
-
-    pub fn try_chunks_as_static_str<'a, I>(chunks: I) -> Option<String>
-    where
-        I: IntoIterator<Item = &'a StrChunk<E>>,
-        E: 'a,
-    {
-        chunks
-            .into_iter()
-            .try_fold(String::new(), |mut acc, next| match next {
-                StrChunk::Literal(lit) => {
-                    acc.push_str(lit);
-                    Some(acc)
-                }
-                _ => None,
-            })
     }
 }
 
@@ -1438,19 +1292,6 @@ impl UnaryOp {
 pub enum RecordExtKind {
     WithValue,
     WithoutValue,
-}
-
-/// A flavor for record operations. By design, we want empty optional values to be transparent for
-/// record operations, because they would otherwise make many operations fail spuriously (e.g.
-/// trying to map over such an empty value). So they are most of the time silently ignored.
-///
-/// However, it's sometimes useful and even necessary to take them into account. This behavior is
-/// controlled by [RecordOpKind].
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
-pub enum RecordOpKind {
-    #[default]
-    IgnoreEmptyOpt,
-    ConsiderAllFields,
 }
 
 /// Primitive binary operators
@@ -2301,6 +2142,12 @@ pub mod make {
 mod tests {
     use super::*;
 
+    use crate::{
+        combine::Combine,
+        label::Label,
+        typ::{Type, TypeF},
+    };
+
     #[test]
     fn make_static_access() {
         let t = make::op1(
@@ -2314,5 +2161,43 @@ mod tests {
             make::static_access(make::var("predicates"), ["records", "record"]),
             t
         );
+    }
+
+    #[test]
+    fn contract_annotation_order() {
+        let ty1 = LabeledType {
+            typ: TypeF::Number.into(),
+            label: Label::dummy(),
+        };
+        let annot1 = TypeAnnotation {
+            typ: None,
+            contracts: vec![ty1.clone()],
+        };
+
+        let ty2 = LabeledType {
+            typ: TypeF::Bool.into(),
+            label: Label::dummy(),
+        };
+        let annot2 = TypeAnnotation {
+            typ: None,
+            contracts: vec![ty2.clone()],
+        };
+
+        assert_eq!(Combine::combine(annot1, annot2).contracts, vec![ty1, ty2])
+    }
+
+    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
+    #[test]
+    fn type_annotation_combine() {
+        let inner = TypeAnnotation {
+            typ: Some(LabeledType {
+                typ: Type::from(TypeF::Number),
+                label: Label::dummy(),
+            }),
+            ..Default::default()
+        };
+        let outer = TypeAnnotation::default();
+        let res = TypeAnnotation::combine(outer, inner);
+        assert_ne!(res.typ, None);
     }
 }

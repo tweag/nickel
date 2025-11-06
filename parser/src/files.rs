@@ -11,7 +11,7 @@ use codespan::ByteIndex;
 use codespan_reporting::files::Error;
 use nickel_lang_vector::Vector;
 
-use crate::{position::RawSpan, stdlib::StdlibModule};
+use crate::position::RawSpan;
 
 /// A file identifier, which can be used to access a file in a [`Files`].
 ///
@@ -68,18 +68,27 @@ impl File {
 /// Cloning a `Files` is cheap, and the underlying file data will be shared between clones
 /// until one of them wants to modify a file. In that case, only the modified file(s) will
 /// be duplicated.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Files {
     files: Vector<File, 8>,
     first_non_stdlib: usize,
 }
 
 impl Files {
+    pub fn empty() -> Self {
+        Files::default()
+    }
+
     /// Creates a new `Files`, initialized with the nickel standard library.
-    pub fn new() -> Self {
-        let files: Vector<_, 8> = crate::stdlib::modules()
-            .iter()
-            .map(|m| File::new(m.file_name().to_owned(), m.content()))
+    pub fn new<Name, Contents, I>(stdlib_modules: I) -> Self
+    where
+        Name: Into<OsString>,
+        Contents: Into<Arc<str>>,
+        I: IntoIterator<Item = (Name, Contents)>,
+    {
+        let files: Vector<_, 8> = stdlib_modules
+            .into_iter()
+            .map(|(name, contents)| File::new(name, contents))
             .collect();
 
         Files {
@@ -93,12 +102,10 @@ impl Files {
         (id.0 as usize) < self.first_non_stdlib
     }
 
-    /// Returns the list of all standard library modules and their file ids.
-    pub fn stdlib_modules(&self) -> impl Iterator<Item = (StdlibModule, FileId)> + use<> {
-        crate::stdlib::modules()
-            .into_iter()
-            .zip(0..)
-            .map(|(m, id)| (m, FileId(id)))
+    /// Returns the list of file ids of stdlib modules, in the order they were passed
+    /// to [`Files::new`].
+    pub fn stdlib_modules(&self) -> impl Iterator<Item = FileId> + use<> {
+        (0..self.first_non_stdlib).map(|id| FileId(id as u32))
     }
 
     /// Adds a file to this collection, creating and returning a new file id.
@@ -198,14 +205,8 @@ impl Files {
         self.files.get(id.0 as usize).ok_or(Error::FileMissing)
     }
 
-    pub(crate) fn filenames(&self) -> impl Iterator<Item = &OsStr> {
+    pub fn filenames(&self) -> impl Iterator<Item = &OsStr> {
         self.files.iter().map(|f| &*f.name)
-    }
-}
-
-impl Default for Files {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

@@ -25,7 +25,7 @@ fn array_contracts_label_path_is_set_correctly() {
     }
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
     // the error message but just check that it can be built.
-    let mut files = Files::new();
+    let mut files = Files::empty();
     res.unwrap_err().into_diagnostics(&mut files);
 
     let res = eval(
