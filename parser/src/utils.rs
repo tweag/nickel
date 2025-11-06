@@ -9,8 +9,9 @@ use std::{
 use super::error::ParseError;
 
 use crate::{
-    Number, app,
+    app,
     ast::{
+        Number,
         combine::merge_doc,
         pattern::bindings::Bindings as _,
         record::{FieldDef, FieldMetadata, Include},

@@ -1,10 +1,7 @@
 //! Define a `Combine` trait that takes an allocator, two AST components, and returns a new AST
 //! component.
 
-use super::{
-    Annotation, AstAlloc,
-    record::{FieldMetadata, MergePriority},
-};
+use super::{Annotation, AstAlloc, MergePriority, record::FieldMetadata};
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
 /// Pedantically, `Combine` is a monoid: we expect that combining with `Default::default()` leaves

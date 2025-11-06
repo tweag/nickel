@@ -1,7 +1,7 @@
-use nickel_lang_core::bytecode::ast::Ast;
+use nickel_lang_core::ast::Ast;
 use std::{hash::Hash, ptr};
 
-/// A wrapper around a reference to an [nickel_lang_core::bytecode::ast::Ast] to implement custom
+/// A wrapper around a reference to an [nickel_lang_core::ast::Ast] to implement custom
 /// fast pointer-based `Eq` and `Hash`.
 #[derive(Clone, Debug, Copy)]
 pub struct AstPtr<'ast>(pub &'ast Ast<'ast>);

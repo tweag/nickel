@@ -163,10 +163,7 @@ fn update_with_merge(
     id: LocIdent,
     field: Field,
 ) -> NickelValue {
-    use crate::{
-        label::{MergeKind, MergeLabel},
-        term::IndexMap,
-    };
+    use crate::{ast::MergeKind, label::MergeLabel, term::IndexMap};
 
     let annot = field.metadata.annotation.clone();
     let pos_value = field

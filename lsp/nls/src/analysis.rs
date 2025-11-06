@@ -11,7 +11,7 @@ use lsp_types::Url;
 use ouroboros::self_referencing;
 
 use nickel_lang_core::{
-    bytecode::ast::{Ast, AstAlloc, Node, primop::PrimOp, record::FieldPathElem, typ::Type},
+    ast::{Ast, AstAlloc, Node, primop::PrimOp, record::FieldPathElem, typ::Type},
     cache::{ImportData, InputFormat, SourceCache},
     error::{ParseErrors, TypecheckError},
     files::FileId,
@@ -629,7 +629,7 @@ impl<'std> PackedAnalysis<'std> {
 
     /// Tries to parse a selected substring of a parse error in the current file. If the parsing
     /// succeeds, which is defined by the fact that there's no fatal error and the result isn't
-    /// [nickel_lang_core::bytecode::ast::Node::ParseError] again, then:
+    /// [nickel_lang_core::ast::Node::ParseError] again, then:
     ///
     /// - the new AST is typechecked (in particular if it contains imports, they are resolved)
     /// - usage analysis is updated with the new information
@@ -638,7 +638,7 @@ impl<'std> PackedAnalysis<'std> {
     /// The result can be retrieved later through [Self::last_reparsed_ast].
     ///
     /// Returns `true` upon success (parsing), that is if the top-level node of the re-parsed AST
-    /// is NOT [nickel_lang_core::bytecode::ast::Node::ParseError]. In this case
+    /// is NOT [nickel_lang_core::ast::Node::ParseError]. In this case
     /// `self.last_reparsed_ast()`, will return `Some(_)`. Otherwise, `false` is returned and
     /// `self.last_reparsed_ast()` is left unchanged.
     ///
@@ -1161,7 +1161,7 @@ mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
-        bytecode::ast::{AstAlloc, Node},
+        ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
         parser::{FullyErrorTolerantParser as _, grammar, lexer},

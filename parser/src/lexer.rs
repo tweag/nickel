@@ -29,11 +29,12 @@
 //! `0`, this is the end of the current interpolated expressions, and we leave the normal mode and
 //! go back to string mode. In our example, this is the second `}`: at this point, the lexer knows
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
-use super::{
+use crate::{
+    ast::Number,
     error::LexicalError,
     utils::{parse_number_base, parse_number_sci},
 };
-use crate::Number;
+
 use logos::Logos;
 use std::ops::Range;
 

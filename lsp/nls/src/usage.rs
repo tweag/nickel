@@ -1,7 +1,7 @@
 use std::collections::hash_map::{Entry, HashMap};
 
 use nickel_lang_core::{
-    bytecode::ast::{
+    ast::{
         Ast, AstAlloc, Match, Node, pattern::bindings::Bindings as _, record::FieldPathElem,
         typ::Type,
     },
@@ -470,7 +470,7 @@ impl<'ast> UsageLookup<'ast> {
 pub(crate) mod tests {
     use assert_matches::assert_matches;
     use nickel_lang_core::{
-        bytecode::ast::{AstAlloc, Node},
+        ast::{AstAlloc, Node},
         files::FileId,
         identifier::Ident,
         position::RawSpan,

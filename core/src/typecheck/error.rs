@@ -5,7 +5,7 @@ use super::{
 };
 
 use crate::{
-    bytecode::ast::{
+    ast::{
         alloc::{AstAlloc, CloneTo as _},
         typ::{EnumRow, RecordRow, Type},
     },

@@ -4,7 +4,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
 
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Node, primop::PrimOp, record::FieldMetadata, typ::Type},
+    ast::{Ast, Node, primop::PrimOp, record::FieldMetadata, typ::Type},
     combine::Combine,
     identifier::Ident,
     position::RawSpan,

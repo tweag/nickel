@@ -6,14 +6,11 @@
 //! different subcaches that can be borrowed independently.
 pub use ast_cache::AstCache;
 
-// TODO(parser migration): compatibility shim
 pub use nickel_lang_parser::ast::InputFormat;
 
 use crate::{
-    bytecode::ast::{
-        self, Ast, AstAlloc, TryConvert,
-        compat::{ToAst, ToMainline},
-    },
+    ast::{self, Ast, AstAlloc, TryConvert},
+    bytecode::ast::compat::{ToAst, ToMainline},
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
     eval::{cache::Cache as EvalCache, value::NickelValue},
@@ -539,7 +536,7 @@ impl SourceCache {
     /// multiple formats.
     ///
     /// The Nickel/non Nickel distinction is a bit artificial at the moment, due to the fact that
-    /// parsing Nickel returns the new [crate::bytecode::ast::Ast], while parsing other formats
+    /// parsing Nickel returns the new [crate::ast::Ast], while parsing other formats
     /// don't go through the new AST first but directly deserialize to the legacy
     /// [crate::term::Term] for simplicity and performance reasons.
     ///
@@ -893,7 +890,7 @@ impl CacheHub {
     /// # RFC007
     ///
     /// During the transition period between the old VM and the new bytecode VM, this method
-    /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
+    /// performs typechecking on the new representation [crate::ast::Ast].
     pub fn typecheck(
         &mut self,
         file_id: FileId,
@@ -2532,7 +2529,7 @@ fn parse_nickel_repl<'ast>(
     Ok(et)
 }
 
-/// AST cache (for the new [crate::bytecode::ast::Ast]) that holds the owned allocator of the AST
+/// AST cache (for the new [crate::ast::Ast]) that holds the owned allocator of the AST
 /// nodes.
 mod ast_cache {
     use super::*;
@@ -2680,7 +2677,7 @@ mod ast_cache {
         /// # RFC007
         ///
         /// During the transition period between the old VM and the new bytecode VM, this method
-        /// performs typechecking on the new representation [crate::bytecode::ast::Ast].
+        /// performs typechecking on the new representation [crate::ast::Ast].
         pub fn typecheck(
             &mut self,
             mut slice: CacheHubView<'_>,

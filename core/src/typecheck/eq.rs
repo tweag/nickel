@@ -57,7 +57,7 @@
 
 use super::*;
 use crate::{
-    bytecode::ast::{primop::PrimOp, record},
+    ast::{primop::PrimOp, record},
     identifier::LocIdent,
     term::IndexMap,
     typ::VarKind,

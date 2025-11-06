@@ -31,12 +31,13 @@ use crate::{
     label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
-    parser::utils::parse_number_sci,
     position::{PosIdx, PosTable},
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{make as mk_term, record::*, string::NickelString, *},
 };
+
+use nickel_lang_parser::utils::parse_number_sci;
 
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;

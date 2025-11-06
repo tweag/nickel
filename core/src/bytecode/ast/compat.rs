@@ -4,7 +4,6 @@
 //! to the new AST representation of the bytecode compiler, and implements it for the types defined
 //! in [crate::bytecode::ast].
 
-use super::{primop::PrimOp, *};
 use crate::{
     combine::Combine,
     eval::value::{
@@ -18,11 +17,14 @@ use crate::{
 use indexmap::IndexMap;
 use nickel_lang_parser::{
     ast::{
+        self, Annotation, Ast, AstAlloc, Import, LetBinding, LetMetadata, MatchBranch, Node,
+        StringChunk,
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
             OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
         },
-        record::Record,
+        primop::PrimOp,
+        record::{self, Record},
         typ::{
             EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
         },
@@ -1054,7 +1056,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         ///
         /// # Preconditions
         /// - /!\ path must be **non-empty**, otherwise this function panics
-        use super::record::FieldPathElem;
+        use ast::record::FieldPathElem;
 
         // unwrap(): field paths must be non-empty
         let name_innermost = field.path.last().unwrap().try_as_ident();
@@ -1829,7 +1831,7 @@ fn merge_fields(
             (lens1, lens2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
                     span: Some(id_span),
-                    kind: label::MergeKind::PiecewiseDef,
+                    kind: ast::MergeKind::PiecewiseDef,
                 }),
                 lens1.restore(),
                 lens2.restore(),

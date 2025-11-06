@@ -25,6 +25,8 @@ use crate::{
     typ::{Type, UnboundTypeVariableError},
 };
 
+pub use crate::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
+
 use crate::metrics::increment;
 
 pub use malachite::{
@@ -39,9 +41,7 @@ pub use malachite::{
     rational::Rational,
 };
 
-// TODO(parser migration): compatibility shim
-pub use nickel_lang_parser::Number;
-pub use nickel_lang_parser::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
+pub use crate::ast::Number;
 
 use serde::{Serialize, Serializer};
 

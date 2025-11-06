@@ -17,7 +17,7 @@
 //! because we can let recursive references to `foo` look into the outer environment directly.
 use super::*;
 use crate::{
-    bytecode::ast::record::{FieldDef, FieldPathElem, Include, Record},
+    ast::record::{FieldDef, FieldPathElem, Include, Record},
     combine::Combine,
     position::TermPos,
 };

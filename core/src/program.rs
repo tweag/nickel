@@ -21,7 +21,8 @@
 //! functions in [`crate::cache`] (see [`crate::cache::CacheHub::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
-    bytecode::ast::{AstAlloc, compat::ToMainline},
+    ast::AstAlloc,
+    bytecode::ast::compat::ToMainline,
     cache::*,
     closurize::Closurize as _,
     error::{

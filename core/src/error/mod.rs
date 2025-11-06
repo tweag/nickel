@@ -10,12 +10,12 @@ use malachite::base::num::conversion::traits::ToSci;
 use ouroboros::self_referencing;
 
 use crate::{
-    bytecode::ast::{
-        Ast,
+    ast::{
+        Ast, MergeKind,
         alloc::{AstAlloc, CloneTo},
-        compat::ToMainline as _,
         typ::{EnumRow, RecordRow, Type},
     },
+    bytecode::ast::compat::ToMainline as _,
     cache::InputFormat,
     eval::{
         callstack::CallStack,
@@ -24,7 +24,7 @@ use crate::{
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     label::{
-        self, MergeKind, MergeLabel,
+        self, MergeLabel,
         ty_path::{self, PathSpan},
     },
     position::{PosIdx, PosTable, RawSpan, TermPos},
@@ -34,7 +34,6 @@ use crate::{
     typ::{TypeF, VarKindDiscriminant},
 };
 
-// TODO(parser migration): compatibility shim
 pub use nickel_lang_parser::error::{ParseError, ParseErrors};
 
 pub mod report;

@@ -61,7 +61,6 @@ use crate::{
 
 use std::{collections::HashSet, convert::Infallible};
 
-// TODO(parser migration): compatibility shim
 pub use nickel_lang_parser::typ::{
     DictTypeFlavour, EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF, VarKind,
     VarKindDiscriminant,
@@ -177,7 +176,7 @@ impl From<UnboundTypeVariableError> for EvalErrorData {
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        use crate::{bytecode::ast::alloc::AstAlloc, error::TypecheckErrorData};
+        use crate::{ast::alloc::AstAlloc, error::TypecheckErrorData};
 
         TypecheckError::new(AstAlloc::new(), |_alloc| {
             TypecheckErrorData::UnboundTypeVariable(err.0)

@@ -59,6 +59,7 @@ use crate::{
     combine::CombineAlloc,
     ast::{
         Ast, Node, Annotation, LetMetadata, AstAlloc, LetBinding, MatchBranch,
+        Number,
         builder, StringChunk, MergeKind, MergePriority, TryConvert,
         RecordOpKind,
         record::{FieldMetadata, FieldDef, FieldPathElem, Include},
@@ -66,7 +67,6 @@ use crate::{
         typ::*,
         primop::PrimOp,
     },
-    Number,
     typ::{VarKind, DictTypeFlavour},
     position::{TermPos, RawSpan},
     app,

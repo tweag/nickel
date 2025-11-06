@@ -1,7 +1,7 @@
 //! Typing of primitive operations.
 use super::*;
 use crate::{
-    bytecode::ast::{AstAlloc, builder, primop::PrimOp},
+    ast::{AstAlloc, builder, primop::PrimOp},
     error::TypecheckError,
     label::{Polarity, TypeVarData},
     typ::TypeF,

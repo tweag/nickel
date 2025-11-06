@@ -4,7 +4,6 @@
 //! raw byte indices.  They are prefixed with Raw to differentiate them from codespan's types and
 //! indicate that they do not store human friendly data like lines and columns.
 
-// TODO(parser migration): compatibility shim
 pub use nickel_lang_parser::position::{RawPos, RawSpan, TermPos};
 
 /// An index into the position table.

@@ -1,5 +1,5 @@
 use nickel_lang_core::{
-    bytecode::ast::AstAlloc,
+    ast::AstAlloc,
     eval::value::NickelValue,
     mk_app,
     position::PosTable,

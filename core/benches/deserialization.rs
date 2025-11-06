@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use nickel_lang_core::{bytecode::ast::AstAlloc, serialize::yaml::load_json};
+use nickel_lang_core::{ast::AstAlloc, serialize::yaml::load_json};
 
 pub fn json_ast_construction(c: &mut Criterion) {
     fn generate_json(depth: usize, branching: usize) -> serde_json::Value {

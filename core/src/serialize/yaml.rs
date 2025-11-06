@@ -12,11 +12,11 @@ use codespan::ByteIndex;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
-    bytecode::ast::{
+    ast::{
         self, Ast, AstAlloc,
-        compat::ToMainline,
         record::{FieldMetadata, FieldPathElem},
     },
+    bytecode::ast::compat::ToMainline,
     error::ParseError,
     eval::value::{NickelValue, ValueContent, lens::TermContent},
     files::FileId,

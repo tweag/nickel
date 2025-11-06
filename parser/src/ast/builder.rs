@@ -3,7 +3,7 @@
 //! Using this module, you can define Nickel values using a builder style. For example:
 //!
 //! ```rust
-//! # use nickel_lang_parser::ast::{record::MergePriority, Ast, Node, builder::Record, AstAlloc};
+//! # use nickel_lang_parser::ast::{Ast, MergePriority, Node, builder::Record, AstAlloc};
 //!
 //! let alloc = AstAlloc::new();
 //!

@@ -1,4 +1,6 @@
-use super::{Annotation, Ast, AstAlloc, TraverseAlloc, TraverseControl, TraverseOrder};
+use super::{
+    Annotation, Ast, AstAlloc, MergePriority, TraverseAlloc, TraverseControl, TraverseOrder,
+};
 
 use crate::{
     identifier::{Ident, LocIdent},
@@ -6,9 +8,6 @@ use crate::{
 };
 
 use indexmap::IndexMap;
-
-// TODO(parser migration): compatibility shim
-pub use crate::ast::MergePriority;
 
 /// Element of a record field path in a record field definition. For example, in  `{ a."%{"hello-"
 /// ++ "world"}".c = true }`, the path `a."%{b}".c` is composed of three elements: an identifier
