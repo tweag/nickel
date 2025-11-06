@@ -95,6 +95,25 @@ pub struct RecRecordData {
     pub closurized: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Op1Data {
+    pub op: UnaryOp,
+    pub arg: NickelValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Op2Data {
+    pub op: BinaryOp,
+    pub arg1: NickelValue,
+    pub arg2: NickelValue,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OpNData {
+    pub op: NAryOp,
+    pub args: Vec<NickelValue>,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -156,13 +175,13 @@ pub enum Term {
     Match(MatchData),
 
     /// A primitive unary operator.
-    Op1(UnaryOp, NickelValue),
+    Op1(Box<Op1Data>),
 
     /// A primitive binary operator.
-    Op2(BinaryOp, NickelValue, NickelValue),
+    Op2(Box<Op2Data>),
 
     /// An primitive n-ary operator.
-    OpN(NAryOp, Vec<NickelValue>),
+    OpN(OpNData),
 
     /// A sealed term.
     ///
@@ -725,9 +744,9 @@ impl Term {
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
-            | Term::OpN(..)
+            | Term::Op1(_)
+            | Term::Op2(_)
+            | Term::OpN(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
@@ -785,11 +804,7 @@ impl Term {
     pub fn fmt_is_atom(&self) -> bool {
         match self {
             Term::Value(value) | Term::Closurize(value) => value.fmt_is_atom(),
-            | Term::StrChunks(..)
-            | Term::RecRecord(..)
-            | Term::Var(..)
-            | Term::Op1(UnaryOp::RecordAccess(_), _)
-            | Term::Op2(BinaryOp::RecordGet, _, _)
+            Term::StrChunks(..) | Term::RecRecord(..) | Term::Var(..) => true,
             // Those special cases aren't really atoms, but mustn't be parenthesized because they
             // are really functions taking additional non-strict arguments and printed as "partial"
             // infix operators.
@@ -798,8 +813,11 @@ impl Term {
             // must never be parenthesized, such as in `(x ||)`.
             //
             // We might want a more robust mechanism for pretty printing such operators.
-            | Term::Op1(UnaryOp::BoolAnd, _)
-            | Term::Op1(UnaryOp::BoolOr, _) => true,
+            Term::Op1(data) => matches!(
+                &data.op,
+                UnaryOp::RecordAccess(_) | UnaryOp::BoolAnd | UnaryOp::BoolOr
+            ),
+            Term::Op2(data) => matches!(&data.op, BinaryOp::RecordGet),
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Let(..)
             | Term::Match { .. }
@@ -807,8 +825,6 @@ impl Term {
             | Term::Fun(..)
             | Term::FunPattern(..)
             | Term::App(..)
-            | Term::Op1(..)
-            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
@@ -886,6 +902,18 @@ impl Term {
             deps,
             closurized,
         }))
+    }
+
+    pub fn op1(op: UnaryOp, arg: NickelValue) -> Self {
+        Term::Op1(Box::new(Op1Data { op, arg }))
+    }
+
+    pub fn op2(op: BinaryOp, arg1: NickelValue, arg2: NickelValue) -> Self {
+        Term::Op2(Box::new(Op2Data { op, arg1, arg2 }))
+    }
+
+    pub fn opn(op: NAryOp, args: Vec<NickelValue>) -> Self {
+        Term::OpN(OpNData { op, args })
     }
 }
 
@@ -1781,19 +1809,23 @@ impl Traverse<NickelValue> for Term {
                     branches: branches?,
                 })
             }
-            Term::Op1(op, arg) => {
-                let arg = arg.traverse(f, order)?;
-                Term::Op1(op, arg)
+            Term::Op1(mut data) => {
+                data.arg = data.arg.traverse(f, order)?;
+                Term::Op1(data)
             }
-            Term::Op2(op, arg1, arg2) => {
-                let arg1 = arg1.traverse(f, order)?;
-                let arg2 = arg2.traverse(f, order)?;
-                Term::Op2(op, arg1, arg2)
+            Term::Op2(mut data) => {
+                data.arg1 = data.arg1.traverse(f, order)?;
+                data.arg2 = data.arg2.traverse(f, order)?;
+                Term::Op2(data)
             }
-            Term::OpN(op, args) => {
-                let args: Result<Vec<NickelValue>, E> =
-                    args.into_iter().map(|t| t.traverse(f, order)).collect();
-                Term::OpN(op, args?)
+            Term::OpN(mut data) => {
+                data.args = data
+                    .args
+                    .into_iter()
+                    .map(|t| t.traverse(f, order))
+                    .collect::<Result<Vec<NickelValue>, E>>()?;
+
+                Term::OpN(data)
             }
             Term::Sealed(key, inner, label) => {
                 let inner = inner.traverse(f, order)?;
@@ -1881,8 +1913,8 @@ impl Traverse<NickelValue> for Term {
                     None
                 }
             }),
+            Term::Op1(data) => data.arg.traverse_ref(f, state),
             Term::Fun(FunData { arg: _, body: t })
-            | Term::Op1(_, t)
             | Term::Sealed(_, t, _)
             | Term::Value(t)
             | Term::Closurize(t) => t.traverse_ref(f, state),
@@ -1897,7 +1929,11 @@ impl Traverse<NickelValue> for Term {
                 .iter()
                 .find_map(|(_pat, t)| t.traverse_ref(f, state))
                 .or_else(|| data.body.traverse_ref(f, state)),
-            Term::App(t1, t2) | Term::Op2(_, t1, t2) => t1
+            Term::Op2(data) => data
+                .arg1
+                .traverse_ref(f, state)
+                .or_else(|| data.arg2.traverse_ref(f, state)),
+            Term::App(t1, t2) => t1
                 .traverse_ref(f, state)
                 .or_else(|| t2.traverse_ref(f, state)),
             Term::RecRecord(data) => data
@@ -1924,7 +1960,7 @@ impl Traverse<NickelValue> for Term {
                     body.traverse_ref(f, state)
                 },
             ),
-            Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
+            Term::OpN(data) => data.args.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(annot, t) => t
                 .traverse_ref(f, state)
                 .or_else(|| annot.traverse_ref(f, state)),
@@ -2111,7 +2147,7 @@ pub mod make {
         T3: Into<NickelValue>,
     {
         mk_app!(
-            Term::Op1(UnaryOp::IfThenElse, cond.into()),
+            Term::op1(UnaryOp::IfThenElse, cond.into()),
             t1.into(),
             t2.into()
         )
@@ -2121,7 +2157,7 @@ pub mod make {
     where
         T: Into<NickelValue>,
     {
-        Term::Op1(op, t.into()).into()
+        Term::op1(op, t.into()).into()
     }
 
     pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> NickelValue
@@ -2129,14 +2165,14 @@ pub mod make {
         T1: Into<NickelValue>,
         T2: Into<NickelValue>,
     {
-        Term::Op2(op, t1.into(), t2.into()).into()
+        Term::op2(op, t1.into(), t2.into()).into()
     }
 
     pub fn opn<T>(op: NAryOp, args: Vec<T>) -> NickelValue
     where
         T: Into<NickelValue>,
     {
-        Term::OpN(op, args.into_iter().map(T::into).collect()).into()
+        Term::opn(op, args.into_iter().map(T::into).collect()).into()
     }
 
     pub fn apply_contract<T>(
