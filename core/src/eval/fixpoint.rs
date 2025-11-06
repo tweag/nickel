@@ -159,5 +159,5 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     // aren't reconstructed, so the result of a merge never has any include expressions.
     //
     // The fields are already closurized.
-    Term::RecRecord(record_data, Vec::new(), Vec::new(), None, true)
+    Term::rec_record(record_data, Vec::new(), Vec::new(), None, true)
 }

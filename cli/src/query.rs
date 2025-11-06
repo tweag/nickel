@@ -83,14 +83,15 @@ impl From<Field> for QueryResult {
                     fields.sort();
                     Some(fields.into_iter().map(LocIdent::ident).collect())
                 }
-                ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..))
-                    if !record.fields.is_empty() =>
-                {
-                    let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
-                    fields.extend(includes.iter().map(|incl| incl.ident.ident()));
+                ValueContentRef::Term(Term::RecRecord(data)) if !data.record.fields.is_empty() => {
+                    let mut fields: Vec<_> =
+                        data.record.fields.keys().map(LocIdent::ident).collect();
+                    fields.extend(data.includes.iter().map(|incl| incl.ident.ident()));
                     fields.sort();
+
                     let dynamic = Ident::from("<dynamic>");
-                    fields.extend(dyn_fields.iter().map(|_| dynamic));
+                    fields.extend(data.dyn_fields.iter().map(|_| dynamic));
+
                     Some(fields)
                 }
                 // Empty record has empty sub_fields

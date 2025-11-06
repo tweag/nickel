@@ -8,8 +8,9 @@ use crate::{
     position::PosTable,
     term::Number,
     term::{
-        Term::*,
-        {BinaryOp, StrChunk, UnaryOp, record}, {Term, make as mk_term},
+        BinaryOp, StrChunk,
+        Term::{self, *},
+        UnaryOp, make as mk_term, record,
     },
 };
 
@@ -73,7 +74,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> NickelValue {
     // record.
     if let ValueContent::Term(TermContent::Closurize(lens)) = result.content() {
         if let ValueContent::Record(r_lens) = lens.take().content() {
-            NickelValue::term_posless(RecRecord(
+            NickelValue::term_posless(Term::rec_record(
                 r_lens.take().unwrap_or_alloc(),
                 Vec::new(),
                 Vec::new(),
@@ -285,7 +286,7 @@ fn record_terms() {
 
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
-        RecRecord(
+        Term::rec_record(
             record::RecordData::with_field_values(
                 vec![
                     (LocIdent::from("a"), mk_term::integer(1)),
@@ -304,7 +305,7 @@ fn record_terms() {
 
     assert_eq!(
         parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
-        RecRecord(
+        Term::rec_record(
             record::RecordData::with_field_values(
                 vec![
                     (LocIdent::from("a"), mk_term::integer(1)),
@@ -329,7 +330,7 @@ fn record_terms() {
 
     assert_eq!(
         parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
-        RecRecord(
+        Term::rec_record(
             record::RecordData::with_field_values(
                 vec![
                     (LocIdent::from("a"), mk_term::integer(1)),

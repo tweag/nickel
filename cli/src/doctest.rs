@@ -168,69 +168,71 @@ fn run_tests(
     spine: &NickelValue,
     color: ColorOpt,
 ) {
-    match spine.content_ref() {
-        ValueContentRef::Record(Container::Alloc(data))
-        | ValueContentRef::Term(Term::RecRecord(data, ..)) => {
-            for (id, field) in &data.fields {
-                if let Some(entry) = registry.tests.get(&id.ident()) {
-                    let Some(val) = field.value.as_ref() else {
-                        continue;
-                    };
+    let mut run_record_tests = |record: &RecordData| {
+        for (id, field) in &record.fields {
+            if let Some(entry) = registry.tests.get(&id.ident()) {
+                let Some(val) = field.value.as_ref() else {
+                    continue;
+                };
 
-                    path.push(entry.field_name);
-                    let path_display: Vec<_> = path.iter().map(|id| id.label()).collect();
+                path.push(entry.field_name);
+                let path_display: Vec<_> = path.iter().map(|id| id.label()).collect();
 
-                    print!("testing {}/{}...", path_display.join("."), entry.test_idx);
-                    let _ = std::io::stdout().flush();
+                print!("testing {}/{}...", path_display.join("."), entry.test_idx);
+                let _ = std::io::stdout().flush();
 
-                    // Undo the test's lazy wrapper.
-                    let result = prog.eval_deep_closure(Closure {
-                        value: mk_app!(val.clone(), NickelValue::null()),
-                        env: Environment::new(),
-                    });
+                // Undo the test's lazy wrapper.
+                let result = prog.eval_deep_closure(Closure {
+                    value: mk_app!(val.clone(), NickelValue::null()),
+                    env: Environment::new(),
+                });
 
-                    let err = match result {
-                        Ok(v) => {
-                            if entry.expected_error.is_some() {
-                                Some(ErrorKind::UnexpectedSuccess { result: v })
+                let err = match result {
+                    Ok(v) => {
+                        if entry.expected_error.is_some() {
+                            Some(ErrorKind::UnexpectedSuccess { result: v })
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(expected) = &entry.expected_error {
+                            let message = report_as_str(&mut prog.files(), e, color);
+                            if !message.contains(expected) {
+                                Some(ErrorKind::WrongTestFailure {
+                                    message,
+                                    expected: expected.clone(),
+                                })
                             } else {
                                 None
                             }
+                        } else {
+                            Some(ErrorKind::UnexpectedFailure { error: Box::new(e) })
                         }
-                        Err(e) => {
-                            if let Some(expected) = &entry.expected_error {
-                                let message = report_as_str(&mut prog.files(), e, color);
-                                if !message.contains(expected) {
-                                    Some(ErrorKind::WrongTestFailure {
-                                        message,
-                                        expected: expected.clone(),
-                                    })
-                                } else {
-                                    None
-                                }
-                            } else {
-                                Some(ErrorKind::UnexpectedFailure { error: Box::new(e) })
-                            }
-                        }
-                    };
-                    if let Some(err) = err {
-                        println!("FAILED");
-                        errors.push(Error {
-                            kind: err,
-                            path: path.clone(),
-                            idx: entry.test_idx,
-                        });
-                    } else {
-                        println!("ok");
                     }
-                    path.pop();
-                } else if let Some(val) = field.value.as_ref() {
-                    path.push(*id);
-                    run_tests(path, prog, errors, registry, val, color);
-                    path.pop();
+                };
+                if let Some(err) = err {
+                    println!("FAILED");
+                    errors.push(Error {
+                        kind: err,
+                        path: path.clone(),
+                        idx: entry.test_idx,
+                    });
+                } else {
+                    println!("ok");
                 }
+                path.pop();
+            } else if let Some(val) = field.value.as_ref() {
+                path.push(*id);
+                run_tests(path, prog, errors, registry, val, color);
+                path.pop();
             }
         }
+    };
+
+    match spine.content_ref() {
+        ValueContentRef::Record(Container::Alloc(record)) => run_record_tests(record),
+        ValueContentRef::Term(Term::RecRecord(data)) => run_record_tests(&data.record),
         _ => {}
     }
 }
@@ -423,6 +425,7 @@ fn doctest_transform(
                                     pos|
      -> Result<_, CoreError> {
         let mut doc_fields: Vec<(Ident, NickelValue)> = Vec::new();
+
         for (id, field) in &record_data.fields {
             if let Some(doc) = &field.metadata.doc {
                 let arena = Arena::new();
@@ -488,7 +491,7 @@ fn doctest_transform(
         // Records.
         let value = if let Some((includes, dyn_fields)) = rec_stuff {
             NickelValue::term(
-                Term::RecRecord(record_data, includes, dyn_fields, None, false),
+                Term::rec_record(record_data, includes, dyn_fields, None, false),
                 pos,
             )
         } else {
@@ -503,8 +506,8 @@ fn doctest_transform(
 
         let value = match value.content() {
             ValueContent::Term(TermContent::RecRecord(lens)) => {
-                let (record_data, includes, dyn_fields, _deps, _closurized) = lens.take();
-                record_with_doctests(record_data, Some((includes, dyn_fields)), pos_idx)?
+                let data = lens.take();
+                record_with_doctests(data.record, Some((data.includes, data.dyn_fields)), pos_idx)?
             }
             ValueContent::Record(lens) => {
                 record_with_doctests(lens.take().unwrap_or_alloc(), None, pos_idx)?

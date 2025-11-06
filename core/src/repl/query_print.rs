@@ -219,14 +219,14 @@ fn render_query_result<R: QueryPrinter>(
                 fields.sort();
                 renderer.write_fields(out, fields.into_iter().map(LocIdent::ident))
             }
-            ValueContentRef::Term(Term::RecRecord(record, includes, dyn_fields, ..))
-                if !record.fields.is_empty() =>
-            {
-                let mut fields: Vec<_> = record.fields.keys().map(LocIdent::ident).collect();
-                fields.extend(includes.iter().map(|incl| incl.ident.ident()));
+            ValueContentRef::Term(Term::RecRecord(data)) if !data.record.fields.is_empty() => {
+                let mut fields: Vec<_> = data.record.fields.keys().map(LocIdent::ident).collect();
+                fields.extend(data.includes.iter().map(|incl| incl.ident.ident()));
                 fields.sort();
+
                 let dynamic = Ident::from("<dynamic>");
-                fields.extend(dyn_fields.iter().map(|_| dynamic));
+                fields.extend(data.dyn_fields.iter().map(|_| dynamic));
+
                 renderer.write_fields(out, fields.into_iter())
             }
             ValueContentRef::Record(..) | ValueContentRef::Term(Term::RecRecord(..)) => {

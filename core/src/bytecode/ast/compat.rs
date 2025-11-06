@@ -460,10 +460,10 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 alloc.app(fun.to_ast(alloc, pos_table), args)
             }
             Term::Var(id) => Node::Var(*id),
-            Term::RecRecord(data, includes, dyn_fields, _deps, _closurized) => {
+            Term::RecRecord(data) => {
                 let mut field_defs = Vec::new();
 
-                field_defs.extend(data.fields.iter().map(|(id, field)| {
+                field_defs.extend(data.record.fields.iter().map(|(id, field)| {
                     let pos = field
                         .value
                         .as_ref()
@@ -481,7 +481,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }));
 
-                field_defs.extend(dyn_fields.iter().map(|(expr, field)| {
+                field_defs.extend(data.dyn_fields.iter().map(|(expr, field)| {
                     let pos_field_name = expr.pos(pos_table);
                     let pos = field
                         .value
@@ -505,9 +505,12 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.record(Record {
                     field_defs: alloc.alloc_many(field_defs),
-                    includes: alloc
-                        .alloc_many(includes.iter().map(|incl| incl.to_ast(alloc, pos_table))),
-                    open: data.attrs.open,
+                    includes: alloc.alloc_many(
+                        data.includes
+                            .iter()
+                            .map(|incl| incl.to_ast(alloc, pos_table)),
+                    ),
+                    open: data.record.attrs.open,
                 })
             }
             Term::Match(data) => {
@@ -1109,7 +1112,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                         // `RecRecord` to handle dynamic fields at evaluation time rather than
                         // right here
                         term::record::Field::from(NickelValue::term(
-                            term::Term::RecRecord(
+                            term::Term::rec_record(
                                 term::record::RecordData::empty(),
                                 Vec::new(),
                                 vec![(expr, acc)],
@@ -1561,7 +1564,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline(pos_table);
                 NickelValue::term(
-                    Term::RecRecord(
+                    Term::rec_record(
                         data,
                         record
                             .includes

@@ -99,36 +99,18 @@ pub fn transform_one(
         }
         ValueContent::Term(lens) => match lens {
             TermContent::RecRecord(lens) => {
-                let (record_data, includes, dyn_fields, deps, closurized) = lens.take();
+                let mut data = lens.take();
 
-                let RecordData {
-                    fields,
-                    attrs,
-                    sealed_tail,
-                } = record_data;
-
-                let fields = attach_to_fields(pos_table, fields)?;
-                let dyn_fields = dyn_fields
+                data.record.fields = attach_to_fields(pos_table, data.record.fields)?;
+                data.dyn_fields = data
+                    .dyn_fields
                     .into_iter()
                     .map(|(id_term, field)| {
                         Ok((id_term, with_pending_contracts(pos_table, field)?))
                     })
                     .collect::<Result<_, _>>()?;
 
-                NickelValue::term(
-                    Term::RecRecord(
-                        RecordData {
-                            fields,
-                            attrs,
-                            sealed_tail,
-                        },
-                        includes,
-                        dyn_fields,
-                        deps,
-                        closurized,
-                    ),
-                    pos_idx,
-                )
+                NickelValue::term(Term::RecRecord(data), pos_idx)
             }
             lens => lens.restore(),
         },

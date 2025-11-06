@@ -940,13 +940,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // We can use an empty environment for a freshly closurized value
                     result.into()
                 }
-                ValueContentRef::Term(Term::RecRecord(
-                    data,
-                    includes,
-                    dyn_fields,
-                    deps,
-                    closurized,
-                )) => {
+                ValueContentRef::Term(Term::RecRecord(data)) => {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
 
@@ -955,8 +949,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // if we add a new indirection. This should ideally be encoded in the Rust
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
-                    let (mut static_part, dyn_fields) = if !closurized {
-                        let includes_as_terms: Result<Vec<_>, _> = includes
+                    let (mut static_part, dyn_fields) = if !data.closurized {
+                        let includes_as_terms: Result<Vec<_>, _> = data
+                            .includes
                             .iter()
                             .map(|incl| -> Result<_, EvalErrorData> {
                                 let field = Field {
@@ -983,20 +978,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // restriction might be lifted in the future (we would probably merge the
                         // included field and the other definition pieces), but for now it's
                         // simpler this way.
-                        let mut data = data.clone();
-                        data.fields.extend(includes_as_terms?);
+                        let mut record = data.record.clone();
+                        record.fields.extend(includes_as_terms?);
+
                         closurize_rec_record(
                             &mut self.context.cache,
-                            data,
-                            dyn_fields.clone(),
-                            deps.clone(),
+                            record,
+                            data.dyn_fields.clone(),
+                            data.deps.clone(),
                             env,
                         )
                     } else {
                         // In a record that has been already closurized, we expect include
                         // expressions to be evaluated away.
-                        debug_assert!(includes.is_empty());
-                        (data.clone(), dyn_fields.clone())
+                        debug_assert!(data.includes.is_empty());
+                        (data.record.clone(), data.dyn_fields.clone())
                     };
 
                     let rec_env = fixpoint::rec_env(
@@ -1405,7 +1401,7 @@ pub fn env_add_record<C: Cache>(
     let record = match value.content_ref() {
         ValueContentRef::Record(Container::Empty) => return Ok(()),
         ValueContentRef::Record(Container::Alloc(record)) => record,
-        ValueContentRef::Term(Term::RecRecord(record, ..)) => record,
+        ValueContentRef::Term(Term::RecRecord(data)) => &data.record,
         _ => return Err(EnvBuildError::NotARecord(closure.value)),
     };
 
@@ -1542,7 +1538,7 @@ pub fn subst<C: Cache>(
                 | TermContent::Fun(..)
                 | TermContent::Import(_)
                 | TermContent::ResolvedImport(_)) => lens.restore(),
-                                TermContent::Let(lens) => {
+                TermContent::Let(lens) => {
                     let mut data = lens.take();
 
                     for (_key, val) in &mut data.bindings {
@@ -1608,11 +1604,12 @@ pub fn subst<C: Cache>(
                 // Currently, we downright ignore `include` expressions. However, one could argue that
                 // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
                 TermContent::RecRecord(lens) => {
-                    let (record, includes, dyn_fields, deps, closurized) = lens.take();
-                    let record = record
+                    let mut data = lens.take();
+
+                    data.record = data.record
                         .map_defined_values(|_, value| subst(pos_table, cache, value, initial_env, env));
 
-                    let dyn_fields = dyn_fields
+                    data.dyn_fields = data.dyn_fields
                         .into_iter()
                         .map(|(id_t, field)| {
                             (
@@ -1622,7 +1619,7 @@ pub fn subst<C: Cache>(
                         })
                         .collect();
 
-                    NickelValue::term(Term::RecRecord(record, includes, dyn_fields, deps, closurized), pos_idx)
+                    NickelValue::term(Term::RecRecord(data), pos_idx)
                 }
                 TermContent::StrChunks(lens) => {
                     let chunks = lens.take()

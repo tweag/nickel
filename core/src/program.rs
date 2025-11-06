@@ -1187,7 +1187,7 @@ mod doc {
         error::{Error, ExportError, ExportErrorData, IOError},
         eval::value::{Container, NickelValue, ValueContentRef},
         position::PosTable,
-        term::Term,
+        term::{Term, record::RecordData},
     };
 
     use comrak::{Arena, ComrakOptions, format_commonmark, parse_document};
@@ -1235,50 +1235,57 @@ mod doc {
                 ValueContentRef::Record(Container::Empty) => Some(Self {
                     fields: HashMap::new(),
                 }),
-                ValueContentRef::Record(Container::Alloc(record))
-                | ValueContentRef::Term(Term::RecRecord(record, ..)) => {
-                    let fields = record
-                        .fields
-                        .iter()
-                        .map(|(ident, field)| {
-                            let fields = field.value.as_ref().and_then(Self::extract_from_term);
-
-                            // We use the original user-written type stored
-                            // in the label. Using `lt.typ` instead is often
-                            // unreadable, since we evaluate terms to a record
-                            // spine before extracting documentation
-                            let typ = field
-                                .metadata
-                                .annotation
-                                .typ
-                                .as_ref()
-                                .map(|lt| lt.label.typ.to_string());
-
-                            let contracts = field
-                                .metadata
-                                .annotation
-                                .contracts
-                                .iter()
-                                .map(|lt| lt.label.typ.to_string())
-                                .collect();
-
-                            let documentation = field.metadata.doc.clone();
-
-                            (
-                                ident.label().to_owned(),
-                                DocumentationField {
-                                    fields,
-                                    typ,
-                                    contracts,
-                                    documentation,
-                                },
-                            )
-                        })
-                        .collect();
-                    Some(Self { fields })
+                ValueContentRef::Record(Container::Alloc(record)) => {
+                    Self::extract_from_record(record)
+                }
+                ValueContentRef::Term(Term::RecRecord(data)) => {
+                    Self::extract_from_record(&data.record)
                 }
                 _ => None,
             }
+        }
+
+        fn extract_from_record(record: &RecordData) -> Option<Self> {
+            let fields = record
+                .fields
+                .iter()
+                .map(|(ident, field)| {
+                    let fields = field.value.as_ref().and_then(Self::extract_from_term);
+
+                    // We use the original user-written type stored
+                    // in the label. Using `lt.typ` instead is often
+                    // unreadable, since we evaluate terms to a record
+                    // spine before extracting documentation
+                    let typ = field
+                        .metadata
+                        .annotation
+                        .typ
+                        .as_ref()
+                        .map(|lt| lt.label.typ.to_string());
+
+                    let contracts = field
+                        .metadata
+                        .annotation
+                        .contracts
+                        .iter()
+                        .map(|lt| lt.label.typ.to_string())
+                        .collect();
+
+                    let documentation = field.metadata.doc.clone();
+
+                    (
+                        ident.label().to_owned(),
+                        DocumentationField {
+                            fields,
+                            typ,
+                            contracts,
+                            documentation,
+                        },
+                    )
+                })
+                .collect();
+
+            Some(Self { fields })
         }
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {

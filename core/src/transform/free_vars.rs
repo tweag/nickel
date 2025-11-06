@@ -8,8 +8,8 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, StrChunk, Term,
-        TypeAnnotation,
+        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, RecRecordData,
+        StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -113,65 +113,7 @@ impl CollectFreeVars for Term {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::RecRecord(record, includes, dyn_fields, deps, _) => {
-                let mut rec_fields: HashSet<Ident> =
-                    record.fields.keys().map(|id| id.ident()).collect();
-                // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
-                // {foo = foo_, [..]}`, hence an included field also counts as a recursive field.
-                rec_fields.extend(includes.iter().map(|incl| incl.ident.ident()));
-
-                let mut fresh = HashSet::new();
-                let mut new_deps = RecordDeps {
-                    stat_fields: IndexMap::with_capacity(record.fields.len() + includes.len()),
-                    dyn_fields: Vec::with_capacity(dyn_fields.len()),
-                };
-
-                for incl in includes.iter_mut() {
-                    fresh.clear();
-
-                    incl.collect_free_vars(&mut fresh);
-
-                    new_deps
-                        .stat_fields
-                        .insert(incl.ident.ident(), FieldDeps::from(&fresh & &rec_fields));
-
-                    free_vars.extend(&fresh - &rec_fields);
-                    free_vars.insert(incl.ident.ident());
-                }
-
-                for (id, t) in record.fields.iter_mut() {
-                    fresh.clear();
-
-                    t.collect_free_vars(&mut fresh);
-                    new_deps
-                        .stat_fields
-                        .insert(id.ident(), FieldDeps::from(&fresh & &rec_fields));
-
-                    free_vars.extend(&fresh - &rec_fields);
-                }
-
-                for (t1, t2) in dyn_fields.iter_mut() {
-                    fresh.clear();
-
-                    // Currently, the identifier part of a dynamic definition is not recursive,
-                    // i.e. one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
-                    // variables directly to the final set without taking them into account for
-                    // recursive dependencies.
-                    t1.collect_free_vars(free_vars);
-                    t2.collect_free_vars(&mut fresh);
-                    new_deps
-                        .dyn_fields
-                        .push(FieldDeps::from(&fresh & &rec_fields));
-
-                    free_vars.extend(&fresh - &rec_fields);
-                }
-
-                // Even if deps were previously filled (it shouldn't), we had to recompute the free
-                // variables anyway for the nodes higher up, because `deps` alone is not sufficient
-                // to reconstruct the full set of free variables. At this point, we override it in
-                // any case.
-                *deps = Some(new_deps);
-            }
+            Term::RecRecord(data) => data.collect_free_vars(free_vars),
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
                     if let StrChunk::Expr(t, _) = chunk {
@@ -321,6 +263,69 @@ impl CollectFreeVars for LetPatternData {
         }
 
         set.extend(fresh);
+    }
+}
+
+impl CollectFreeVars for RecRecordData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        let mut fresh = HashSet::new();
+
+        let mut rec_fields: HashSet<Ident> =
+            self.record.fields.keys().map(|id| id.ident()).collect();
+        // `{include foo, [..]}` is defined to have the semantics of `let foo_ = foo in
+        // {foo = foo_, [..]}`, hence an included field also counts as a recursive field.
+        rec_fields.extend(self.includes.iter().map(|incl| incl.ident.ident()));
+
+        let mut new_deps = RecordDeps {
+            stat_fields: IndexMap::with_capacity(self.record.fields.len() + self.includes.len()),
+            dyn_fields: Vec::with_capacity(self.dyn_fields.len()),
+        };
+
+        for incl in self.includes.iter_mut() {
+            fresh.clear();
+
+            incl.collect_free_vars(&mut fresh);
+
+            new_deps
+                .stat_fields
+                .insert(incl.ident.ident(), FieldDeps::from(&fresh & &rec_fields));
+
+            set.extend(&fresh - &rec_fields);
+            set.insert(incl.ident.ident());
+        }
+
+        for (id, t) in self.record.fields.iter_mut() {
+            fresh.clear();
+
+            t.collect_free_vars(&mut fresh);
+            new_deps
+                .stat_fields
+                .insert(id.ident(), FieldDeps::from(&fresh & &rec_fields));
+
+            set.extend(&fresh - &rec_fields);
+        }
+
+        for (t1, t2) in self.dyn_fields.iter_mut() {
+            fresh.clear();
+
+            // Currently, the identifier part of a dynamic definition is not recursive,
+            // i.e. one can't write `{foo = "hey", "%{foo}" = 5}`. Hence, we add their free
+            // variables directly to the final set without taking them into account for
+            // recursive dependencies.
+            t1.collect_free_vars(set);
+            t2.collect_free_vars(&mut fresh);
+            new_deps
+                .dyn_fields
+                .push(FieldDeps::from(&fresh & &rec_fields));
+
+            set.extend(&fresh - &rec_fields);
+        }
+
+        // Even if deps were previously filled (it shouldn't), we had to recompute the free
+        // variables anyway for the nodes higher up, because `deps` alone is not sufficient
+        // to reconstruct the full set of free variables. At this point, we override it in
+        // any case.
+        self.deps = Some(new_deps);
     }
 }
 
