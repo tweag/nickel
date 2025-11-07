@@ -431,7 +431,7 @@ impl World {
         // unwrap: we don't expect an error here, since we already typechecked above.
         let contract_value = vm_ctxt.prepare_eval_only(contract_id).unwrap();
 
-        let value = NickelValue::term_posless(Term::Annotated(
+        let value = NickelValue::term_posless(Term::annotated(
             TypeAnnotation {
                 typ: None,
                 contracts: vec![LabeledType {

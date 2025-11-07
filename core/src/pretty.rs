@@ -464,15 +464,15 @@ impl Allocator {
         docs![
             self,
             lhs,
-            if let Some(Term::Annotated(annot, _)) = val.as_term() {
-                annot.pretty(self)
+            if let Some(Term::Annotated(data)) = val.as_term() {
+                data.annot.pretty(self)
             } else {
                 self.nil()
             },
             self.line(),
             "= ",
-            if let Some(Term::Annotated(_, inner)) = val.as_term() {
-                inner.pretty(self)
+            if let Some(Term::Annotated(data)) = val.as_term() {
+                data.inner.pretty(self)
             } else {
                 val.pretty(self)
             },
@@ -1173,7 +1173,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             ]
             .group(),
             Term::Sealed(_) => allocator.text("%<sealed>"),
-            Term::Annotated(annot, val) => allocator.atom(val).append(annot.pretty(allocator)),
+            Term::Annotated(data) => allocator.atom(&data.inner).append(data.annot.pretty(allocator)),
             Term::Import(term::Import::Path { path, format }) => {
                 docs![
                     allocator,

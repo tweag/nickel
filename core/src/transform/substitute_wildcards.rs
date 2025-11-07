@@ -26,17 +26,17 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
 
     match value.content() {
         ValueContent::Term(term_lens) => {
-            if let Term::Annotated(TypeAnnotation { typ: Some(_), .. }, _) = term_lens.term() {
+            if let Term::Annotated(data) = term_lens.term()
+                && data.annot.typ.is_some()
+            {
                 let TermContent::Annotated(value_lens) = term_lens else {
                     unreachable!("TermContent::Annotated expected")
                 };
 
-                let (annot, inner) = value_lens.take();
+                let mut data = value_lens.take();
+                data.annot = data.annot.subst_wildcards(wildcards);
 
-                NickelValue::term(
-                    Term::Annotated(annot.subst_wildcards(wildcards), inner),
-                    pos_idx,
-                )
+                NickelValue::term(Term::Annotated(data), pos_idx)
             } else if let TermContent::RecRecord(record_lens) = term_lens {
                 let mut data = record_lens.take();
 

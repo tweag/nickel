@@ -8,8 +8,8 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, Op1Data, Op2Data,
-        OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
+        AnnotatedData, FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch,
+        Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -119,13 +119,7 @@ impl CollectFreeVars for Term {
                     }
                 }
             }
-            Term::Annotated(annot, t) => {
-                for ctr in annot.iter_mut() {
-                    ctr.typ.collect_free_vars(free_vars)
-                }
-
-                t.collect_free_vars(free_vars);
-            }
+            Term::Annotated(data) => data.collect_free_vars(free_vars),
             Term::Value(v) | Term::Closurize(v) => v.collect_free_vars(free_vars),
         }
     }
@@ -345,6 +339,16 @@ impl CollectFreeVars for OpNData {
         for t in &mut self.args {
             t.collect_free_vars(set);
         }
+    }
+}
+
+impl CollectFreeVars for AnnotatedData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for ctr in self.annot.iter_mut() {
+            ctr.typ.collect_free_vars(set)
+        }
+
+        self.inner.collect_free_vars(set);
     }
 }
 

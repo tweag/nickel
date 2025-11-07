@@ -280,8 +280,9 @@ fn contract_eq_bounded(
                 }
                 // We must compare the inner values as well as the corresponding contracts or type
                 // annotations.
-                (Term::Annotated(annot1, t1), Term::Annotated(annot2, t2)) => {
-                    let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+                (Term::Annotated(data1), Term::Annotated(data2)) => {
+                    let value_eq =
+                        contract_eq_bounded(state, &data1.inner, env1, &data2.inner, env2);
 
                     // TODO:
                     // - does it really make sense to compare the annotations?
@@ -293,8 +294,8 @@ fn contract_eq_bounded(
 
                     // We use the same logic as in the typechecker: the type associated to an annotated
                     // value is either the type annotation, or the first contract annotation.
-                    let ty1 = annot1.first();
-                    let ty2 = annot2.first();
+                    let ty1 = data1.annot.first();
+                    let ty2 = data2.annot.first();
 
                     let ty_eq = match (ty1, ty2) {
                         (None, None) => true,

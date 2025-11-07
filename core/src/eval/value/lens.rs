@@ -9,8 +9,8 @@ use crate::{
     files::FileId,
     identifier::LocIdent,
     term::{
-        FunData, FunPatternData, Import, LetData, LetPatternData, MatchData, Op1Data, Op2Data,
-        OpNData, RecRecordData, SealedData, StrChunk, Term, TypeAnnotation,
+        AnnotatedData, FunData, FunPatternData, Import, LetData, LetPatternData, MatchData,
+        Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
     },
 };
 
@@ -188,7 +188,7 @@ pub enum TermContent {
     Op2(ValueLens<Box<Op2Data>>),
     OpN(ValueLens<OpNData>),
     Sealed(ValueLens<Box<SealedData>>),
-    Annotated(ValueLens<(TypeAnnotation, NickelValue)>),
+    Annotated(ValueLens<Box<AnnotatedData>>),
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
     ParseError(ValueLens<ParseError>),
@@ -671,7 +671,7 @@ impl ValueLens<Box<SealedData>> {
     }
 }
 
-impl ValueLens<(TypeAnnotation, NickelValue)> {
+impl ValueLens<Box<AnnotatedData>> {
     /// Creates a new lens extracting [crate::term::Term::Annotated].
     ///
     /// # Safety
@@ -686,11 +686,11 @@ impl ValueLens<(TypeAnnotation, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::Annotated].
-    fn term_annotated_extractor(value: NickelValue) -> (TypeAnnotation, NickelValue) {
+    fn term_annotated_extractor(value: NickelValue) -> Box<AnnotatedData> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Annotated(annot, body) = term {
-            (annot, body)
+        if let Term::Annotated(data) = term {
+            data
         } else {
             unreachable!()
         }
