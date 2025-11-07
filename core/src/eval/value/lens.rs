@@ -191,8 +191,8 @@ pub enum TermContent {
     Annotated(ValueLens<Box<AnnotatedData>>),
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
-    ParseError(ValueLens<ParseError>),
-    RuntimeError(ValueLens<EvalErrorKind>),
+    ParseError(ValueLens<Box<ParseError>>),
+    RuntimeError(ValueLens<Box<EvalErrorKind>>),
 }
 
 impl TermContent {
@@ -749,7 +749,7 @@ impl ValueLens<FileId> {
     }
 }
 
-impl ValueLens<ParseError> {
+impl ValueLens<Box<ParseError>> {
     /// Creates a new lens extracting [crate::term::Term::ParseError].
     ///
     /// # Safety
@@ -764,7 +764,7 @@ impl ValueLens<ParseError> {
     }
 
     /// Extractor for [crate::term::Term::ParseError].
-    fn term_parse_error_extractor(value: NickelValue) -> ParseError {
+    fn term_parse_error_extractor(value: NickelValue) -> Box<ParseError> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::ParseError(err) = term {
@@ -775,7 +775,7 @@ impl ValueLens<ParseError> {
     }
 }
 
-impl ValueLens<EvalErrorKind> {
+impl ValueLens<Box<EvalErrorKind>> {
     /// Creates a new lens extracting [crate::term::Term::RuntimeError].
     ///
     /// # Safety
@@ -790,7 +790,7 @@ impl ValueLens<EvalErrorKind> {
     }
 
     /// Extractor for [crate::term::Term::RuntimeError].
-    fn term_runtime_error_extractor(value: NickelValue) -> EvalErrorKind {
+    fn term_runtime_error_extractor(value: NickelValue) -> Box<EvalErrorKind> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::RuntimeError(err) = term {

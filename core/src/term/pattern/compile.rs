@@ -1026,10 +1026,10 @@ impl Compile for MatchData {
         }
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalErrorKind::NonExhaustiveMatch {
+            Term::RuntimeError(Box::new(EvalErrorKind::NonExhaustiveMatch {
                 value: value.clone(),
                 pos: pos_idx,
-            }),
+            })),
             pos_idx,
         );
 

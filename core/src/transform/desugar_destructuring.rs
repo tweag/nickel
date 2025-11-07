@@ -127,10 +127,10 @@ pub fn desugar_let(
         ));
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalErrorKind::FailedDestructuring {
+            Term::RuntimeError(Box::new(EvalErrorKind::FailedDestructuring {
                 value: rhs.clone(),
                 pattern: pat.clone(),
-            }),
+            })),
             pos_table.push(pos),
         );
 
