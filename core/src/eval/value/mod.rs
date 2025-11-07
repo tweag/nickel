@@ -1219,6 +1219,12 @@ impl NickelValue {
     }
 }
 
+impl Default for NickelValue {
+    fn default() -> Self {
+        Self::null()
+    }
+}
+
 // Since a `NickelValue` can be a reference-counted pointer in disguise, we can't just copy it
 // blindly. We need to make sure the reference count is incremented accordingly.
 impl Clone for NickelValue {

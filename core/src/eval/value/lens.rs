@@ -10,14 +10,11 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        BinaryOp, FunData, FunPatternData, Import, LetAttrs, MatchData, NAryOp, SealingKey,
-        StrChunk, Term, TypeAnnotation, UnaryOp,
-        pattern::Pattern,
+        BinaryOp, FunData, FunPatternData, Import, LetData, LetPatternData, MatchData, NAryOp,
+        SealingKey, StrChunk, Term, TypeAnnotation, UnaryOp,
         record::{Field, Include, RecordData, RecordDeps},
     },
 };
-
-use smallvec::SmallVec;
 
 use std::{
     alloc::dealloc,
@@ -173,13 +170,6 @@ impl ValueLens<bool> {
 
 // Those aliases are there to appease clippy, but what we should really do is to define a proper
 // `LetData` structure instead and use it the corresponding term variant.
-
-pub type LetData = (
-    SmallVec<[(LocIdent, NickelValue); 4]>,
-    NickelValue,
-    LetAttrs,
-);
-pub type LetPatternData = (SmallVec<[(Pattern, NickelValue); 1]>, NickelValue, LetAttrs);
 pub type RecRecordData = (
     RecordData,
     Vec<Include>,
@@ -199,8 +189,8 @@ pub enum TermContent {
     StrChunks(ValueLens<Vec<StrChunk<NickelValue>>>),
     Fun(ValueLens<FunData>),
     FunPattern(ValueLens<Box<FunPatternData>>),
-    Let(ValueLens<LetData>),
-    LetPattern(ValueLens<LetPatternData>),
+    Let(ValueLens<Box<LetData>>),
+    LetPattern(ValueLens<Box<LetPatternData>>),
     App(ValueLens<(NickelValue, NickelValue)>),
     Var(ValueLens<LocIdent>),
     RecRecord(ValueLens<RecRecordData>),
@@ -433,7 +423,7 @@ impl ValueLens<Box<FunPatternData>> {
     }
 }
 
-impl ValueLens<LetData> {
+impl ValueLens<Box<LetData>> {
     /// Creates a new lens extracting [crate::term::Term::Let].
     ///
     /// # Safety
@@ -448,18 +438,18 @@ impl ValueLens<LetData> {
     }
 
     /// Extractor for [crate::term::Term::Let].
-    fn term_let_extractor(value: NickelValue) -> LetData {
+    fn term_let_extractor(value: NickelValue) -> Box<LetData> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Let(bindings, body, attrs) = term {
-            (bindings, body, attrs)
+        if let Term::Let(data) = term {
+            data
         } else {
             unreachable!()
         }
     }
 }
 
-impl ValueLens<LetPatternData> {
+impl ValueLens<Box<LetPatternData>> {
     /// Creates a new lens extracting [crate::term::Term::LetPattern].
     ///
     /// # Safety
@@ -474,11 +464,11 @@ impl ValueLens<LetPatternData> {
     }
 
     /// Extractor for [crate::term::Term::LetPattern].
-    fn term_let_pat_extractor(value: NickelValue) -> LetPatternData {
+    fn term_let_pat_extractor(value: NickelValue) -> Box<LetPatternData> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::LetPattern(bindings, body, attrs) = term {
-            (bindings, body, attrs)
+        if let Term::LetPattern(data) = term {
+            data
         } else {
             unreachable!()
         }

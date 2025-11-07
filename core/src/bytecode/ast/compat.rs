@@ -418,23 +418,23 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.fun(args, final_body.to_ast(alloc, pos_table))
             }
-            Term::Let(bindings, body, attrs) => alloc.let_block(
-                bindings.iter().map(|(id, value)| LetBinding {
+            Term::Let(data) => alloc.let_block(
+                data.bindings.iter().map(|(id, value)| LetBinding {
                     pattern: Pattern::any(*id),
                     value: value.to_ast(alloc, pos_table),
                     metadata: Default::default(),
                 }),
-                body.to_ast(alloc, pos_table),
-                attrs.rec,
+                data.body.to_ast(alloc, pos_table),
+                data.attrs.rec,
             ),
-            Term::LetPattern(bindings, body, attrs) => alloc.let_block(
-                bindings.iter().map(|(pat, value)| LetBinding {
+            Term::LetPattern(data) => alloc.let_block(
+                data.bindings.iter().map(|(pat, value)| LetBinding {
                     pattern: pat.to_ast(alloc, pos_table),
                     value: value.to_ast(alloc, pos_table),
                     metadata: Default::default(),
                 }),
-                body.to_ast(alloc, pos_table),
-                attrs.rec,
+                data.body.to_ast(alloc, pos_table),
+                data.attrs.rec,
             ),
             Term::App(fun, arg) => {
                 match fun.as_term() {
@@ -1527,7 +1527,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                 };
 
                 let term = if let Some(bindings) = try_bindings {
-                    Term::Let(bindings, body, attrs)
+                    Term::let_in(bindings, body, attrs)
                 } else {
                     let bindings = bindings
                         .iter()
@@ -1545,7 +1545,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         )
                         .collect();
 
-                    Term::LetPattern(bindings, body, attrs)
+                    Term::let_pattern(bindings, body, attrs)
                 };
 
                 NickelValue::term(term, pos_table.push(ast.pos))
