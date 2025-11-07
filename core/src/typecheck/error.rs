@@ -9,16 +9,18 @@ use crate::{
         alloc::{AstAlloc, CloneTo as _},
         typ::{EnumRow, RecordRow, Type},
     },
-    error::{TypecheckError, TypecheckErrorData},
+    error::{TypecheckError, TypecheckErrorData, TypecheckErrorKind},
     identifier::LocIdent,
     label::ty_path,
     position::TermPos,
     typ::{TypeF, VarKindDiscriminant},
 };
 
+pub type RowUnifError<'ast> = Box<RowUnifErrorKind<'ast>>;
+
 /// Error during the unification of two row types.
 #[derive(Debug, PartialEq)]
-pub enum RowUnifError<'ast> {
+pub enum RowUnifErrorKind<'ast> {
     /// The LHS had a binding that was missing in the RHS.
     MissingRow(LocIdent),
     /// The LHS had a `Dyn` tail that was missing in the RHS.
@@ -31,7 +33,7 @@ pub enum RowUnifError<'ast> {
     RecordRowMismatch {
         id: LocIdent,
         /// The underlying unification error that caused the mismatch.
-        cause: Box<UnifError<'ast>>,
+        cause: UnifError<'ast>,
     },
     /// There were two incompatible definitions for the same enum row.
     ///
@@ -41,7 +43,7 @@ pub enum RowUnifError<'ast> {
     EnumRowMismatch {
         id: LocIdent,
         /// The underlying unification error that caused the mismatch.
-        cause: Option<Box<UnifError<'ast>>>,
+        cause: Option<UnifError<'ast>>,
     },
     /// A [row constraint][super::RowConstrs] was violated.
     RecordRowConflict(UnifRecordRow<'ast>),
@@ -68,7 +70,7 @@ pub enum RowUnifError<'ast> {
     },
 }
 
-impl<'ast> RowUnifError<'ast> {
+impl<'ast> RowUnifErrorKind<'ast> {
     /// Convert a row unification error to a unification error.
     ///
     /// There is a hierarchy between error types, from the most local/specific to the most
@@ -84,76 +86,80 @@ impl<'ast> RowUnifError<'ast> {
         expected: UnifType<'ast>,
         inferred: UnifType<'ast>,
     ) -> UnifError<'ast> {
-        match self {
-            RowUnifError::MissingRow(id) => UnifError::MissingRow {
+        Box::new(match self {
+            RowUnifErrorKind::MissingRow(id) => UnifErrorKind::MissingRow {
                 id,
                 expected,
                 inferred,
             },
-            RowUnifError::MissingDynTail => UnifError::MissingDynTail { expected, inferred },
-            RowUnifError::ExtraRow(id) => UnifError::ExtraRow {
+            RowUnifErrorKind::MissingDynTail => {
+                UnifErrorKind::MissingDynTail { expected, inferred }
+            }
+            RowUnifErrorKind::ExtraRow(id) => UnifErrorKind::ExtraRow {
                 id,
                 expected,
                 inferred,
             },
-            RowUnifError::ExtraDynTail => UnifError::ExtraDynTail { expected, inferred },
-            RowUnifError::RecordRowMismatch { id, cause } => UnifError::RecordRowMismatch {
-                id,
-                expected,
-                inferred,
-                cause,
-            },
-            RowUnifError::EnumRowMismatch { id, cause } => UnifError::EnumRowMismatch {
+            RowUnifErrorKind::ExtraDynTail => UnifErrorKind::ExtraDynTail { expected, inferred },
+            RowUnifErrorKind::RecordRowMismatch { id, cause } => UnifErrorKind::RecordRowMismatch {
                 id,
                 expected,
                 inferred,
                 cause,
             },
-            RowUnifError::RecordRowConflict(row) => UnifError::RecordRowConflict {
+            RowUnifErrorKind::EnumRowMismatch { id, cause } => UnifErrorKind::EnumRowMismatch {
+                id,
+                expected,
+                inferred,
+                cause,
+            },
+            RowUnifErrorKind::RecordRowConflict(row) => UnifErrorKind::RecordRowConflict {
                 row,
                 expected,
                 inferred,
             },
-            RowUnifError::EnumRowConflict(row) => UnifError::EnumRowConflict {
+            RowUnifErrorKind::EnumRowConflict(row) => UnifErrorKind::EnumRowConflict {
                 row,
                 expected,
                 inferred,
             },
-            RowUnifError::WithConst {
+            RowUnifErrorKind::WithConst {
                 var_kind,
                 expected_const_id,
                 inferred,
-            } => UnifError::WithConst {
+            } => UnifErrorKind::WithConst {
                 var_kind,
                 expected_const_id,
                 inferred,
             },
-            RowUnifError::ConstMismatch {
+            RowUnifErrorKind::ConstMismatch {
                 var_kind,
                 expected_const_id,
                 inferred_const_id,
-            } => UnifError::ConstMismatch {
+            } => UnifErrorKind::ConstMismatch {
                 var_kind,
                 expected_const_id,
                 inferred_const_id,
             },
-            RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
-            RowUnifError::VarLevelMismatch {
+            RowUnifErrorKind::UnboundTypeVariable(id) => UnifErrorKind::UnboundTypeVariable(id),
+            RowUnifErrorKind::VarLevelMismatch {
                 constant_id,
                 var_kind,
-            } => UnifError::VarLevelMismatch {
+            } => UnifErrorKind::VarLevelMismatch {
                 constant_id,
                 var_kind,
             },
-        }
+        })
     }
 }
+
+pub type UnifError<'ast> = Box<UnifErrorKind<'ast>>;
 
 /// Error during the unification of two types.
 ///
 /// In each variant, `expected` and `inferred` refers to the two types that failed to unify.
 #[derive(Debug, PartialEq)]
-pub enum UnifError<'ast> {
+pub enum UnifErrorKind<'ast> {
     /// Tried to unify two incompatible types.
     TypeMismatch {
         expected: UnifType<'ast>,
@@ -167,7 +173,7 @@ pub enum UnifError<'ast> {
         /// The uderlying unification error (`expected` and `inferred` should be the record types
         /// that failed to unify, while this error is the specific cause of the mismatch for the
         /// `id` row)
-        cause: Box<UnifError<'ast>>,
+        cause: UnifError<'ast>,
     },
     /// There are two incompatible definitions for the same row.
     ///
@@ -178,7 +184,7 @@ pub enum UnifError<'ast> {
         id: LocIdent,
         expected: UnifType<'ast>,
         inferred: UnifType<'ast>,
-        cause: Option<Box<UnifError<'ast>>>,
+        cause: Option<UnifError<'ast>>,
     },
     /// Tried to unify two distinct type constants.
     ConstMismatch {
@@ -245,13 +251,13 @@ pub enum UnifError<'ast> {
     DomainMismatch {
         expected: UnifType<'ast>,
         inferred: UnifType<'ast>,
-        cause: Box<UnifError<'ast>>,
+        cause: UnifError<'ast>,
     },
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch {
         expected: UnifType<'ast>,
         inferred: UnifType<'ast>,
-        cause: Box<UnifError<'ast>>,
+        cause: UnifError<'ast>,
     },
     /// Tried to unify a constant with a unification variable with a strictly lower level.
     VarLevelMismatch {
@@ -264,7 +270,7 @@ pub enum UnifError<'ast> {
     },
 }
 
-impl<'ast> UnifError<'ast> {
+impl<'ast> UnifErrorKind<'ast> {
     /// Convert a unification error to a typechecking error. There is a hierarchy between error
     /// types, from the most local/specific to the most high-level:
     /// - [`RowUnifError<'ast>`]
@@ -281,39 +287,41 @@ impl<'ast> UnifError<'ast> {
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
     pub fn into_typecheck_err(self, state: &State<'ast, '_>, pos_opt: TermPos) -> TypecheckError {
         let mut names = reporting::NameReg::new(state.names.clone());
-        TypecheckError::new(AstAlloc::new(), |alloc| {
-            self.into_typecheck_err_data(alloc, state, &mut names, pos_opt)
-        })
+        Box::new(TypecheckErrorData::new(AstAlloc::new(), |alloc| {
+            self.into_typecheck_err_kind(alloc, state, &mut names, pos_opt)
+        }))
     }
 
     /// Convert a unification error to a typechecking error, given a populated [name
     /// registry][reporting::NameReg] and the error's allocator. Actual meat of the implementation
     /// of [`Self::into_typecheck_err`].
-    fn into_typecheck_err_data<'err>(
+    fn into_typecheck_err_kind<'err>(
         self,
         alloc: &'err AstAlloc,
         state: &State<'ast, '_>,
         names_reg: &mut reporting::NameReg,
         pos: TermPos,
-    ) -> TypecheckErrorData<'err> {
+    ) -> TypecheckErrorKind<'err> {
         match self {
-            UnifError::TypeMismatch { expected, inferred } => TypecheckErrorData::TypeMismatch {
-                expected: Type::clone_to(
-                    expected.to_type(state.ast_alloc, names_reg, state.table),
-                    alloc,
-                ),
-                inferred: Type::clone_to(
-                    inferred.to_type(state.ast_alloc, names_reg, state.table),
-                    alloc,
-                ),
-                pos,
-            },
-            UnifError::RecordRowMismatch {
+            UnifErrorKind::TypeMismatch { expected, inferred } => {
+                TypecheckErrorKind::TypeMismatch {
+                    expected: Type::clone_to(
+                        expected.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    inferred: Type::clone_to(
+                        inferred.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    pos,
+                }
+            }
+            UnifErrorKind::RecordRowMismatch {
                 id,
                 expected,
                 inferred,
                 cause,
-            } => TypecheckErrorData::RecordRowMismatch {
+            } => TypecheckErrorKind::RecordRowMismatch {
                 id,
                 expected: Type::clone_to(
                     expected.to_type(state.ast_alloc, names_reg, state.table),
@@ -323,7 +331,7 @@ impl<'ast> UnifError<'ast> {
                     inferred.to_type(state.ast_alloc, names_reg, state.table),
                     alloc,
                 ),
-                cause: Box::new((*cause).into_typecheck_err_data(
+                cause: Box::new((*cause).into_typecheck_err_kind(
                     alloc,
                     state,
                     names_reg,
@@ -331,12 +339,12 @@ impl<'ast> UnifError<'ast> {
                 )),
                 pos,
             },
-            UnifError::EnumRowMismatch {
+            UnifErrorKind::EnumRowMismatch {
                 id,
                 expected,
                 inferred,
                 cause,
-            } => TypecheckErrorData::EnumRowMismatch {
+            } => TypecheckErrorKind::EnumRowMismatch {
                 id,
                 expected: Type::clone_to(
                     expected.to_type(state.ast_alloc, names_reg, state.table),
@@ -347,18 +355,18 @@ impl<'ast> UnifError<'ast> {
                     alloc,
                 ),
                 cause: cause.map(|err| {
-                    Box::new((*err).into_typecheck_err_data(alloc, state, names_reg, TermPos::None))
+                    Box::new((*err).into_typecheck_err_kind(alloc, state, names_reg, TermPos::None))
                 }),
                 pos,
             },
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
-            UnifError::ConstMismatch {
+            UnifErrorKind::ConstMismatch {
                 var_kind,
                 expected_const_id,
                 inferred_const_id,
-            } => TypecheckErrorData::TypeMismatch {
+            } => TypecheckErrorKind::TypeMismatch {
                 expected: Type::clone_to(
                     UnifType::from_constant_of_kind(expected_const_id, var_kind).to_type(
                         state.ast_alloc,
@@ -377,11 +385,11 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::WithConst {
+            UnifErrorKind::WithConst {
                 var_kind: VarKindDiscriminant::Type,
                 expected_const_id,
                 inferred,
-            } => TypecheckErrorData::TypeMismatch {
+            } => TypecheckErrorKind::TypeMismatch {
                 expected: Type::clone_to(
                     UnifType::Constant(expected_const_id).to_type(
                         state.ast_alloc,
@@ -396,11 +404,11 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::WithConst {
+            UnifErrorKind::WithConst {
                 var_kind,
                 expected_const_id,
                 inferred,
-            } => TypecheckErrorData::ForallParametricityViolation {
+            } => TypecheckErrorKind::ForallParametricityViolation {
                 kind: var_kind,
                 tail: Type::clone_to(
                     UnifType::from_constant_of_kind(expected_const_id, var_kind).to_type(
@@ -416,11 +424,11 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::MissingRow {
+            UnifErrorKind::MissingRow {
                 id,
                 expected,
                 inferred,
-            } => TypecheckErrorData::MissingRow {
+            } => TypecheckErrorKind::MissingRow {
                 id,
                 expected: Type::clone_to(
                     expected.to_type(state.ast_alloc, names_reg, state.table),
@@ -432,8 +440,8 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::MissingDynTail { expected, inferred } => {
-                TypecheckErrorData::MissingDynTail {
+            UnifErrorKind::MissingDynTail { expected, inferred } => {
+                TypecheckErrorKind::MissingDynTail {
                     expected: Type::clone_to(
                         expected.to_type(state.ast_alloc, names_reg, state.table),
                         alloc,
@@ -445,11 +453,11 @@ impl<'ast> UnifError<'ast> {
                     pos,
                 }
             }
-            UnifError::ExtraRow {
+            UnifErrorKind::ExtraRow {
                 id,
                 expected,
                 inferred,
-            } => TypecheckErrorData::ExtraRow {
+            } => TypecheckErrorKind::ExtraRow {
                 id,
                 expected: Type::clone_to(
                     expected.to_type(state.ast_alloc, names_reg, state.table),
@@ -461,22 +469,24 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::ExtraDynTail { expected, inferred } => TypecheckErrorData::ExtraDynTail {
-                expected: Type::clone_to(
-                    expected.to_type(state.ast_alloc, names_reg, state.table),
-                    alloc,
-                ),
-                inferred: Type::clone_to(
-                    inferred.to_type(state.ast_alloc, names_reg, state.table),
-                    alloc,
-                ),
-                pos,
-            },
-            UnifError::RecordRowConflict {
+            UnifErrorKind::ExtraDynTail { expected, inferred } => {
+                TypecheckErrorKind::ExtraDynTail {
+                    expected: Type::clone_to(
+                        expected.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    inferred: Type::clone_to(
+                        inferred.to_type(state.ast_alloc, names_reg, state.table),
+                        alloc,
+                    ),
+                    pos,
+                }
+            }
+            UnifErrorKind::RecordRowConflict {
                 row,
                 expected,
                 inferred,
-            } => TypecheckErrorData::RecordRowConflict {
+            } => TypecheckErrorKind::RecordRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
                 row: RecordRow::clone_to(
                     row.to_type(state.ast_alloc, names_reg, state.table),
@@ -492,11 +502,11 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::EnumRowConflict {
+            UnifErrorKind::EnumRowConflict {
                 row,
                 expected,
                 inferred,
-            } => TypecheckErrorData::EnumRowConflict {
+            } => TypecheckErrorKind::EnumRowConflict {
                 // We won't convert to mainline when we'll plug-in the migrated typechecker, so it doesn't make sense to try to fix this line now - the error will go away.
                 row: EnumRow::clone_to(row.to_type(state.ast_alloc, names_reg, state.table), alloc),
                 expected: Type::clone_to(
@@ -509,10 +519,13 @@ impl<'ast> UnifError<'ast> {
                 ),
                 pos,
             },
-            UnifError::UnboundTypeVariable(ident) => TypecheckErrorData::UnboundTypeVariable(ident),
-            err @ UnifError::CodomainMismatch { .. } | err @ UnifError::DomainMismatch { .. } => {
+            UnifErrorKind::UnboundTypeVariable(ident) => {
+                TypecheckErrorKind::UnboundTypeVariable(ident)
+            }
+            err @ UnifErrorKind::CodomainMismatch { .. }
+            | err @ UnifErrorKind::DomainMismatch { .. } => {
                 let (expected, inferred, type_path, err_final) = err.into_type_path().unwrap();
-                TypecheckErrorData::ArrowTypeMismatch {
+                TypecheckErrorKind::ArrowTypeMismatch {
                     expected: Type::clone_to(
                         expected.to_type(state.ast_alloc, names_reg, state.table),
                         alloc,
@@ -522,7 +535,7 @@ impl<'ast> UnifError<'ast> {
                         alloc,
                     ),
                     type_path,
-                    cause: Box::new(err_final.into_typecheck_err_data(
+                    cause: Box::new(err_final.into_typecheck_err_kind(
                         alloc,
                         state,
                         names_reg,
@@ -531,15 +544,15 @@ impl<'ast> UnifError<'ast> {
                     pos,
                 }
             }
-            UnifError::VarLevelMismatch {
+            UnifErrorKind::VarLevelMismatch {
                 constant_id,
                 var_kind,
-            } => TypecheckErrorData::VarLevelMismatch {
+            } => TypecheckErrorKind::VarLevelMismatch {
                 type_var: names_reg.gen_cst_name(constant_id, var_kind).into(),
                 pos,
             },
-            UnifError::InhomogeneousRecord { row_a, row_b } => {
-                TypecheckErrorData::InhomogeneousRecord {
+            UnifErrorKind::InhomogeneousRecord { row_a, row_b } => {
+                TypecheckErrorKind::InhomogeneousRecord {
                     row_a: Type::clone_to(
                         row_a.to_type(state.ast_alloc, names_reg, state.table),
                         alloc,
@@ -582,7 +595,7 @@ impl<'ast> UnifError<'ast> {
 
         loop {
             match curr {
-                UnifError::DomainMismatch {
+                UnifErrorKind::DomainMismatch {
                     expected:
                         expected @ UnifType::Concrete {
                             typ: TypeF::Arrow(_, _),
@@ -599,10 +612,10 @@ impl<'ast> UnifError<'ast> {
                     path.push(ty_path::Elem::Domain);
                     curr = *mismatch;
                 }
-                UnifError::DomainMismatch { .. } => panic!(
+                UnifErrorKind::DomainMismatch { .. } => panic!(
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
-                UnifError::CodomainMismatch {
+                UnifErrorKind::CodomainMismatch {
                     expected:
                         expected @ UnifType::Concrete {
                             typ: TypeF::Arrow(_, _),
@@ -619,7 +632,7 @@ impl<'ast> UnifError<'ast> {
                     path.push(ty_path::Elem::Codomain);
                     curr = *mismatch;
                 }
-                UnifError::CodomainMismatch { .. } => panic!(
+                UnifErrorKind::CodomainMismatch { .. } => panic!(
                     "typechecking::to_type_path(): codomain mismatch error on a non arrow type"
                 ),
                 // utys equals to `None` iff we did not even enter the case above once, i.e. if

@@ -29,7 +29,7 @@ use super::*;
 use crate::{
     closurize::Closurize,
     combine::Combine,
-    error::{EvalError, IllegalPolymorphicTailAction},
+    error::IllegalPolymorphicTailAction,
     label::{Label, MergeLabel},
     position::PosIdx,
     term::{
@@ -81,7 +81,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         env2: Environment,
         pos_op: PosIdx,
         mode: MergeMode,
-    ) -> Result<Closure, EvalErrorData> {
+    ) -> Result<Closure, ErrorKind> {
         let pos1 = v1.pos_idx();
         let pos2 = v2.pos_idx();
         let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
@@ -115,11 +115,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_op_inh,
                     ))
                 } else {
-                    Err(EvalErrorData::MergeIncompatibleArgs {
+                    Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                         left_arg: NickelValue::number(n1, pos1),
                         right_arg: NickelValue::number(n2, pos2),
                         merge_label: mode.into(),
-                    })
+                    }))
                 }
             }
             (ValueContent::String(lens1), ValueContent::String(lens2)) => {
@@ -132,11 +132,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_op_inh,
                     ))
                 } else {
-                    Err(EvalErrorData::MergeIncompatibleArgs {
+                    Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                         left_arg: NickelValue::string(s1, pos1),
                         right_arg: NickelValue::string(s2, pos2),
                         merge_label: mode.into(),
-                    })
+                    }))
                 }
             }
             (ValueContent::Label(lens1), ValueContent::Label(lens2)) => {
@@ -149,11 +149,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_op_inh,
                     ))
                 } else {
-                    Err(EvalErrorData::MergeIncompatibleArgs {
+                    Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                         left_arg: NickelValue::label(label1, pos1),
                         right_arg: NickelValue::label(label2, pos2),
                         merge_label: mode.into(),
-                    })
+                    }))
                 }
             }
             (ValueContent::EnumVariant(lens1), ValueContent::EnumVariant(lens2)) => {
@@ -196,11 +196,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             pos_op_inh,
                         ))
                     }
-                    (enum1, enum2) => Err(EvalErrorData::MergeIncompatibleArgs {
+                    (enum1, enum2) => Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                         left_arg: NickelValue::enum_variant(enum1.tag, enum1.arg, pos1),
                         right_arg: NickelValue::enum_variant(enum2.tag, enum2.arg, pos2),
                         merge_label: mode.into(),
-                    }),
+                    })),
                 }
             }
             // There are several different (and valid) ways of merging arrays. We don't want to choose
@@ -295,11 +295,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // users will generally have reason to do, so in the meantime we've
                 // decided to just prevent this entirely
                 if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
-                    return Err(EvalErrorData::IllegalPolymorphicTailAccess {
+                    return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                         action: IllegalPolymorphicTailAction::Merge,
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
                         label,
-                    });
+                    }));
                 }
 
                 let split::SplitResult {
@@ -424,11 +424,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     final_pos,
                 ))
             }
-            (lens1, lens2) => Err(EvalErrorData::MergeIncompatibleArgs {
+            (lens1, lens2) => Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                 left_arg: lens1.restore(),
                 right_arg: lens2.restore(),
                 merge_label: mode.into(),
-            }),
+            })),
         };
 
         result.map(|value| {
@@ -452,7 +452,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     field1: Field,
     field2: Field,
     fields: I,
-) -> Result<Field, EvalErrorData> {
+) -> Result<Field, ErrorKind> {
     let Field {
         metadata: metadata1,
         value: value1,

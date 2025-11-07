@@ -2,7 +2,6 @@
 use super::*;
 use crate::{
     ast::{AstAlloc, builder, primop::PrimOp},
-    error::TypecheckError,
     label::{Polarity, TypeVarData},
     typ::TypeF,
 };
@@ -584,15 +583,6 @@ impl PrimOpType for PrimOp {
         })
     }
 }
-
-// pub fn get_nop_type(
-//     state: &mut State,
-//     var_level: VarLevel,
-//     op: &NAryOp,
-// ) -> Result<(Vec<UnifType>, UnifType), TypecheckError> {
-//     Ok(match op {
-//     })
-// }
 
 /// The type of a custom contract. In nickel syntax, the returned type is:
 ///

@@ -4,7 +4,7 @@
 use smallvec::SmallVec;
 
 use crate::{
-    error::EvalErrorData,
+    error::EvalErrorKind,
     eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
     position::PosTable,
@@ -127,7 +127,7 @@ pub fn desugar_let(
         ));
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalErrorData::FailedDestructuring {
+            Term::RuntimeError(EvalErrorKind::FailedDestructuring {
                 value: rhs.clone(),
                 pattern: pat.clone(),
             }),

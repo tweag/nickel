@@ -9,9 +9,7 @@
 use crate::{
     ast::{alloc::AstAlloc, typ::Type},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
-    error::{
-        Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors, ReplError,
-    },
+    error::{Error, EvalErrorKind, IOError, NullReporter, ParseError, ParseErrors, ReplErrorKind},
     eval::{
         self, Closure, VirtualMachine, VmContext, cache::Cache as EvalCache, value::NickelValue,
     },
@@ -220,10 +218,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver
             .add_repl_bindings(&self.vm_ctxt.pos_table, &value)
             .map_err(|NotARecord| {
-                Error::EvalError(EvalError {
-                    error: EvalErrorData::Other(String::from("load: expected a record"), pos),
-                    ctxt: Default::default(),
-                })
+                Error::eval_error(
+                    Default::default(),
+                    EvalErrorKind::Other(String::from("load: expected a record"), pos),
+                )
             })?;
 
         eval::env_add_record(

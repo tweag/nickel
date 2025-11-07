@@ -25,7 +25,7 @@ use crate::{
     cache::*,
     closurize::Closurize as _,
     error::{
-        Error, EvalError, EvalErrorData, IOError, ParseError, ParseErrors, Reporter,
+        Error, EvalError, EvalErrorKind, IOError, ParseError, ParseErrors, Reporter,
         warning::Warning,
     },
     eval::{
@@ -923,12 +923,12 @@ impl<EC: EvalCache> Program<EC> {
     /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
     /// - If the result is a record, we recursively evaluate subfields to record spines
     /// - If the result isn't a record, it is returned as it is
-    /// - If the evaluation fails with [EvalErrorData::MissingFieldDef], the original
+    /// - If the evaluation fails with [EvalErrorKind::MissingFieldDef], the original
     ///   term is returned unevaluated[^missing-field-def]
     /// - If any other error occurs, the evaluation fails and returns the error.
     ///
     /// [^missing-field-def]: Because we want to handle partial configurations as well,
-    /// [EvalErrorData::MissingFieldDef] errors are _ignored_: if this is encountered when
+    /// [EvalErrorKind::MissingFieldDef] errors are _ignored_: if this is encountered when
     /// evaluating a field, this field is just left as it is and the evaluation proceeds.
     pub fn eval_record_spine(&mut self) -> Result<NickelValue, Error> {
         self.maybe_closurized_eval_record_spine(false)
@@ -1041,13 +1041,9 @@ impl<EC: EvalCache> Program<EC> {
             // be able to extract dcoumentation from their values anyways. All
             // other evaluation errors should however be reported to the user
             // instead of resulting in documentation being silently skipped.
-            if matches!(
-                result,
-                Err(Error::EvalError(EvalError {
-                    error: EvalErrorData::MissingFieldDef { .. },
-                    ..
-                }))
-            ) {
+            if let Err(Error::EvalError(err_data)) = &result
+                && let EvalErrorKind::MissingFieldDef { .. } = &err_data.error
+            {
                 return Ok(term);
             }
 
@@ -1122,14 +1118,12 @@ impl<EC: EvalCache> Program<EC> {
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
-        use crate::error::{ExportError, ExportErrorData};
+        use crate::error::ExportErrorKind;
 
         let term = self.eval_record_spine()?;
-        doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
-            ExportError {
-                pos_table: self.vm_ctxt.pos_table.clone(),
-                data: ExportErrorData::NoDocumentation(term.clone()).into(),
-            },
+        doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::export_error(
+            self.vm_ctxt.pos_table.clone(),
+            ExportErrorKind::NoDocumentation(term.clone()),
         ))
     }
 
@@ -1184,7 +1178,7 @@ impl<EC: EvalCache> Program<EC> {
 #[cfg(feature = "doc")]
 mod doc {
     use crate::{
-        error::{Error, ExportError, ExportErrorData, IOError},
+        error::{Error, ExportErrorKind, IOError},
         eval::value::{Container, NickelValue, ValueContentRef},
         position::PosTable,
         term::{Term, record::RecordData},
@@ -1290,10 +1284,7 @@ mod doc {
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
             serde_json::to_writer(out, self).map_err(|e| {
-                Error::ExportError(ExportError {
-                    data: ExportErrorData::Other(e.to_string()).into(),
-                    pos_table: PosTable::new(),
-                })
+                Error::export_error(PosTable::new(), ExportErrorKind::Other(e.to_string()))
             })
         }
 
@@ -1514,10 +1505,10 @@ mod tests {
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError {
-                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
-                        ctxt: Default::default(),
-                    })
+                    Error::eval_error(
+                        Default::default(),
+                        EvalErrorKind::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                    )
                 },
             )?;
         p.eval_full()
@@ -1529,10 +1520,10 @@ mod tests {
         let mut p: Program<CacheImpl> =
             Program::new_from_source(src, "<test>", std::io::sink(), NullReporter {}).map_err(
                 |io_err| {
-                    Error::EvalError(EvalError {
-                        error: EvalErrorData::Other(format!("IO error: {io_err}"), PosIdx::NONE),
-                        ctxt: Default::default(),
-                    })
+                    Error::eval_error(
+                        Default::default(),
+                        EvalErrorKind::Other(format!("IO error: {io_err}"), PosIdx::NONE),
+                    )
                 },
             )?;
         p.typecheck(TypecheckMode::Walk)

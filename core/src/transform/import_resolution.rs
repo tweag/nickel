@@ -6,7 +6,9 @@ use super::ImportResolver;
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
     use super::{ImportResolver, tolerant};
-    use crate::{error::ImportError, eval::value::NickelValue, files::FileId, position::PosTable};
+    use crate::{
+        error::ImportErrorKind, eval::value::NickelValue, files::FileId, position::PosTable,
+    };
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -45,7 +47,7 @@ pub mod strict {
         pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
-    ) -> Result<ResolveResult, ImportError>
+    ) -> Result<ResolveResult, ImportErrorKind>
     where
         R: ImportResolver,
     {
@@ -64,7 +66,7 @@ pub mod strict {
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,
-    ) -> Result<NickelValue, ImportError>
+    ) -> Result<NickelValue, ImportErrorKind>
     where
         R: ImportResolver,
     {
@@ -81,7 +83,7 @@ pub mod strict {
 pub mod tolerant {
     use super::ImportResolver;
     use crate::{
-        error::ImportError,
+        error::ImportErrorKind,
         eval::{value::NickelValue, value::ValueContentRef},
         files::FileId,
         position::PosTable,
@@ -98,7 +100,7 @@ pub mod tolerant {
         /// Imports that were resolved without errors, but are potentially yet to be transformed.
         pub resolved_ids: Vec<FileId>,
         /// Errors produced when failing to resolve imports.
-        pub import_errors: Vec<ImportError>,
+        pub import_errors: Vec<ImportErrorKind>,
     }
 
     /// Performs imports resolution in an error tolerant way.
@@ -118,7 +120,7 @@ pub mod tolerant {
         // If an import is resolved, then stack it.
         let transformed = value
             .traverse(
-                &mut |value: NickelValue| -> Result<NickelValue, ImportError> {
+                &mut |value: NickelValue| -> Result<NickelValue, ImportErrorKind> {
                     let (value, err) = transform_one(pos_table, value, resolver, source_file);
                     if let Some(err) = err {
                         import_errors.push(err);
@@ -154,7 +156,7 @@ pub mod tolerant {
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,
-    ) -> (NickelValue, Option<ImportError>)
+    ) -> (NickelValue, Option<ImportErrorKind>)
     where
         R: ImportResolver,
     {

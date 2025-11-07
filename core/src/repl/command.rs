@@ -34,9 +34,9 @@ pub enum Command {
 pub struct UnknownCommandError {}
 
 /// Check that an argument is non-empty, or return an error with the given optional message.
-fn require_arg(cmd: CommandType, arg: &str, msg_opt: Option<&str>) -> Result<(), ReplError> {
+fn require_arg(cmd: CommandType, arg: &str, msg_opt: Option<&str>) -> Result<(), ReplErrorKind> {
     if arg.trim().is_empty() {
-        Err(ReplError::MissingArg {
+        Err(ReplErrorKind::MissingArg {
             cmd,
             msg_opt: msg_opt.map(String::from),
         })
@@ -95,14 +95,14 @@ impl std::fmt::Display for CommandType {
 }
 
 impl FromStr for Command {
-    type Err = ReplError;
+    type Err = ReplErrorKind;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let cmd_end = s.find(' ').unwrap_or(s.len());
         let cmd_str: String = s.chars().take(cmd_end).collect();
         let cmd: CommandType = cmd_str
             .parse()
-            .map_err(|_| ReplError::UnknownCommand(cmd_str.clone()))?;
+            .map_err(|_| ReplErrorKind::UnknownCommand(cmd_str.clone()))?;
         let arg: String = s
             .chars()
             .skip(cmd_end + 1)

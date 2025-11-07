@@ -15,7 +15,7 @@ use nickel_lang_core::{
     cache::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
-    error::{ImportError, IntoDiagnostics, ParseErrors},
+    error::{ImportErrorKind, IntoDiagnostics, ParseErrors},
     eval::{VirtualMachine, VmContext, cache::CacheImpl, value::NickelValue},
     files::FileId,
     position::{PosTable, RawPos, RawSpan, TermPos},
@@ -227,8 +227,8 @@ impl World {
     }
 
     // Make a record of I/O errors in imports so that we can retry them when appropriate.
-    fn associate_failed_import(&mut self, err: &nickel_lang_core::error::TypecheckError) {
-        if let nickel_lang_core::error::TypecheckErrorData::ImportError(ImportError::IOError(
+    fn associate_failed_import(&mut self, err: &nickel_lang_core::error::TypecheckErrorData) {
+        if let nickel_lang_core::error::TypecheckErrorKind::ImportError(ImportErrorKind::IOError(
             name,
             _,
             pos,
@@ -610,7 +610,7 @@ impl World {
                 let name: String = self.sources.name(id).to_str().unwrap().into();
                 self.lsp_diagnostics(
                     file_id,
-                    ImportError::IOError(name, String::from(message), pos),
+                    ImportErrorKind::IOError(name, String::from(message), pos),
                 )
             })
             .collect();
@@ -700,7 +700,7 @@ impl World {
         file_id: FileId,
         recursion_limit: usize,
     ) -> Vec<SerializableDiagnostic> {
-        use nickel_lang_core::error::{EvalError, EvalErrorData};
+        use nickel_lang_core::error::{EvalErrorData, EvalErrorKind};
 
         let mut diags = self.parse_and_typecheck(file_id);
 
@@ -723,9 +723,9 @@ impl World {
                     .into_iter()
                     .filter(|e| {
                         !matches!(
-                            e,
-                            EvalError {
-                                error: EvalErrorData::MissingFieldDef { .. },
+                            &**e,
+                            EvalErrorData {
+                                error: EvalErrorKind::MissingFieldDef { .. },
                                 ctxt: _
                             }
                         )
@@ -1088,7 +1088,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
         &'ast_out mut self,
         import: &Import<'_>,
         pos: &TermPos,
-    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportErrorKind> {
         use nickel_lang_core::ast::Import;
         use std::ffi::OsStr;
 
@@ -1124,7 +1124,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                     .sources
                     .package_map
                     .as_ref()
-                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                    .ok_or(ImportErrorKind::NoPackageMap { pos: *pos })?;
                 let parent_path = parent_id
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
@@ -1155,7 +1155,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
                     .iter()
                     .map(|p| p.to_string_lossy())
                     .collect::<Vec<_>>();
-                ImportError::IOError(
+                ImportErrorKind::IOError(
                     path.to_string_lossy().into_owned(),
                     format!("could not find import (looked in [{}])", parents.join(", ")),
                     *pos,
@@ -1266,7 +1266,7 @@ impl AstImportResolver for StdlibResolver {
         &'ast_out mut self,
         _import: &nickel_lang_core::ast::Import<'_>,
         _pos: &TermPos,
-    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportErrorKind> {
         panic!("unexpected import from the `std` module")
     }
 }

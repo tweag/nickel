@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     cache::resolvers::{DummyResolver, SimpleResolver},
-    error::{ImportError, NullReporter},
+    error::{ImportErrorKind, NullReporter},
     files::Files,
     label::Label,
     parser::{ErrorTolerantParserCompat, grammar, lexer},
@@ -65,19 +65,19 @@ fn identity_over_values() {
 
 #[test]
 fn blame_panics() {
-    let l = Label::dummy();
-    if let Err(EvalError {
-        error:
-            EvalErrorData::BlameError {
-                evaluated_arg: _,
-                label,
-            },
-        ctxt: _,
-    }) = eval_no_import(mk_term::op1(
+    let dummy = Label::dummy();
+    let res = eval_no_import(mk_term::op1(
         UnaryOp::Blame,
-        NickelValue::label_posless(l.clone()),
-    )) {
-        assert_eq!(label, l);
+        NickelValue::label_posless(dummy.clone()),
+    ));
+
+    if let Err(data) = res
+        && let EvalErrorKind::BlameError {
+            evaluated_arg: _,
+            label,
+        } = data.error
+    {
+        assert_eq!(dummy, label);
     } else {
         panic!("This evaluation should've returned a BlameError!");
     }
@@ -188,7 +188,7 @@ fn imports() {
         var: &str,
         import: &str,
         body: NickelValue,
-    ) -> Result<NickelValue, ImportError>
+    ) -> Result<NickelValue, ImportErrorKind>
     where
         R: ImportResolver,
     {
@@ -206,13 +206,13 @@ fn imports() {
 
     // let x = import "does_not_exist" in x
     match mk_import(&mut vm_ctxt, "x", "does_not_exist", mk_term::var("x")).unwrap_err() {
-        ImportError::IOError(_, _, _) => (),
+        ImportErrorKind::IOError(_, _, _) => (),
         _ => panic!(),
     };
 
     // let x = import "bad" in x
     match mk_import(&mut vm_ctxt, "x", "bad", mk_term::var("x")).unwrap_err() {
-        ImportError::ParseErrors(_, _) => (),
+        ImportErrorKind::ParseErrors(_, _) => (),
         _ => panic!(),
     };
 
@@ -432,10 +432,7 @@ fn foreign_id() {
     );
     assert_matches!(
         eval_no_import(t_eq),
-        Err(EvalError {
-            error: EvalErrorData::IncomparableValues { .. },
-            ctxt: _
-        })
+        Err(data) if matches!(data.error, EvalErrorKind::IncomparableValues { .. })
     );
 
     // Opaque values cannot be merged (even if they're equal, since they can't get compared for equality).
@@ -446,10 +443,7 @@ fn foreign_id() {
     );
     assert_matches!(
         eval_full_no_import(t_merge),
-        Err(EvalError {
-            error: EvalErrorData::MergeIncompatibleArgs { .. },
-            ctxt: _
-        })
+        Err(data) if matches!(data.error, EvalErrorKind::MergeIncompatibleArgs { .. })
     );
 
     let t_typeof = mk_term::op1(UnaryOp::Typeof, NickelValue::foreign_id_posless(42));

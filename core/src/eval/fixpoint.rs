@@ -73,7 +73,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 
                 (id.ident(), cache.add(final_closure, BindingType::Normal))
             } else {
-                let error = EvalErrorData::MissingFieldDef {
+                let error = EvalErrorKind::MissingFieldDef {
                     id: *id,
                     metadata: field.metadata.clone(),
                     pos_record,

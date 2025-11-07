@@ -1,6 +1,6 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
-    error::{ExportErrorData, PointedExportErrorData},
+    error::{ExportErrorKind, PointedExportErrorData},
     eval::value::{ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
     metrics,
@@ -453,7 +453,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                 Ok(())
             }
             ValueContentRef::Null => {
-                Err(ExportErrorData::UnsupportedNull(format, value.clone()).into())
+                Err(ExportErrorKind::UnsupportedNull(format, value.clone()).into())
             }
             ValueContentRef::Bool(_)
             | ValueContentRef::Record(Container::Empty)
@@ -461,13 +461,13 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
             | ValueContentRef::String(_) => Ok(()),
             ValueContentRef::EnumVariant(EnumVariantData { arg: None, .. }) => Ok(()),
             ValueContentRef::EnumVariant(EnumVariantData { arg: Some(_), .. }) => {
-                Err(ExportErrorData::NonSerializable(value.clone()).into())
+                Err(ExportErrorKind::NonSerializable(value.clone()).into())
             }
             ValueContentRef::Number(n) => {
                 if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
                     Ok(())
                 } else {
-                    Err(ExportErrorData::NumberOutOfRange {
+                    Err(ExportErrorKind::NumberOutOfRange {
                         term: value.clone(),
                         value: n.clone(),
                     }
@@ -508,10 +508,10 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                 if let Term::Value(nickel_val) = term {
                     do_validate(format, nickel_val)
                 } else {
-                    Err(ExportErrorData::NonSerializable(value.clone()).into())
+                    Err(ExportErrorKind::NonSerializable(value.clone()).into())
                 }
             }
-            _ => Err(ExportErrorData::NonSerializable(value.clone()).into()),
+            _ => Err(ExportErrorKind::NonSerializable(value.clone()).into()),
         }
     }
 
@@ -519,7 +519,7 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
         if value.as_string().is_some() {
             Ok(())
         } else {
-            Err(ExportErrorData::NotAString(value.clone()).into())
+            Err(ExportErrorKind::NotAString(value.clone()).into())
         }
     } else {
         let mut result = do_validate(format, value);
@@ -545,15 +545,15 @@ where
     match format {
         MetadataExportFormat::Markdown => unimplemented!(),
         MetadataExportFormat::Json => serde_json::to_writer_pretty(writer, &item)
-            .map_err(|err| ExportErrorData::Other(err.to_string())),
+            .map_err(|err| ExportErrorKind::Other(err.to_string())),
         MetadataExportFormat::Yaml => serde_yaml::to_writer(writer, &item)
-            .map_err(|err| ExportErrorData::Other(err.to_string())),
+            .map_err(|err| ExportErrorKind::Other(err.to_string())),
         MetadataExportFormat::Toml => toml::to_string_pretty(item)
-            .map_err(|err| ExportErrorData::Other(err.to_string()))
+            .map_err(|err| ExportErrorKind::Other(err.to_string()))
             .and_then(|s| {
                 writer
                     .write_all(s.as_bytes())
-                    .map_err(|err| ExportErrorData::Other(err.to_string()))
+                    .map_err(|err| ExportErrorKind::Other(err.to_string()))
             }),
     }?;
 
@@ -573,21 +573,21 @@ where
 
     match format {
         ExportFormat::Json => serde_json::to_writer_pretty(writer, &value)
-            .map_err(|err| ExportErrorData::Other(err.to_string())),
+            .map_err(|err| ExportErrorKind::Other(err.to_string())),
         ExportFormat::Yaml => serde_yaml::to_writer(writer, &value)
-            .map_err(|err| ExportErrorData::Other(err.to_string())),
+            .map_err(|err| ExportErrorKind::Other(err.to_string())),
         ExportFormat::Toml => toml::to_string_pretty(value)
-            .map_err(|err| ExportErrorData::Other(err.to_string()))
+            .map_err(|err| ExportErrorKind::Other(err.to_string()))
             .and_then(|s| {
                 writer
                     .write_all(s.as_bytes())
-                    .map_err(|err| ExportErrorData::Other(err.to_string()))
+                    .map_err(|err| ExportErrorKind::Other(err.to_string()))
             }),
         ExportFormat::Text => match value.as_string() {
             Some(s) => writer
                 .write_all(s.as_bytes())
-                .map_err(|err| ExportErrorData::Other(err.to_string())),
-            _ => Err(ExportErrorData::Other(format!(
+                .map_err(|err| ExportErrorKind::Other(err.to_string())),
+            _ => Err(ExportErrorKind::Other(format!(
                 "raw export requires a `String`, got {}",
                 // unwrap(): terms must be fully evaluated before serialization,
                 // and fully evaluated terms have a definite type.

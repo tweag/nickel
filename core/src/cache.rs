@@ -14,7 +14,7 @@ use crate::{
         compat::{ToAst, ToMainline},
     },
     closurize::Closurize as _,
-    error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
+    error::{Error, ImportErrorKind, ParseError, ParseErrors, TypecheckError},
     eval::{cache::Cache as EvalCache, value::NickelValue},
     files::{FileId, Files},
     identifier::LocIdent,
@@ -1210,7 +1210,7 @@ impl CacheHub {
         &mut self,
         pos_table: &mut PosTable,
         file_id: FileId,
-    ) -> Result<CacheOp<Vec<FileId>>, TermCacheError<ImportError>> {
+    ) -> Result<CacheOp<Vec<FileId>>, TermCacheError<ImportErrorKind>> {
         let entry = self.terms.terms.get(&file_id);
 
         match entry {
@@ -1393,7 +1393,7 @@ impl CacheHub {
         &mut self,
         pos_table: &mut PosTable,
         main_id: FileId,
-    ) -> Result<CacheOp<()>, AstCacheError<ImportError>> {
+    ) -> Result<CacheOp<()>, AstCacheError<ImportErrorKind>> {
         if self.terms.contains(main_id) {
             return Ok(CacheOp::Cached(()));
         }
@@ -1436,7 +1436,7 @@ impl CacheHub {
                     .sources
                     .parse_other(pos_table, file_id, format)
                     .map_err(|parse_err| {
-                        CacheError::Error(ImportError::ParseErrors(
+                        CacheError::Error(ImportErrorKind::ParseErrors(
                             parse_err.into(),
                             self.import_data
                                 .rev_imports
@@ -1489,7 +1489,7 @@ impl CacheHub {
 
         done = matches!(
             self.compile(pos_table, file_id)
-                .map_err(|cache_err| cache_err.map_err(Error::ImportError))?,
+                .map_err(|cache_err| cache_err.map_err(Error::import_error))?,
             CacheOp::Done(_)
         ) || done;
 
@@ -1497,7 +1497,7 @@ impl CacheHub {
             .resolve_imports(pos_table, file_id)
             // force_cast(): since we compiled `file_id`, the term cache must be populated, and
             // thus `resolve_imports` should never throw `CacheError::IncompatibleState`.
-            .map_err(|cache_err| cache_err.map_err(Error::ImportError).force_cast())?;
+            .map_err(|cache_err| cache_err.map_err(Error::import_error).force_cast())?;
         done = matches!(imports, CacheOp::Done(_)) || done;
 
         let transform = self
@@ -1951,7 +1951,7 @@ pub trait ImportResolver {
         import: &term::Import,
         parent: Option<FileId>,
         pos_idx: PosIdx,
-    ) -> Result<(ResolvedTerm, FileId), ImportError>;
+    ) -> Result<(ResolvedTerm, FileId), ImportErrorKind>;
 
     /// Return a reference to the file database.
     fn files(&self) -> &Files;
@@ -1981,7 +1981,7 @@ impl ImportResolver for CacheHub {
         import: &term::Import,
         parent: Option<FileId>,
         pos_idx: PosIdx,
-    ) -> Result<(ResolvedTerm, FileId), ImportError> {
+    ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
         let pos = pos_table.get(pos_idx);
 
         let (possible_parents, path, pkg_id, format) = match import {
@@ -2008,7 +2008,7 @@ impl ImportResolver for CacheHub {
                     .sources
                     .package_map
                     .as_ref()
-                    .ok_or(ImportError::NoPackageMap { pos })?;
+                    .ok_or(ImportErrorKind::NoPackageMap { pos })?;
                 let parent_path = parent
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
@@ -2039,7 +2039,7 @@ impl ImportResolver for CacheHub {
                     .iter()
                     .map(|p| p.to_string_lossy())
                     .collect::<Vec<_>>();
-                ImportError::IOError(
+                ImportErrorKind::IOError(
                     path.to_string_lossy().into_owned(),
                     format!("could not find import (looked in [{}])", parents.join(", ")),
                     pos,
@@ -2066,7 +2066,7 @@ impl ImportResolver for CacheHub {
         }
 
         self.parse_to_term(pos_table, file_id, format)
-            .map_err(|err| ImportError::ParseErrors(err, pos))?;
+            .map_err(|err| ImportErrorKind::ParseErrors(err, pos))?;
 
         if let Some(pkg_id) = pkg_id {
             self.sources.packages.insert(file_id, pkg_id);
@@ -2131,7 +2131,7 @@ pub trait AstImportResolver {
         &'ast_out mut self,
         import: &ast::Import<'_>,
         pos: &TermPos,
-    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError>;
+    ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportErrorKind>;
 }
 
 /// Normalize the path of a file for unique identification in the cache.
@@ -2264,7 +2264,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
         &mut self,
         import: &ast::Import<'_>,
         pos: &TermPos,
-    ) -> Result<Option<&Ast<'_>>, ImportError> {
+    ) -> Result<Option<&Ast<'_>>, ImportErrorKind> {
         let parent_id = pos.src_id();
 
         let (possible_parents, path, pkg_id, format) = match import {
@@ -2297,7 +2297,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                     .sources
                     .package_map
                     .as_ref()
-                    .ok_or(ImportError::NoPackageMap { pos: *pos })?;
+                    .ok_or(ImportErrorKind::NoPackageMap { pos: *pos })?;
                 let parent_path = parent_id
                     .and_then(|p| self.sources.packages.get(&p))
                     .map(PathBuf::as_path);
@@ -2325,7 +2325,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                     .iter()
                     .map(|p| p.to_string_lossy())
                     .collect::<Vec<_>>();
-                ImportError::IOError(
+                ImportErrorKind::IOError(
                     path.to_string_lossy().into_owned(),
                     format!("could not find import (looked in [{}])", parents.join(", ")),
                     *pos,
@@ -2357,7 +2357,7 @@ impl AstImportResolver for AstResolver<'_, '_> {
                 Ok(Some(entry.ast))
             } else {
                 let ast = parse_nickel(self.alloc, file_id, self.sources.files.source(file_id))
-                    .map_err(|parse_err| ImportError::ParseErrors(parse_err, *pos))?;
+                    .map_err(|parse_err| ImportErrorKind::ParseErrors(parse_err, *pos))?;
                 let ast = self.alloc.alloc(ast);
                 self.asts.insert(file_id, AstEntry::new(ast));
 
@@ -2387,7 +2387,7 @@ pub mod resolvers {
             _import: &Import,
             _parent: Option<FileId>,
             _pos_idx: PosIdx,
-        ) -> Result<(ResolvedTerm, FileId), ImportError> {
+        ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
@@ -2438,7 +2438,7 @@ pub mod resolvers {
             import: &Import,
             _parent: Option<FileId>,
             pos_idx: PosIdx,
-        ) -> Result<(ResolvedTerm, FileId), ImportError> {
+        ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
             let Import::Path { path, .. } = import else {
                 panic!("simple resolver doesn't support packages");
             };
@@ -2450,7 +2450,7 @@ pub mod resolvers {
                 .get(path.to_string_lossy().as_ref())
                 .copied()
                 .ok_or_else(|| {
-                    ImportError::IOError(
+                    ImportErrorKind::IOError(
                         path.to_string_lossy().into_owned(),
                         String::from("Import not found by the mockup resolver."),
                         pos,
@@ -2463,7 +2463,7 @@ pub mod resolvers {
 
                 let ast = parser::grammar::TermParser::new()
                     .parse_strict(&alloc, file_id, Lexer::new(buf))
-                    .map_err(|e| ImportError::ParseErrors(e, pos))?;
+                    .map_err(|e| ImportErrorKind::ParseErrors(e, pos))?;
                 e.insert(ast.to_mainline(pos_table));
 
                 Ok((

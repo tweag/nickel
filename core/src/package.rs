@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{error::ImportError, identifier::Ident, position::TermPos};
+use crate::{error::ImportErrorKind, identifier::Ident, position::TermPos};
 
 /// Maps package imports to filesystem locations.
 ///
@@ -40,14 +40,14 @@ impl PackageMap {
         parent: Option<&Path>,
         name: Ident,
         pos: TermPos,
-    ) -> Result<&Path, ImportError> {
+    ) -> Result<&Path, ImportErrorKind> {
         let result = match parent {
             Some(parent) => self.packages.get(&(parent.to_owned(), name)),
             None => self.top_level.get(&name),
         };
         result
             .map(PathBuf::as_path)
-            .ok_or_else(|| ImportError::MissingDependency {
+            .ok_or_else(|| ImportErrorKind::MissingDependency {
                 parent: parent.map(Path::to_owned),
                 missing: name,
                 pos,

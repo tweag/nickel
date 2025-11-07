@@ -95,7 +95,7 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
                             // checked successfully and this one failed.
                             match (row_result, prev_row_typ) {
                                 (Err(_), Some(prev_ty)) => {
-                                     Err(UnifError::InhomogeneousRecord { row_a: prev_ty.clone(), row_b: a.typ.clone() })
+                                     Err(Box::new(UnifErrorKind::InhomogeneousRecord { row_a: prev_ty.clone(), row_b: a.typ.clone() }))
                                 }
                                 (x, _) => x,
                             }?;
@@ -119,7 +119,7 @@ impl<'ast> SubsumedBy<'ast> for UnifType<'ast> {
                                 },
                                 var_levels_data,
                             };
-                            Err(UnifError::WithConst {
+                            Err(UnifErrorKind::WithConst {
                                 var_kind: VarKindDiscriminant::RecordRows,
                                 expected_const_id: id,
                                 inferred: checked,
@@ -228,28 +228,32 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                     let (ty_res, urrows_without_ty_res) = urrows1
                         .remove_row(&row2.id, &row2.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(row2.id),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row2.id),
                             RemoveRowError::Conflict => {
-                                RowUnifError::RecordRowConflict(row2.clone())
+                                RowUnifErrorKind::RecordRowConflict(row2.clone())
                             }
                         })?;
                     if let RemoveRowResult::Extracted(ty) = ty_res {
                         ty.subsumed_by(*row2.typ, state, ctxt.clone())
-                            .map_err(|err| RowUnifError::RecordRowMismatch {
-                                id: row2.id,
-                                cause: Box::new(err),
+                            .map_err(|err| {
+                                Box::new(RowUnifErrorKind::RecordRowMismatch {
+                                    id: row2.id,
+                                    cause: err,
+                                })
                             })?;
                     }
 
                     urrows_without_ty_res.subsumed_by(*tail2, state, ctxt)
                 }
                 (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
-                    Err(RowUnifError::UnboundTypeVariable(id))
+                    Err(Box::new(RowUnifErrorKind::UnboundTypeVariable(id)))
                 }
                 (RecordRowsF::Empty, RecordRowsF::Empty)
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
                 (RecordRowsF::Empty, RecordRowsF::TailDyn)
-                | (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::ExtraDynTail),
+                | (RecordRowsF::TailDyn, RecordRowsF::Empty) => {
+                    Err(Box::new(RowUnifErrorKind::ExtraDynTail))
+                }
                 (
                     RecordRowsF::Empty,
                     RecordRowsF::Extend {
@@ -263,7 +267,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                         row: UnifRecordRow { id, .. },
                         ..
                     },
-                ) => Err(RowUnifError::MissingRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
                 (
                     RecordRowsF::Extend {
                         row: UnifRecordRow { id, .. },
@@ -277,7 +281,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                         ..
                     },
                     RecordRowsF::Empty,
-                ) => Err(RowUnifError::ExtraRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::ExtraRow(id))),
             },
             (UnifRecordRows::UnifVar { id, .. }, urrows)
             | (urrows, UnifRecordRows::UnifVar { id, .. }) => {
@@ -285,10 +289,10 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                     let constant_level = state.table.get_rrows_level(cst_id);
                     state.table.force_rrows_updates(constant_level);
                     if state.table.get_rrows_level(id) < constant_level {
-                        return Err(RowUnifError::VarLevelMismatch {
+                        return Err(Box::new(RowUnifErrorKind::VarLevelMismatch {
                             constant_id: cst_id,
                             var_kind: VarKindDiscriminant::RecordRows,
-                        });
+                        }));
                     }
                 }
                 urrows.propagate_constrs(state.constr, id)?;
@@ -297,18 +301,18 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
             }
             (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
             (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
-                Err(RowUnifError::ConstMismatch {
+                Err(Box::new(RowUnifErrorKind::ConstMismatch {
                     var_kind: VarKindDiscriminant::RecordRows,
                     expected_const_id: i2,
                     inferred_const_id: i1,
-                })
+                }))
             }
             (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
-                Err(RowUnifError::WithConst {
+                Err(Box::new(RowUnifErrorKind::WithConst {
                     var_kind: VarKindDiscriminant::RecordRows,
                     expected_const_id: i,
                     inferred: UnifType::concrete(TypeF::Record(urrows)),
-                })
+                }))
             }
         }
     }

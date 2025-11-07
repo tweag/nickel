@@ -13,7 +13,7 @@ use string::NickelString;
 use crate::{
     cache::InputFormat,
     combine::Combine,
-    error::{EvalErrorData, ParseError},
+    error::{EvalErrorKind, ParseError},
     eval::{Environment, contract_eq, value::NickelValue},
     files::FileId,
     identifier::{Ident, LocIdent},
@@ -255,7 +255,7 @@ pub enum Term {
     /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
     /// evaluated, will raise a proper missing field definition error. This is precisely the
     /// behavior of `RuntimeError` behaves.
-    RuntimeError(EvalErrorData),
+    RuntimeError(EvalErrorKind),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
