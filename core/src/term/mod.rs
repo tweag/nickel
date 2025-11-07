@@ -114,6 +114,13 @@ pub struct OpNData {
     pub args: Vec<NickelValue>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SealedData {
+    pub key: SealingKey,
+    pub inner: NickelValue,
+    pub label: Label,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -202,7 +209,7 @@ pub enum Term {
     ///   term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
     ///   type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     ///   expected `Sealed(1, _)`, hence it raises a positive blame.
-    Sealed(SealingKey, NickelValue, Label),
+    Sealed(Box<SealedData>),
 
     /// A term with a type and/or contract annotation.
     Annotated(TypeAnnotation, NickelValue),
@@ -914,6 +921,10 @@ impl Term {
 
     pub fn opn(op: NAryOp, args: Vec<NickelValue>) -> Self {
         Term::OpN(OpNData { op, args })
+    }
+
+    pub fn sealed(key: SealingKey, inner: NickelValue, label: Label) -> Self {
+        Term::Sealed(Box::new(SealedData { key, inner, label }))
     }
 }
 
@@ -1827,9 +1838,9 @@ impl Traverse<NickelValue> for Term {
 
                 Term::OpN(data)
             }
-            Term::Sealed(key, inner, label) => {
-                let inner = inner.traverse(f, order)?;
-                Term::Sealed(key, inner, label)
+            Term::Sealed(mut data) => {
+                data.inner = data.inner.traverse(f, order)?;
+                Term::Sealed(data)
             }
             Term::RecRecord(mut data) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1914,10 +1925,10 @@ impl Traverse<NickelValue> for Term {
                 }
             }),
             Term::Op1(data) => data.arg.traverse_ref(f, state),
-            Term::Fun(FunData { arg: _, body: t })
-            | Term::Sealed(_, t, _)
-            | Term::Value(t)
-            | Term::Closurize(t) => t.traverse_ref(f, state),
+            Term::Sealed(data) => data.inner.traverse_ref(f, state),
+            Term::Fun(FunData { arg: _, body: t }) | Term::Value(t) | Term::Closurize(t) => {
+                t.traverse_ref(f, state)
+            }
             Term::FunPattern(data) => data.body.traverse_ref(f, state),
             Term::Let(data) => data
                 .bindings

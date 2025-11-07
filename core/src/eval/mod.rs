@@ -682,13 +682,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     value: value.clone(),
                     env,
                 },
-                ValueContentRef::Term(Term::Sealed(key, inner, label)) => {
+                ValueContentRef::Term(Term::Sealed(data)) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        value: NickelValue::term(
-                            Term::Sealed(*key, inner.clone(), label.clone()),
-                            pos_idx,
-                        ),
+                        value: NickelValue::term(Term::Sealed(data.clone()), pos_idx),
                         env: env.clone(),
                     };
 
@@ -722,15 +719,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Some(OperationCont::Op1(UnaryOp::Seq, _)) => {
                             // Then, evaluate / `Seq` the inner value.
                             Closure {
-                                value: inner.clone(),
+                                value: data.inner.clone(),
                                 env,
                             }
                         }
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(EvalErrorData::BlameError {
-                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                                label: label.clone(),
+                                evaluated_arg: data.label.get_evaluated_arg(&self.context.cache),
+                                label: data.label.clone(),
                             });
                         }
                     }
@@ -1599,9 +1596,9 @@ pub fn subst<C: Cache>(
                     NickelValue::term(Term::OpN(data), pos_idx)
                 }
                 TermContent::Sealed(lens) => {
-                    let (i, t, lbl) = lens.take();
-                    let t = subst(pos_table, cache, t, initial_env, env);
-                    NickelValue::term(Term::Sealed(i, t, lbl), pos_idx)
+                    let mut data = lens.take();
+                    data.inner = subst(pos_table, cache, data.inner, initial_env, env);
+                    NickelValue::term(Term::Sealed(data), pos_idx)
                 }
                 // Currently, we downright ignore `include` expressions. However, one could argue that
                 // substituting `foo` for `bar` in `{include foo}` should result in `{foo = bar}`.
