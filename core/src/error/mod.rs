@@ -13,9 +13,9 @@ use crate::{
     ast::{
         Ast, MergeKind,
         alloc::{AstAlloc, CloneTo},
+        compat::ToMainline as _,
         typ::{EnumRow, RecordRow, Type},
     },
-    bytecode::ast::compat::ToMainline as _,
     cache::InputFormat,
     eval::{
         callstack::CallStack,

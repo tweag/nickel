@@ -4,9 +4,9 @@
 #![allow(clippy::result_large_err)]
 
 use nickel_lang_parser::metrics;
-pub use nickel_lang_parser::{ast, combine, environment, files, identifier, traverse};
+pub use nickel_lang_parser::{combine, environment, files, identifier, traverse};
 
-pub mod bytecode;
+pub mod ast;
 pub mod cache;
 pub mod closurize;
 pub mod deserialize;

@@ -44,7 +44,7 @@ use nickel_lang_core::{
 };
 
 /// Both [Array] and [Record] are borrowing from an underlying allocation. However,
-/// [nickel_lang_core::bytecode::value::NickelValue] inline empty containers, meaning that
+/// [nickel_lang_core::eval::value::NickelValue] inline empty containers, meaning that
 /// sometimes, we don't actually have an allocation to borrow from.
 ///
 /// Instead, we store a [`Container<&OtherRepr>`][nickel_lang_core::bytecode::value::Container],

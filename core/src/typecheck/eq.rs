@@ -557,7 +557,7 @@ impl<'ast> TypeEqBounded<'ast> for FieldDef<'ast> {
 
 impl<'ast> TypeEqBounded<'ast> for UnifType<'ast> {
     /// This function is used internally by the implementation of [TypeEq] for
-    /// [crate::bytecode::ast::typ::Type], but it makes a number of assumptions and isn't supposed
+    /// [crate::ast::typ::Type], but it makes a number of assumptions and isn't supposed
     /// to be called from the outside. And indeed, computing type equality recursively on unifiable
     /// type doesn't make a lot of sense: we can unify them instead.
     ///

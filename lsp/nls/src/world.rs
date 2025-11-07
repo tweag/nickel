@@ -91,7 +91,7 @@ impl World {
         config: LspConfig,
         cfgs: crate::contracts::ContractConfigsWatcher,
     ) -> Self {
-        use nickel_lang_core::bytecode::ast::compat::ToMainline;
+        use nickel_lang_core::ast::compat::ToMainline;
 
         let mut sources = SourceCache::new();
 
@@ -1003,7 +1003,7 @@ impl World {
     /// the given file and the transitive closure of its imports.
     pub fn cache_hub_for_eval(&self, file_id: FileId) -> (CacheHub, PosTable) {
         use nickel_lang_core::{
-            bytecode::ast::compat::ToMainline,
+            ast::compat::ToMainline,
             cache::{TermEntry, TermEntryState},
         };
 

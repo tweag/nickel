@@ -1,6 +1,8 @@
 use crate::{
-    ast::{Ast, AstAlloc},
-    bytecode::ast::compat::{FromAst, ToMainline},
+    ast::{
+        Ast, AstAlloc,
+        compat::{FromAst, ToMainline},
+    },
     eval::value::NickelValue,
     position::PosTable,
 };

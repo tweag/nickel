@@ -132,7 +132,7 @@ pub struct AnnotatedData {
 /// # History
 ///
 /// [Term] used to be the single representation from parsing to execution, but a new, more compact
-/// and closer-to-source AST has been introduced in [crate::bytecode::ast] and is now used for the
+/// and closer-to-source AST has been introduced in [nickel_lang_parser::ast] and is now used for the
 /// front-end (parser, typechecker, and LSP).
 ///
 /// [Term] remains as a temporary runtime representation until the bytecode virtual machine and

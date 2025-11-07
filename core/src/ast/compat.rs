@@ -2,8 +2,9 @@
 //!
 //! This module defines a trait for converting to and from the representation used in stable Nickel
 //! to the new AST representation of the bytecode compiler, and implements it for the types defined
-//! in [crate::bytecode::ast].
+//! in [nickel_lang_parser::ast].
 
+use super::{primop::PrimOp, *};
 use crate::{
     combine::Combine,
     eval::value::{
@@ -17,14 +18,12 @@ use crate::{
 use indexmap::IndexMap;
 use nickel_lang_parser::{
     ast::{
-        self, Annotation, Ast, AstAlloc, Import, LetBinding, LetMetadata, MatchBranch, Node,
-        StringChunk,
+        self,
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
             OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
         },
-        primop::PrimOp,
-        record::{self, Record},
+        record::Record,
         typ::{
             EnumRow, EnumRows, EnumRowsUnr, RecordRow, RecordRows, RecordRowsUnr, Type, TypeUnr,
         },
@@ -1056,7 +1055,7 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         ///
         /// # Preconditions
         /// - /!\ path must be **non-empty**, otherwise this function panics
-        use ast::record::FieldPathElem;
+        use super::record::FieldPathElem;
 
         // unwrap(): field paths must be non-empty
         let name_innermost = field.path.last().unwrap().try_as_ident();

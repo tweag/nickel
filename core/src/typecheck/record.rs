@@ -686,7 +686,7 @@ pub(super) struct ResolvedField<'ast> {
     /// The accumulated values of the field, coming from piecewise definitions where this field
     /// appears last in the path.
     ///
-    /// We store the whole [crate::bytecode::ast::record::FieldDef] here, although we don't need
+    /// We store the whole [crate::ast::record::FieldDef] here, although we don't need
     /// the path anymore, because it's easier and less costly than creating an ad-hoc structure to
     /// store only the value and the metadata.
     defs: Vec<&'ast FieldDef<'ast>>,
@@ -700,7 +700,7 @@ impl<'ast> ResolvedField<'ast> {
     /// If there is no annotation at all, `None` is returned.
     ///
     /// [ResolvedField::first_annot] is equivalent to calling
-    /// [crate::bytecode::ast::Annotation::first] on the combined metadata of all definitions.
+    /// [crate::ast::Annotation::first] on the combined metadata of all definitions.
     pub fn first_annot(&self) -> Option<Type<'ast>> {
         self.defs
             .iter()

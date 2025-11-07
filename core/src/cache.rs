@@ -9,8 +9,10 @@ pub use ast_cache::AstCache;
 pub use nickel_lang_parser::ast::InputFormat;
 
 use crate::{
-    ast::{self, Ast, AstAlloc, TryConvert},
-    bytecode::ast::compat::{ToAst, ToMainline},
+    ast::{
+        self, Ast, AstAlloc, TryConvert,
+        compat::{ToAst, ToMainline},
+    },
     closurize::Closurize as _,
     error::{Error, ImportError, ParseError, ParseErrors, TypecheckError},
     eval::{cache::Cache as EvalCache, value::NickelValue},
