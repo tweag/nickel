@@ -572,9 +572,9 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 alloc.prim_op(op, args)
             }
             Term::Sealed(..) => panic!("didn't expect a sealed term at the first stage"),
-            Term::Annotated(annot, term) => alloc.annotated(
-                annot.to_ast(alloc, pos_table),
-                term.to_ast(alloc, pos_table),
+            Term::Annotated(data) => alloc.annotated(
+                data.annot.to_ast(alloc, pos_table),
+                data.inner.to_ast(alloc, pos_table),
             ),
             Term::Import(term::Import::Path { path, format }) => {
                 alloc.import_path(path.clone(), *format)
@@ -1496,7 +1496,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     }
 
                     NickelValue::term(
-                        term::Term::Annotated(metadata.annotation.to_mainline(pos_table), value),
+                        term::Term::annotated(metadata.annotation.to_mainline(pos_table), value),
                         pos_table.push(pos),
                     )
                 }
@@ -1643,7 +1643,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                 NickelValue::term(term, pos_table.push(ast.pos))
             }
             Node::Annotated { annot, inner } => NickelValue::term(
-                Term::Annotated(
+                Term::annotated(
                     (*annot).to_mainline(pos_table),
                     inner.to_mainline(pos_table),
                 ),

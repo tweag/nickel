@@ -1098,15 +1098,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
-                ValueContentRef::Term(Term::Annotated(annot, inner)) => {
+                ValueContentRef::Term(Term::Annotated(data)) => {
                     increment!("contract:free-standing(annotated)");
 
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
-                    let static_contract = annot.static_contract(&mut self.context.pos_table);
-                    let contracts = annot.pending_contracts(&mut self.context.pos_table)?;
-                    let pos_inner = inner.pos_idx();
-                    let inner = inner.clone();
+                    let static_contract = data.annot.static_contract(&mut self.context.pos_table);
+                    let contracts = data.annot.pending_contracts(&mut self.context.pos_table)?;
+                    let pos_inner = data.inner.pos_idx();
+                    let inner = data.inner.clone();
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
                         static_ctr?.apply(inner, pos_inner)
@@ -1635,10 +1635,11 @@ pub fn subst<C: Cache>(
                     NickelValue::term(Term::StrChunks(chunks), pos_idx)
                 }
                 TermContent::Annotated(lens) => {
-                    let (annot, t) = lens.take();
+                    let mut data = lens.take();
+                    data.inner = subst(pos_table, cache, data.inner, initial_env, env);
                     // Currently, there is no interest in replacing variables inside contracts, thus we
                     // limit the work of `subst`.
-                    NickelValue::term(Term::Annotated(annot, subst(pos_table, cache, t, initial_env, env)), pos_idx)
+                    NickelValue::term(Term::Annotated(data), pos_idx)
                 }
                 // We erase `Value` nodes during substitution. When performing substitution, the
                 // goal is to remove indirections.

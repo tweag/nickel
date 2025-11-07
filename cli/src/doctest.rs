@@ -451,7 +451,7 @@ fn doctest_transform(
                         );
                         let eq = mk_app!(eq, expected_term);
                         let eq_ty = Type::from(TypeF::Contract(eq));
-                        test_term = Term::Annotated(
+                        test_term = Term::annotated(
                             TypeAnnotation {
                                 typ: None,
                                 contracts: vec![LabeledType {

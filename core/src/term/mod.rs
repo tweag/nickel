@@ -121,6 +121,12 @@ pub struct SealedData {
     pub label: Label,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnnotatedData {
+    pub annot: TypeAnnotation,
+    pub inner: NickelValue,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -136,6 +142,8 @@ pub struct SealedData {
 /// representation described in RFC007. The remaining constructors of [Term] are the equivalent of
 /// "code" in the future VM, that is, computations.
 #[derive(Debug, Clone, PartialEq)]
+// This attribute is temporary; we will box the remaining variants soon.
+#[allow(clippy::large_enum_variant)]
 pub enum Term {
     /// An evaluated expression.
     Value(NickelValue),
@@ -212,7 +220,7 @@ pub enum Term {
     Sealed(Box<SealedData>),
 
     /// A term with a type and/or contract annotation.
-    Annotated(TypeAnnotation, NickelValue),
+    Annotated(Box<AnnotatedData>),
 
     /// An unresolved import.
     Import(Import),
@@ -925,6 +933,10 @@ impl Term {
 
     pub fn sealed(key: SealingKey, inner: NickelValue, label: Label) -> Self {
         Term::Sealed(Box::new(SealedData { key, inner, label }))
+    }
+
+    pub fn annotated(annot: TypeAnnotation, inner: NickelValue) -> Self {
+        Term::Annotated(Box::new(AnnotatedData { annot, inner }))
     }
 }
 
@@ -1885,10 +1897,10 @@ impl Traverse<NickelValue> for Term {
 
                 Term::StrChunks(chunks_res?)
             }
-            Term::Annotated(annot, term) => {
-                let annot = annot.traverse(f, order)?;
-                let term = term.traverse(f, order)?;
-                Term::Annotated(annot, term)
+            Term::Annotated(mut data) => {
+                data.annot = data.annot.traverse(f, order)?;
+                data.inner = data.inner.traverse(f, order)?;
+                Term::Annotated(data)
             }
             Term::Value(value) => {
                 let value = value.traverse(f, order)?;
@@ -1972,9 +1984,10 @@ impl Traverse<NickelValue> for Term {
                 },
             ),
             Term::OpN(data) => data.args.iter().find_map(|t| t.traverse_ref(f, state)),
-            Term::Annotated(annot, t) => t
+            Term::Annotated(data) => data
+                .inner
                 .traverse_ref(f, state)
-                .or_else(|| annot.traverse_ref(f, state)),
+                .or_else(|| data.annot.traverse_ref(f, state)),
         }
     }
 }
