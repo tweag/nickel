@@ -7,7 +7,7 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::{
-    bytecode::ast::{alloc::AstAlloc, typ::Type},
+    ast::{alloc::AstAlloc, typ::Type},
     cache::{CacheHub, InputFormat, NotARecord, SourcePath},
     error::{
         Error, EvalError, EvalErrorData, IOError, NullReporter, ParseError, ParseErrors, ReplError,

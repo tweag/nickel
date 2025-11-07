@@ -1,5 +1,5 @@
 use nickel_lang_core::{
-    bytecode::ast::{Ast, AstAlloc},
+    ast::{Ast, AstAlloc},
     error::{Error, NullReporter, ParseError},
     eval::{cache::CacheImpl, value::NickelValue},
     files::Files,

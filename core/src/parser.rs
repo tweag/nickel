@@ -1,25 +1,27 @@
 use crate::{
-    bytecode::ast::compat::{FromAst, ToMainline},
+    ast::{
+        Ast, AstAlloc,
+        compat::{FromAst, ToMainline},
+    },
     eval::value::NickelValue,
     position::PosTable,
 };
 
 use nickel_lang_parser::{
-    ast::{Ast, AstAlloc},
     error::{ParseError, ParseErrors},
     files::FileId,
-    grammar::{
-        CliFieldAssignmentParser, ExtendedTermParser, FixedTypeParser, StaticFieldPathParser,
-        TermParser,
-    },
     identifier::LocIdent,
     metrics,
     position::RawSpan,
 };
 
-// TODO(parser migration): compatibility shim
 pub use nickel_lang_parser::{
-    ErrorTolerantParser, ExtendedTerm, FullyErrorTolerantParser, error, grammar, lexer, utils,
+    ErrorTolerantParser, ExtendedTerm, FullyErrorTolerantParser, grammar,
+    grammar::{
+        CliFieldAssignmentParser, ExtendedTermParser, FixedTypeParser, StaticFieldPathParser,
+        TermParser,
+    },
+    lexer,
 };
 
 /// General interface of the various specialized Nickel parsers.

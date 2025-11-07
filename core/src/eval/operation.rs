@@ -31,12 +31,13 @@ use crate::{
     label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
-    parser::utils::parse_number_sci,
     position::{PosIdx, PosTable},
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{make as mk_term, record::*, string::NickelString, *},
 };
+
+use nickel_lang_parser::utils::parse_number_sci;
 
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;
@@ -3718,7 +3719,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 ///
 /// This function is a less precise version of `v.type_of()`, because `type_tag` has backward
 /// compatibility guarantees to uphold. Instead of relying on
-/// [crate::bytecode::value::NickelValue::type_of], it's safer to duplicate the logic here.
+/// [crate::eval::value::NickelValue::type_of], it's safer to duplicate the logic here.
 fn type_tag(v: &NickelValue) -> &'static str {
     match v.content_ref() {
         ValueContentRef::Null => "Other",

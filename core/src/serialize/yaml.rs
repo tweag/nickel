@@ -12,7 +12,7 @@ use codespan::ByteIndex;
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
-    bytecode::ast::{
+    ast::{
         self, Ast, AstAlloc,
         compat::ToMainline,
         record::{FieldMetadata, FieldPathElem},

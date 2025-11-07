@@ -5,13 +5,14 @@ use std::sync::LazyLock;
 
 use crate::{
     ast::{
-        Annotation, Ast, Import, InputFormat, LetBinding, MatchBranch, Node, Number, StringChunk,
+        Annotation, Ast, Import, InputFormat, LetBinding, MatchBranch, MergePriority, Node, Number,
+        StringChunk,
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, OrPattern, Pattern,
             PatternData, RecordPattern, TailPattern,
         },
         primop::{OpPos, PrimOp},
-        record::{FieldDef, FieldMetadata, FieldPathElem, MergePriority, Record},
+        record::{FieldDef, FieldMetadata, FieldPathElem, Record},
         typ::{EnumRow, EnumRows, RecordRows, Type, iter::RecordRowsItem},
     },
     identifier::{Ident, LocIdent},
@@ -1301,7 +1302,7 @@ macro_rules! impl_display_from_bytecode_pretty {
     ($ty:ty) => {
         impl std::fmt::Display for $ty {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                $crate::pretty::fmt_pretty(&self, f)
+                $crate::ast::pretty::fmt_pretty(&self, f)
             }
         }
     };

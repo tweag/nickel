@@ -1,5 +1,5 @@
 use crate::{
-    bytecode::ast::pattern::*,
+    ast::pattern::*,
     identifier::{Ident, LocIdent},
     mk_uty_record_row,
     typ::{EnumRowsF, RecordRowsF, TypeF},

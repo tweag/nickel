@@ -2,7 +2,7 @@
 //!
 //! This module defines a trait for converting to and from the representation used in stable Nickel
 //! to the new AST representation of the bytecode compiler, and implements it for the types defined
-//! in [crate::bytecode::ast].
+//! in [nickel_lang_parser::ast].
 
 use super::{primop::PrimOp, *};
 use crate::{
@@ -18,6 +18,7 @@ use crate::{
 use indexmap::IndexMap;
 use nickel_lang_parser::{
     ast::{
+        self,
         pattern::{
             ArrayPattern, ConstantPattern, ConstantPatternData, EnumPattern, FieldPattern,
             OrPattern, Pattern, PatternData, RecordPattern, TailPattern,
@@ -1829,7 +1830,7 @@ fn merge_fields(
             (lens1, lens2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
                     span: Some(id_span),
-                    kind: label::MergeKind::PiecewiseDef,
+                    kind: ast::MergeKind::PiecewiseDef,
                 }),
                 lens1.restore(),
                 lens2.restore(),

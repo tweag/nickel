@@ -7,7 +7,7 @@ use crate::position::PosIdx;
 /// Otherwise, it's considered to have no dependencies and is left untouched.
 ///
 /// This function achieve the same as [patch_field], but is somehow lower-level, as it operates on
-/// a general [crate::bytecode::value::NickelValue] instead of a [crate::term::record::Field]. In
+/// a general [crate::eval::value::NickelValue] instead of a [crate::term::record::Field]. In
 /// practice, the patched expression is either the value of a field or one of its pending contract.
 fn patch_value<C: Cache>(cache: &mut C, value: &mut NickelValue, rec_env: &[(Ident, CacheIndex)]) {
     if let ValueContentRefMut::Thunk(idx) = value.content_make_mut() {

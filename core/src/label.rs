@@ -5,6 +5,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    ast::MergeKind,
     eval::{
         cache::{Cache as EvalCache, CacheIndex},
         value::NickelValue,
@@ -17,9 +18,6 @@ use crate::{
     },
     typ::{Type, TypeF},
 };
-
-// TODO(parser migration): compatibility shim
-pub use nickel_lang_parser::ast::MergeKind;
 
 pub mod ty_path {
     //! Type paths.

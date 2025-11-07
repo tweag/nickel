@@ -55,7 +55,7 @@
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [HasApparentType]).
 use crate::{
-    bytecode::ast::{
+    ast::{
         Annotation, Ast, AstAlloc, LetBinding, MatchBranch, Node, StringChunk, TryConvert,
         alloc::CloneTo, pattern::bindings::Bindings as _, record::FieldDef, typ::*,
     },
@@ -149,7 +149,7 @@ pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 pub type UnifRecordRow<'ast> = RecordRowF<Box<UnifType<'ast>>>;
 pub type UnifRecordRowsUnr<'ast> = RecordRowsF<Box<UnifType<'ast>>, Box<UnifRecordRows<'ast>>>;
 
-/// Unifiable record rows. Same shape as [`crate::bytecode::ast::typ::RecordRows`], but where each
+/// Unifiable record rows. Same shape as [`crate::ast::typ::RecordRows`], but where each
 /// type is unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifRecordRows<'ast> {

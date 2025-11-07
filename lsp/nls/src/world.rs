@@ -11,7 +11,7 @@ use lsp_server::ResponseError;
 use lsp_types::{TextDocumentPositionParams, Url};
 
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Import, Node, pattern::bindings::Bindings as _, primop::PrimOp},
+    ast::{Ast, Import, Node, pattern::bindings::Bindings as _, primop::PrimOp},
     cache::{
         AstImportResolver, CacheHub, ImportData, ImportTarget, InputFormat, SourceCache, SourcePath,
     },
@@ -91,7 +91,7 @@ impl World {
         config: LspConfig,
         cfgs: crate::contracts::ContractConfigsWatcher,
     ) -> Self {
-        use nickel_lang_core::bytecode::ast::compat::ToMainline;
+        use nickel_lang_core::ast::compat::ToMainline;
 
         let mut sources = SourceCache::new();
 
@@ -1003,7 +1003,7 @@ impl World {
     /// the given file and the transitive closure of its imports.
     pub fn cache_hub_for_eval(&self, file_id: FileId) -> (CacheHub, PosTable) {
         use nickel_lang_core::{
-            bytecode::ast::compat::ToMainline,
+            ast::compat::ToMainline,
             cache::{TermEntry, TermEntryState},
         };
 
@@ -1089,7 +1089,7 @@ impl AstImportResolver for WorldImportResolver<'_, '_> {
         import: &Import<'_>,
         pos: &TermPos,
     ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
-        use nickel_lang_core::bytecode::ast::Import;
+        use nickel_lang_core::ast::Import;
         use std::ffi::OsStr;
 
         let parent_id = pos.src_id();
@@ -1264,7 +1264,7 @@ pub(crate) struct StdlibResolver;
 impl AstImportResolver for StdlibResolver {
     fn resolve<'ast_out>(
         &'ast_out mut self,
-        _import: &nickel_lang_core::bytecode::ast::Import<'_>,
+        _import: &nickel_lang_core::ast::Import<'_>,
         _pos: &TermPos,
     ) -> Result<Option<&'ast_out Ast<'ast_out>>, ImportError> {
         panic!("unexpected import from the `std` module")

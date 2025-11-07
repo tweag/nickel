@@ -113,7 +113,7 @@ pub struct RecordDeps {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-/// An include expression (see [crate::bytecode::ast::record::Include]).
+/// An include expression (see [crate::ast::record::Include]).
 pub struct Include {
     /// The included identifier.
     pub ident: LocIdent,

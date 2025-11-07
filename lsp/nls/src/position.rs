@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
-    bytecode::ast::{Ast, Node, pattern::bindings::Bindings as _},
+    ast::{Ast, Node, pattern::bindings::Bindings as _},
     position::TermPos,
     traverse::{TraverseAlloc, TraverseControl},
 };
@@ -294,7 +294,7 @@ pub(crate) mod tests {
     use assert_matches::assert_matches;
     use codespan::ByteIndex;
     use nickel_lang_core::{
-        bytecode::ast::{Ast, AstAlloc, Node, primop::PrimOp},
+        ast::{Ast, AstAlloc, Node, primop::PrimOp},
         files::{FileId, Files},
         parser::{ErrorTolerantParser, grammar, lexer},
     };

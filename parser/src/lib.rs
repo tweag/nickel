@@ -25,7 +25,6 @@ pub mod identifier;
 pub mod lexer;
 pub mod metrics;
 pub mod position;
-pub mod pretty;
 pub mod traverse;
 pub mod typ;
 pub(crate) mod uniterm;
@@ -33,22 +32,6 @@ pub mod utils;
 
 #[cfg(test)]
 mod tests;
-
-/// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
-/// rationals.
-///
-/// Basic arithmetic operations are exact, without loss of precision (within the limits of available
-/// memory).
-///
-/// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
-/// operands to 64-bits floats, performing the floating-point power operation, and converting back
-/// to rationals, which can incur a loss of precision.
-///
-/// [^number-serialization]: Conversion to string and serialization try to first convert the
-///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations
-///     don't lose precision. Otherwise, the number is converted to the nearest 64bit float and then
-///     serialized/printed, which can incur a loss of information.
-pub type Number = malachite::rational::Rational;
 
 /// Either an expression or a toplevel let declaration.
 ///

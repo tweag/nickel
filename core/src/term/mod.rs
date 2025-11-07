@@ -25,6 +25,8 @@ use crate::{
     typ::{Type, UnboundTypeVariableError},
 };
 
+pub use crate::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
+
 use crate::metrics::increment;
 
 pub use malachite::{
@@ -39,9 +41,7 @@ pub use malachite::{
     rational::Rational,
 };
 
-// TODO(parser migration): compatibility shim
-pub use nickel_lang_parser::Number;
-pub use nickel_lang_parser::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
+pub use crate::ast::Number;
 
 use serde::{Serialize, Serializer};
 
@@ -132,7 +132,7 @@ pub struct AnnotatedData {
 /// # History
 ///
 /// [Term] used to be the single representation from parsing to execution, but a new, more compact
-/// and closer-to-source AST has been introduced in [crate::bytecode::ast] and is now used for the
+/// and closer-to-source AST has been introduced in [nickel_lang_parser::ast] and is now used for the
 /// front-end (parser, typechecker, and LSP).
 ///
 /// [Term] remains as a temporary runtime representation until the bytecode virtual machine and

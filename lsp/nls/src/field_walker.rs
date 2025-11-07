@@ -1,7 +1,7 @@
 use std::{borrow::Cow, cell::RefCell, collections::HashSet};
 
 use nickel_lang_core::{
-    bytecode::ast::{
+    ast::{
         Annotation, Ast, LetMetadata, Node,
         primop::PrimOp,
         record::{FieldDef, FieldMetadata, Record as RecordData},
@@ -286,7 +286,7 @@ pub enum FieldContent<'ast> {
 /// Store a definition that might be part of a larger piecewise definition (but it can also be a
 /// standard, complete definition).
 ///
-/// We mostly store a [nickel_lang_core::bytecode::ast::record::FieldDef] but with an additional
+/// We mostly store a [nickel_lang_core::ast::record::FieldDef] but with an additional
 /// suffix of the original path.
 ///
 /// Indeed, take the defintion `{ foo.bar.baz = 1}`. This will lead to 3 [Def]s: one for `foo`, one
@@ -1098,7 +1098,7 @@ fn combine<T>(mut left: Vec<T>, mut right: Vec<T>) -> Vec<T> {
     left
 }
 
-/// Wrapper around [nickel_lang_core::bytecode::ast::record::Record::defs_of] that returns field
+/// Wrapper around [nickel_lang_core::ast::record::Record::defs_of] that returns field
 /// definition pieces with the index properly set to `1` (since we accessed the field `id`).
 fn piece_defs_of<'ast>(record: &RecordData<'ast>, id: Ident) -> Vec<FieldDefPiece<'ast>> {
     record
