@@ -321,8 +321,9 @@ fn contract_eq_bounded(
                         false
                     }
                 }
-                (Term::Sealed(key1, inner1, _), Term::Sealed(key2, inner2, _)) => {
-                    key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
+                (Term::Sealed(data1), Term::Sealed(data2)) => {
+                    data1.key == data2.key
+                        && contract_eq_bounded(state, &data1.inner, env1, &data2.inner, env2)
                 }
                 (Term::Value(v1), Term::Value(v2))
                 | (Term::Closurize(v1), Term::Value(v2))

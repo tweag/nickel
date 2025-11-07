@@ -1685,7 +1685,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(mk_fun!(
                     "x",
                     NickelValue::term(
-                        Term::Sealed(*key, mk_term::var("x"), label.clone()),
+                        Term::sealed(*key, mk_term::var("x"), label.clone()),
                         pos_op_inh
                     )
                 )
@@ -2161,7 +2161,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             BinaryOp::Unseal => {
-                if let Some(s1) = value1.as_sealing_key() {
+                if let Some(key) = value1.as_sealing_key() {
                     // The last argument (lazy, on the stack) of unseal is an expression raising
                     // blame. If the keys match, we ignore the blame and thus return a function
                     // `const unsealed_term_content`. Otherwise, we return `id`.
@@ -2169,10 +2169,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // Since the stack is set up as `[.] blame_expr`, this does ignore the error
                     // and proceed with the unsealed term in the happy path, or on the opposite
                     // drop the sealed term and proceed with the error on the stack otherwise.
-                    Ok(if let Some(Term::Sealed(s2, inner, _)) = value2.as_term() {
-                        if s1 == s2 {
+                    Ok(if let Some(Term::Sealed(data)) = value2.as_term() {
+                        if key == &data.key {
                             Closure {
-                                value: mk_fun!(LocIdent::fresh(), inner.clone()),
+                                value: mk_fun!(LocIdent::fresh(), data.inner.clone()),
                                 env: env2,
                             }
                         } else {

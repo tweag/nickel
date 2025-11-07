@@ -1172,7 +1172,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 .nest(2)
             ]
             .group(),
-            Term::Sealed(_i, _inner, _lbl) => allocator.text("%<sealed>"),
+            Term::Sealed(_) => allocator.text("%<sealed>"),
             Term::Annotated(annot, val) => allocator.atom(val).append(annot.pretty(allocator)),
             Term::Import(term::Import::Path { path, format }) => {
                 docs![

@@ -110,7 +110,7 @@ impl CollectFreeVars for Term {
             Term::Op1(data) => data.collect_free_vars(free_vars),
             Term::Op2(data) => data.collect_free_vars(free_vars),
             Term::OpN(data) => data.collect_free_vars(free_vars),
-            Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
+            Term::Sealed(data) => data.inner.collect_free_vars(free_vars),
             Term::RecRecord(data) => data.collect_free_vars(free_vars),
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
