@@ -44,7 +44,7 @@ use super::{Environment, cache::lazy::Thunk};
 use crate::{
     eval::value::{Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::LocIdent,
-    term::{IndexMap, StrChunk, Term, UnaryOp, record::Field},
+    term::{IndexMap, Op1Data, StrChunk, Term, UnaryOp, record::Field},
     typ::{
         EnumRowF, EnumRows, EnumRowsIteratorItem, RecordRowF, RecordRows, RecordRowsIteratorItem,
         Type, TypeF,
@@ -306,11 +306,21 @@ fn contract_eq_bounded(
 
                     value_eq && ty_eq
                 }
-                (
-                    Term::Op1(UnaryOp::RecordAccess(id1), t1),
-                    Term::Op1(UnaryOp::RecordAccess(id2), t2),
-                ) => id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2),
-
+                (Term::Op1(data1), Term::Op1(data2)) => {
+                    if let Op1Data {
+                        op: UnaryOp::RecordAccess(id1),
+                        arg: arg1,
+                    } = &**data1
+                        && let Op1Data {
+                            op: UnaryOp::RecordAccess(id2),
+                            arg: arg2,
+                        } = &**data2
+                    {
+                        id1 == id2 && contract_eq_bounded(state, arg1, env1, arg2, env2)
+                    } else {
+                        false
+                    }
+                }
                 (Term::Sealed(key1, inner1, _), Term::Sealed(key2, inner2, _)) => {
                     key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
                 }

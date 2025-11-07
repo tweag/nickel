@@ -184,7 +184,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             arg: Some(arg2),
                         },
                     ) if tag1 == tag2 => {
-                        let arg = NickelValue::term_posless(Term::Op2(
+                        let arg = NickelValue::term_posless(Term::op2(
                             BinaryOp::Merge(mode.into()),
                             arg1.closurize(&mut self.context.cache, env1),
                             arg2.closurize(&mut self.context.cache, env2),
@@ -586,7 +586,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     fields: I,
 ) -> Result<NickelValue, EvalError> {
     let combined_deps = field_deps(cache, &t1)?.union(field_deps(cache, &t2)?);
-    let body = NickelValue::from(Term::Op2(
+    let body = NickelValue::from(Term::op2(
         BinaryOp::Merge(merge_label),
         t1.saturate(cache, fields.clone())?,
         t2.saturate(cache, fields)?,

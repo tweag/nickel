@@ -276,7 +276,7 @@ fn interpolation_nested() {
     let mut inner_chunks = vec![
         StrChunk::Literal(String::from(" How")),
         StrChunk::expr(
-            Term::Op2(
+            Term::op2(
                 BinaryOp::StringConcat,
                 NickelValue::string_posless(" ar"),
                 NickelValue::string_posless("e"),

@@ -786,43 +786,43 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Op1(op, arg)) => {
+                ValueContentRef::Term(Term::Op1(data)) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op.clone(), arg.pos_idx()),
+                        OperationCont::Op1(data.op.clone(), data.arg.pos_idx()),
                         self.call_stack.len(),
                         pos_idx,
                     );
 
                     Closure {
-                        value: arg.clone(),
+                        value: data.arg.clone(),
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Op2(op, fst_arg, snd_arg)) => {
+                ValueContentRef::Term(Term::Op2(data)) => {
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            op.clone(),
+                            data.op.clone(),
                             Closure {
-                                value: snd_arg.clone(),
+                                value: data.arg2.clone(),
                                 env: env.clone(),
                             },
-                            fst_arg.pos_idx(),
+                            data.arg1.pos_idx(),
                         ),
                         self.call_stack.len(),
                         pos_idx,
                     );
 
                     Closure {
-                        value: fst_arg.clone(),
+                        value: data.arg1.clone(),
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::OpN(op, args)) => {
+                ValueContentRef::Term(Term::OpN(data)) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
-                    let mut args_iter = args.iter();
+                    let mut args_iter = data.args.iter();
                     let fst_arg = args_iter.next().ok_or_else(|| {
-                        EvalErrorData::NotEnoughArgs(op.arity(), op.to_string(), pos_idx)
+                        EvalErrorData::NotEnoughArgs(data.op.arity(), data.op.to_string(), pos_idx)
                     })?;
 
                     let pending: Vec<Closure> = args_iter
@@ -835,7 +835,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     self.stack.push_op_cont(
                         OperationCont::OpN {
-                            op: op.clone(),
+                            op: data.op.clone(),
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
                             current_pos_idx: fst_arg.pos_idx(),
@@ -867,9 +867,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 curr_pos: arg.pos_idx(),
                             });
 
+                            // TODO: we should set up the stack properly, instead of allocating an
+                            // `op1` term here.
                             Closure {
                                 value: NickelValue::term(
-                                    Term::Op1(UnaryOp::ChunksConcat, arg),
+                                    Term::op1(UnaryOp::ChunksConcat, arg),
                                     pos_idx,
                                 ),
                                 env,
@@ -1575,26 +1577,26 @@ pub fn subst<C: Cache>(
                     NickelValue::term(Term::Match(MatchData { branches }), pos_idx)
                 }
                 TermContent::Op1(lens) => {
-                    let (op, t) = lens.take();
-                    let t = subst(pos_table, cache, t, initial_env, env);
+                    let mut data = lens.take();
+                    data.arg = subst(pos_table, cache, data.arg, initial_env, env);
 
-                    NickelValue::term(Term::Op1(op, t), pos_idx)
+                    NickelValue::term(Term::Op1(data), pos_idx)
                 }
                 TermContent::Op2(lens) => {
-                    let (op, t1, t2) = lens.take();
-                    let t1 = subst(pos_table, cache, t1, initial_env, env);
-                    let t2 = subst(pos_table, cache, t2, initial_env, env);
+                    let mut data = lens.take();
+                    data.arg1 = subst(pos_table, cache, data.arg1, initial_env, env);
+                    data.arg2 = subst(pos_table, cache, data.arg2, initial_env, env);
 
-                    NickelValue::term(Term::Op2(op, t1, t2), pos_idx)
+                    NickelValue::term(Term::Op2(data), pos_idx)
                 }
                 TermContent::OpN(lens) => {
-                    let (op, ts) = lens.take();
-                    let ts = ts
+                    let mut data = lens.take();
+                    data.args = data.args
                         .into_iter()
                         .map(|t| subst(pos_table, cache, t, initial_env, env))
                         .collect();
 
-                    NickelValue::term(Term::OpN(op, ts), pos_idx)
+                    NickelValue::term(Term::OpN(data), pos_idx)
                 }
                 TermContent::Sealed(lens) => {
                     let (i, t, lbl) = lens.take();

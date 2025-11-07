@@ -155,18 +155,19 @@ fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
 /// type is such a term.
 fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Contract(term) = &typ.typ {
-        matches!(
-            term.content_ref(),
+        match term.content_ref() {
             ValueContentRef::Term(
                 Term::Fun(..)
-                    | Term::FunPattern(..)
-                    | Term::Let(..)
-                    | Term::LetPattern(..)
-                    | Term::Op1(UnaryOp::IfThenElse, _)
-                    | Term::Import { .. }
-                    | Term::ResolvedImport(..)
-            ) | ValueContentRef::CustomContract(_)
-        )
+                | Term::FunPattern(..)
+                | Term::Let(..)
+                | Term::LetPattern(..)
+                | Term::Import { .. }
+                | Term::ResolvedImport(..),
+            )
+            | ValueContentRef::CustomContract(_) => true,
+            ValueContentRef::Term(Term::Op1(data)) => matches!(data.op, UnaryOp::IfThenElse),
+            _ => false,
+        }
     } else {
         false
     }
@@ -1044,10 +1045,10 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .group(),
             Term::App(head, arg) => match head.as_term() {
                 Some(Term::App(iop, t))
-                    if matches!(iop.as_term(), Some(Term::Op1(UnaryOp::IfThenElse, _))) =>
+                    if matches!(iop.as_term(), Some(Term::Op1(data)) if data.op == UnaryOp::IfThenElse) =>
                 {
-                    match iop.as_term() {
-                        Some(Term::Op1(UnaryOp::IfThenElse, cond)) => docs![
+                    if let Some(Term::Op1(data)) = iop.as_term() && let Op1Data { op: UnaryOp::IfThenElse, arg: cond } = &**data {
+                        docs![
                             allocator,
                             "if ",
                             cond,
@@ -1056,16 +1057,18 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                             allocator.line(),
                             "else",
                             docs![allocator, allocator.line(), arg].nest(2)
-                        ],
-                        _ => unreachable!(),
+                        ]
+                    }
+                    else {
+                        unreachable!()
                     }
                 }
-                Some(Term::Op1(op @ (UnaryOp::BoolAnd | UnaryOp::BoolOr), op_arg)) => {
+                Some(Term::Op1(data)) if matches!(data.op, UnaryOp::BoolAnd | UnaryOp::BoolOr) => {
                     docs![
                         allocator,
-                        allocator.atom(op_arg),
+                        allocator.atom(&data.arg),
                         allocator.line(),
-                        match op {
+                        match data.op {
                             UnaryOp::BoolAnd => "&& ",
                             UnaryOp::BoolOr => "|| ",
                             _ => unreachable!(),
@@ -1109,62 +1112,62 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 .braces()
             ]
             .group(),
-            Term::Op1(UnaryOp::RecordAccess(id), arg) => {
-                docs![allocator, allocator.atom(arg), ".", ident_quoted(id)]
-            }
-            Term::Op1(UnaryOp::BoolNot, arg) => docs![allocator, "!", allocator.atom(arg)],
-            Term::Op1(UnaryOp::BoolAnd, arg) => docs![allocator, "(&&)", allocator.atom(arg)],
-            Term::Op1(UnaryOp::BoolOr, arg) => docs![allocator, "(||)", allocator.atom(arg)],
-            Term::Op1(UnaryOp::IfThenElse, _) => unreachable!(),
-            Term::Op1(op, arg) => match op.pos() {
-                OpPos::Prefix => docs![
-                    allocator,
-                    op,
-                    docs![allocator, allocator.line(), allocator.atom(arg)].nest(2)
-                ]
-                .group(),
-                OpPos::Special | OpPos::Postfix | OpPos::Infix => {
-                    panic!("pretty print is not implemented for {op:?}")
+            Term::Op1(data) => {
+                match &data.op {
+                    UnaryOp::RecordAccess(id) => docs![allocator, allocator.atom(&data.arg), ".", ident_quoted(id)],
+                    UnaryOp::BoolNot => docs![allocator, "!", allocator.atom(&data.arg)],
+                    UnaryOp::BoolAnd => docs![allocator, "(&&)", allocator.atom(&data.arg)],
+                    UnaryOp::BoolOr => docs![allocator, "(||)", allocator.atom(&data.arg)],
+                    UnaryOp::IfThenElse => unreachable!(),
+                    _  if data.op.pos() == OpPos::Prefix => docs![
+                        allocator,
+                        &data.op,
+                        docs![allocator, allocator.line(), allocator.atom(&data.arg)].nest(2)
+                        ]
+                        .group(),
+                    _ => {
+                        panic!("pretty print is not implemented for {:?}", &data.op)
+                    }
                 }
-            },
-            Term::Op2(BinaryOp::RecordGet, field, record) => {
-                docs![allocator, record, ".", field]
             }
-            Term::Op2(op, arg1, arg2) => docs![
+            Term::Op2(data) if data.op == BinaryOp::RecordGet => {
+                docs![allocator, &data.arg2, ".", &data.arg1]
+            }
+            Term::Op2(data) => docs![
                 allocator,
-                if let (&BinaryOp::Sub, Some(&Number::ZERO)) = (op, arg1.as_number()) {
-                    docs![allocator, allocator.text("-"), allocator.atom(arg2)]
-                } else if op.pos() == OpPos::Prefix {
-                    op.pretty(allocator).append(
+                if let (&BinaryOp::Sub, Some(&Number::ZERO)) = (&data.op, data.arg1.as_number()) {
+                    docs![allocator, allocator.text("-"), allocator.atom(&data.arg2)]
+                } else if data.op.pos() == OpPos::Prefix {
+                    data.op.pretty(allocator).append(
                         docs![
                             allocator,
                             allocator.line(),
-                            allocator.atom(arg1),
+                            allocator.atom(&data.arg1),
                             allocator.line(),
-                            allocator.atom(arg2)
+                            allocator.atom(&data.arg2)
                         ]
                         .nest(2),
                     )
                 } else {
                     docs![
                         allocator,
-                        allocator.atom(arg1),
+                        allocator.atom(&data.arg1),
                         allocator.line(),
-                        op,
+                        &data.op,
                         " ",
-                        allocator.atom(arg2)
+                        allocator.atom(&data.arg2)
                     ]
                 },
             ]
             .group(),
-            Term::OpN(op, args) => docs![
+            Term::OpN(data) => docs![
                 allocator,
-                op,
+                &data.op,
                 docs![
                     allocator,
                     allocator.line(),
                     allocator
-                        .intersperse(args.iter().map(|val| allocator.atom(val)), allocator.line())
+                        .intersperse(data.args.iter().map(|val| allocator.atom(val)), allocator.line())
                 ]
                 .nest(2)
             ]

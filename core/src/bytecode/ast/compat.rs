@@ -437,28 +437,19 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 data.attrs.rec,
             ),
             Term::App(fun, arg) => {
-                match fun.as_term() {
-                    // We have to special-case if-then-else, which is encoded as a primop application
-                    // of the unary operator if-then-else to the condition, followed by two normal
-                    // applications for the if and else branches, which is a bit painful to match.
-                    Some(Term::App(fun_inner, arg_inner))
-                        if matches!(
-                            fun_inner.as_term(),
-                            Some(Term::Op1(term::UnaryOp::IfThenElse, _))
-                        ) =>
-                    {
-                        if let Some(Term::Op1(term::UnaryOp::IfThenElse, cond)) =
-                            fun_inner.as_term()
-                        {
-                            return alloc.if_then_else(
-                                cond.to_ast(alloc, pos_table),
-                                arg_inner.to_ast(alloc, pos_table),
-                                arg.to_ast(alloc, pos_table),
-                            );
-                        }
-                    }
-                    _ => (),
-                };
+                // We have to special-case if-then-else, which is encoded as a primop application
+                // of the unary operator if-then-else to the condition, followed by two normal
+                // applications for the if and else branches, which is a bit painful to match.
+                if let Some(Term::App(fun_inner, arg_inner)) = fun.as_term()
+                    && let Some(Term::Op1(data)) = fun_inner.as_term()
+                    && data.op == term::UnaryOp::IfThenElse
+                {
+                    return alloc.if_then_else(
+                        data.arg.to_ast(alloc, pos_table),
+                        arg_inner.to_ast(alloc, pos_table),
+                        arg.to_ast(alloc, pos_table),
+                    );
+                }
 
                 let mut args = vec![arg.to_ast(alloc, pos_table)];
                 let mut maybe_next_app = fun.as_term();
@@ -540,17 +531,20 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.match_expr(branches)
             }
-            Term::Op1(op, arg) => alloc.prim_op(
-                PrimOp::from(op),
-                std::iter::once(arg.to_ast(alloc, pos_table)),
+            Term::Op1(data) => alloc.prim_op(
+                PrimOp::from(&data.op),
+                std::iter::once(data.arg.to_ast(alloc, pos_table)),
             ),
-            Term::Op2(op, arg1, arg2) => {
+            Term::Op2(data) => {
                 // [^primop-argument-order]: Some primops have had exotic arguments order for
                 // historical reasons. The new AST tries to follow the stdlib argument order
                 // whenever possible, which means we have to swap the arguments for a few primops.
 
-                let op = PrimOp::from(op);
-                let mut args = [arg1.to_ast(alloc, pos_table), arg2.to_ast(alloc, pos_table)];
+                let op = PrimOp::from(&data.op);
+                let mut args = [
+                    data.arg1.to_ast(alloc, pos_table),
+                    data.arg2.to_ast(alloc, pos_table),
+                ];
 
                 if matches!(op, PrimOp::ArrayAt | PrimOp::StringContains) {
                     args.swap(0, 1);
@@ -558,13 +552,15 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
 
                 alloc.prim_op(op, args)
             }
-            Term::OpN(op, args) => {
+            Term::OpN(data) => {
                 // See [^primop-argument-order].
-                let op = PrimOp::from(op);
-                let mut args: Vec<_> = args
+                let op = PrimOp::from(&data.op);
+                let mut args: Vec<_> = data
+                    .args
                     .iter()
                     .map(|arg| arg.to_ast(alloc, pos_table))
                     .collect();
+
                 if let PrimOp::StringSubstr = op {
                     debug_assert_eq!(args.len(), 3);
                     // The original order is: the string, then start and end.
@@ -1626,17 +1622,17 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
             }
             Node::PrimOpApp { op, args } => {
                 let term = match (*op).to_mainline(pos_table) {
-                    TermPrimOp::Unary(op) => Term::Op1(op, args[0].to_mainline(pos_table)),
+                    TermPrimOp::Unary(op) => Term::op1(op, args[0].to_mainline(pos_table)),
                     // If `op` is `Merge`, we need to patch the span of the merge label with the
                     // correct value. Unfortunately, we still don't have access to the right span,
                     // which is the position of this whole node. We delegate this to the caller, that
                     // is `from_ast::<Ast<'ast>>`. See [^merge-label-span].
-                    TermPrimOp::Binary(op) => Term::Op2(
+                    TermPrimOp::Binary(op) => Term::op2(
                         op,
                         args[0].to_mainline(pos_table),
                         args[1].to_mainline(pos_table),
                     ),
-                    TermPrimOp::NAry(op) => Term::OpN(
+                    TermPrimOp::NAry(op) => Term::opn(
                         op,
                         args.iter()
                             .map(|arg| (*arg).to_mainline(pos_table))
@@ -1685,8 +1681,8 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
         };
 
         // See [^merge-label-span]
-        if let ValueContentRefMut::Term(term::Term::Op2(term::BinaryOp::Merge(label), _, _)) =
-            result.content_make_mut()
+        if let ValueContentRefMut::Term(term::Term::Op2(data)) = result.content_make_mut()
+            && let term::BinaryOp::Merge(label) = &mut data.op
         {
             label.span = ast.pos.into_opt();
         }

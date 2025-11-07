@@ -10,8 +10,8 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        BinaryOp, FunData, FunPatternData, Import, LetData, LetPatternData, MatchData, NAryOp,
-        RecRecordData, SealingKey, StrChunk, Term, TypeAnnotation, UnaryOp,
+        FunData, FunPatternData, Import, LetData, LetPatternData, MatchData, Op1Data, Op2Data,
+        OpNData, RecRecordData, SealingKey, StrChunk, Term, TypeAnnotation,
     },
 };
 
@@ -185,9 +185,9 @@ pub enum TermContent {
     RecRecord(ValueLens<Box<RecRecordData>>),
     Closurize(ValueLens<NickelValue>),
     Match(ValueLens<MatchData>),
-    Op1(ValueLens<(UnaryOp, NickelValue)>),
-    Op2(ValueLens<(BinaryOp, NickelValue, NickelValue)>),
-    OpN(ValueLens<(NAryOp, Vec<NickelValue>)>),
+    Op1(ValueLens<Box<Op1Data>>),
+    Op2(ValueLens<Box<Op2Data>>),
+    OpN(ValueLens<OpNData>),
     Sealed(ValueLens<(SealingKey, NickelValue, Label)>),
     Annotated(ValueLens<(TypeAnnotation, NickelValue)>),
     Import(ValueLens<Import>),
@@ -568,7 +568,7 @@ impl ValueLens<MatchData> {
     }
 }
 
-impl ValueLens<(UnaryOp, NickelValue)> {
+impl ValueLens<Box<Op1Data>> {
     /// Creates a new lens extracting [crate::term::Term::Op1].
     ///
     /// # Safety
@@ -583,18 +583,18 @@ impl ValueLens<(UnaryOp, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::Op1].
-    fn term_op1_extractor(value: NickelValue) -> (UnaryOp, NickelValue) {
+    fn term_op1_extractor(value: NickelValue) -> Box<Op1Data> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Op1(op, arg) = term {
-            (op, arg)
+        if let Term::Op1(data) = term {
+            data
         } else {
             unreachable!()
         }
     }
 }
 
-impl ValueLens<(BinaryOp, NickelValue, NickelValue)> {
+impl ValueLens<Box<Op2Data>> {
     /// Creates a new lens extracting [crate::term::Term::Op2].
     ///
     /// # Safety
@@ -609,18 +609,18 @@ impl ValueLens<(BinaryOp, NickelValue, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::Op2].
-    fn term_op2_extractor(value: NickelValue) -> (BinaryOp, NickelValue, NickelValue) {
+    fn term_op2_extractor(value: NickelValue) -> Box<Op2Data> {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::Op2(op, left, right) = term {
-            (op, left, right)
+        if let Term::Op2(data) = term {
+            data
         } else {
             unreachable!()
         }
     }
 }
 
-impl ValueLens<(NAryOp, Vec<NickelValue>)> {
+impl ValueLens<OpNData> {
     /// Creates a new lens extracting [crate::term::Term::OpN].
     ///
     /// # Safety
@@ -635,11 +635,11 @@ impl ValueLens<(NAryOp, Vec<NickelValue>)> {
     }
 
     /// Extractor for [crate::term::Term::OpN].
-    fn term_opn_extractor(value: NickelValue) -> (NAryOp, Vec<NickelValue>) {
+    fn term_opn_extractor(value: NickelValue) -> OpNData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::OpN(op, args) = term {
-            (op, args)
+        if let Term::OpN(data) = term {
+            data
         } else {
             unreachable!()
         }

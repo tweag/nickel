@@ -860,9 +860,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             curr_pos: e.pos_idx(),
                         });
 
+                        // TODO: we should set up the stack properly, and directly, for the
+                        // continuation instead of allocating a new term here and returning it.
                         Ok(Closure {
                             value: NickelValue::term(
-                                Term::Op1(UnaryOp::ChunksConcat, e),
+                                Term::op1(UnaryOp::ChunksConcat, e),
                                 pos_op_inh,
                             ),
                             env: env_chunks,
@@ -2210,13 +2212,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let v1 = c1.value.closurize(&mut self.context.cache, c1.env);
                             let v2 = c2.value.closurize(&mut self.context.cache, c2.env);
 
-                            Ok(NickelValue::term(Term::Op2(BinaryOp::Eq, v1, v2), pos_op).into())
+                            // TODO: avoid term allocation in evaluation
+                            Ok(NickelValue::term(Term::op2(BinaryOp::Eq, v1, v2), pos_op).into())
                         }
                     },
                     EqResult::Eqs(v1, v2, subeqs) => {
                         self.stack.push_eqs(subeqs.into_iter());
 
-                        Ok(NickelValue::term(Term::Op2(BinaryOp::Eq, v1, v2), pos_op).into())
+                        // TODO: avoid term allocation in evaluation
+                        Ok(NickelValue::term(Term::op2(BinaryOp::Eq, v1, v2), pos_op).into())
                     }
                 }
             }
@@ -4026,7 +4030,7 @@ fn eta_expand(op: UnaryOp, pos_op: PosIdx) -> Term {
     Term::fun(
         param,
         NickelValue::term(
-            Term::Op1(op, NickelValue::term(Term::Var(param), pos_op)),
+            Term::op1(op, NickelValue::term(Term::Var(param), pos_op)),
             pos_op,
         ),
     )

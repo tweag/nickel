@@ -8,8 +8,8 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, RecRecordData,
-        StrChunk, Term, TypeAnnotation,
+        FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch, Op1Data, Op2Data,
+        OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -84,7 +84,7 @@ impl CollectFreeVars for Term {
             Term::FunPattern(data) => data.collect_free_vars(free_vars),
             Term::Let(data) => data.collect_free_vars(free_vars),
             Term::LetPattern(data) => data.collect_free_vars(free_vars),
-            Term::App(t1, t2) | Term::Op2(_, t1, t2) => {
+            Term::App(t1, t2) => {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
             }
@@ -107,12 +107,10 @@ impl CollectFreeVars for Term {
                     free_vars.extend(fresh);
                 }
             }
-            Term::Op1(_, t) | Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
-            Term::OpN(_, ts) => {
-                for t in ts {
-                    t.collect_free_vars(free_vars);
-                }
-            }
+            Term::Op1(data) => data.collect_free_vars(free_vars),
+            Term::Op2(data) => data.collect_free_vars(free_vars),
+            Term::OpN(data) => data.collect_free_vars(free_vars),
+            Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
             Term::RecRecord(data) => data.collect_free_vars(free_vars),
             Term::StrChunks(chunks) => {
                 for chunk in chunks {
@@ -326,6 +324,27 @@ impl CollectFreeVars for RecRecordData {
         // to reconstruct the full set of free variables. At this point, we override it in
         // any case.
         self.deps = Some(new_deps);
+    }
+}
+
+impl CollectFreeVars for Op1Data {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        self.arg.collect_free_vars(set);
+    }
+}
+
+impl CollectFreeVars for Op2Data {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        self.arg1.collect_free_vars(set);
+        self.arg2.collect_free_vars(set);
+    }
+}
+
+impl CollectFreeVars for OpNData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for t in &mut self.args {
+            t.collect_free_vars(set);
+        }
     }
 }
 
