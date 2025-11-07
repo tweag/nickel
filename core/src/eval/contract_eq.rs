@@ -260,26 +260,23 @@ fn contract_eq_bounded(
                             })
                             .unwrap_or(false)
                 }
-                (
-                    Term::RecRecord(r1, includes1, dyn_fields1, _, _),
-                    Term::RecRecord(r2, includes2, dyn_fields2, _, _),
-                ) =>
+                (Term::RecRecord(data1), Term::RecRecord(data2)) =>
                 // We only compare records whose field structure is statically known (i.e. without dynamic
                 // fields) and without include expressions, which are a bit tricky to consider.
                 {
-                    dyn_fields1.is_empty()
-                        && dyn_fields2.is_empty()
-                        && includes1.is_empty()
-                        && includes2.is_empty()
+                    data1.dyn_fields.is_empty()
+                        && data2.dyn_fields.is_empty()
+                        && data1.includes.is_empty()
+                        && data2.includes.is_empty()
                         && map_eq(
                             contract_eq_fields,
                             state,
-                            &r1.fields,
+                            &data1.record.fields,
                             env1,
-                            &r2.fields,
+                            &data2.record.fields,
                             env2,
                         )
-                        && r1.attrs.open == r2.attrs.open
+                        && data1.record.attrs.open == data2.record.attrs.open
                 }
                 // We must compare the inner values as well as the corresponding contracts or type
                 // annotations.
@@ -366,39 +363,39 @@ fn contract_eq_bounded(
             state.use_gas() && contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
         }
         (
-            ValueContentRef::Term(Term::RecRecord(r, includes, dyn_fields, _, _)),
+            ValueContentRef::Term(Term::RecRecord(data)),
             ValueContentRef::Record(Container::Empty),
         )
         | (
             ValueContentRef::Record(Container::Empty),
-            ValueContentRef::Term(Term::RecRecord(r, includes, dyn_fields, _, _)),
+            ValueContentRef::Term(Term::RecRecord(data)),
         ) => {
-            dyn_fields.is_empty()
-                && includes.is_empty()
-                && r.fields.is_empty()
+            data.dyn_fields.is_empty()
+                && data.includes.is_empty()
+                && data.record.fields.is_empty()
                 // An open record is always properly allocated (not inlined), even if empty. So
                 // `Container::Empty` implies closed.
-                && !r.attrs.open
+                && !data.record.attrs.open
         }
         (
-            ValueContentRef::Term(Term::RecRecord(r1, includes, dyn_fields, _, _)),
-            ValueContentRef::Record(Container::Alloc(r2)),
+            ValueContentRef::Term(Term::RecRecord(rec_data)),
+            ValueContentRef::Record(Container::Alloc(record)),
         )
         | (
-            ValueContentRef::Record(Container::Alloc(r1)),
-            ValueContentRef::Term(Term::RecRecord(r2, includes, dyn_fields, _, _)),
+            ValueContentRef::Record(Container::Alloc(record)),
+            ValueContentRef::Term(Term::RecRecord(rec_data)),
         ) => {
-            dyn_fields.is_empty()
-                && includes.is_empty()
+            rec_data.dyn_fields.is_empty()
+                && rec_data.includes.is_empty()
                 && map_eq(
                     contract_eq_fields,
                     state,
-                    &r1.fields,
+                    &record.fields,
                     env1,
-                    &r2.fields,
+                    &rec_data.record.fields,
                     env2,
                 )
-                && r1.attrs.open == r2.attrs.open
+                && rec_data.record.attrs.open == record.attrs.open
         }
         // Other cases are pairwise different
         _ => false,
