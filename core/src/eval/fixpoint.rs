@@ -85,7 +85,8 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     pos_access: PosIdx::NONE,
                 };
 
-                let closure: Closure = NickelValue::from(Term::RuntimeError(error)).into();
+                let closure: Closure =
+                    NickelValue::from(Term::RuntimeError(Box::new(error))).into();
 
                 (id.ident(), cache.add(closure, BindingType::Normal))
             }

@@ -204,8 +204,8 @@ pub enum TermContent {
     Annotated(ValueLens<Box<AnnotatedData>>),
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
-    ParseError(ValueLens<ParseError>),
-    RuntimeError(ValueLens<EvalErrorKind>),
+    ParseError(ValueLens<Box<ParseError>>),
+    RuntimeError(ValueLens<Box<EvalErrorKind>>),
 }
 
 impl TermContent {
