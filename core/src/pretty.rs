@@ -980,7 +980,7 @@ impl<'a> Pretty<'a, Allocator> for &NickelValue {
             ValueContentRef::CustomContract(custom_ctr) => docs![
                 allocator,
                 "%contract/custom%",
-                docs![allocator, allocator.line(), allocator.atom(custom_ctr),].nest(2),
+                docs![allocator, allocator.line(), allocator.atom(&custom_ctr.0),].nest(2),
             ]
             .group(),
             // This type is in term position, so we don't need to add parentheses.

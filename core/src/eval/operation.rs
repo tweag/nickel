@@ -2105,7 +2105,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     }
                     ValueContentRef::CustomContract(ctr) => Closure {
-                        value: ctr.clone(),
+                        value: ctr.0.clone(),
                         env: env1,
                     },
                     ValueContentRef::Record(..) => {

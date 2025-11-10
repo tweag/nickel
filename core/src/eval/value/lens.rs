@@ -366,7 +366,8 @@ macro_rules! impl_term_boxed_lens {
 
             // Extractor for `Term::$term_cons`.
             pub fn take(self) -> Box<$type> {
-                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(self.value) {
+                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(self.value)
+                {
                     data
                 } else {
                     unreachable!()

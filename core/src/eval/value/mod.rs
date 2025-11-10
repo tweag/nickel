@@ -502,7 +502,7 @@ impl NickelValue {
 
     /// Allocates a new custom contract value.
     pub fn custom_contract(value: NickelValue, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(value, pos_idx).into()
+        ValueBlockRc::encode(CustomContractData(value), pos_idx).into()
     }
 
     /// Allocates a new custom contract value without any position set. Equivalent to
@@ -1108,6 +1108,7 @@ impl NickelValue {
             DataTag::CustomContract => self
                 .as_value_data::<CustomContractData>()
                 .unwrap()
+                .0
                 .fmt_is_atom(),
             DataTag::Type => self.as_value_data::<TypeData>().unwrap().typ.fmt_is_atom(),
         }
@@ -1598,7 +1599,8 @@ pub struct EnumVariantData {
 }
 
 pub type ForeignIdData = ForeignIdPayload;
-pub type CustomContractData = NickelValue;
+#[derive(Clone, Debug, PartialEq)]
+pub struct CustomContractData(pub NickelValue);
 pub type SealingKeyData = SealingKey;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -2420,7 +2422,7 @@ impl Traverse<NickelValue> for NickelValue {
             }
             ValueContent::CustomContract(lens) => {
                 let ctr = lens.take();
-                let ctr = ctr.traverse(f, order)?;
+                let ctr = ctr.0.traverse(f, order)?;
                 NickelValue::custom_contract(ctr, pos_idx)
             }
         };
@@ -2462,7 +2464,7 @@ impl Traverse<NickelValue> for NickelValue {
             | ValueContentRef::EnumVariant(EnumVariantData { arg: None, .. })
             | ValueContentRef::ForeignId(_) => None,
             ValueContentRef::EnumVariant(EnumVariantData { arg: Some(v), .. })
-            | ValueContentRef::CustomContract(v) => v.traverse_ref(f, scope),
+            | ValueContentRef::CustomContract(CustomContractData(v)) => v.traverse_ref(f, scope),
             ValueContentRef::Array(Container::Alloc(array_data)) => array_data
                 .array
                 .iter()

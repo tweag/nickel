@@ -58,7 +58,7 @@ impl CollectFreeVars for NickelValue {
                 }
             }
             ValueContentRefMut::CustomContract(ctr) => {
-                ctr.collect_free_vars(free_vars);
+                ctr.0.collect_free_vars(free_vars);
             }
             ValueContentRefMut::Type(type_data) => {
                 type_data.typ.collect_free_vars(free_vars);
