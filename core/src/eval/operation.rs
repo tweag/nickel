@@ -691,7 +691,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 })?;
 
                 match value.content() {
-                    ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => {
+                    ValueContent::Record(lens) if lens.value().is_inline_empty_record() => {
                         Ok(lens.restore().with_pos_idx(pos_op).into())
                     }
                     ValueContent::Record(lens) => {
@@ -1110,7 +1110,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 match value.content() {
-                    ValueContent::Record(lens) if !lens.peek().is_inline_empty_record() => {
+                    ValueContent::Record(lens) if !lens.value().is_inline_empty_record() => {
                         //unwrap(): the guard of the pattern exclude empty records
                         let record = lens.take().unwrap_alloc();
                         let fields = record
@@ -1145,7 +1145,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         Ok(seq_terms(terms.into_iter(), pos_op, cont).into())
                     }
-                    ValueContent::Array(lens) if !lens.peek().is_inline_empty_array() => {
+                    ValueContent::Array(lens) if !lens.value().is_inline_empty_array() => {
                         //unwrap(): the guard of the pattern exclude empty arrays
                         let ArrayData {
                             array: ts,

@@ -77,7 +77,7 @@ pub fn transform_one(
     let pos_idx = value.pos_idx();
 
     Ok(match value.content() {
-        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => lens.restore(),
+        ValueContent::Record(lens) if lens.value().is_inline_empty_record() => lens.restore(),
         ValueContent::Record(lens) => {
             // unwrap(): we treated the inline empty record case above.
             let RecordData {

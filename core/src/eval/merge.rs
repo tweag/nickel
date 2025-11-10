@@ -100,7 +100,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             (ValueContent::Bool(lens1), ValueContent::Bool(lens2))
                 // phys_eq allows comparison in the guard without consuming both lenses, which we
                 // need for the result
-                if lens1.peek().phys_eq(lens2.peek()) =>
+                if lens1.value().phys_eq(lens2.value()) =>
             {
                 Ok(NickelValue::bool_value(
                     lens1.take(),
@@ -272,7 +272,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // for performance reasons: to avoid allocation, recomputation of fixpoint, etc.
             (ValueContent::Record(lens), ValueContent::Record(empty))
             | (ValueContent::Record(empty), ValueContent::Record(lens))
-                if empty.peek().is_inline_empty_record() =>
+                if empty.value().is_inline_empty_record() =>
             {
                 // In merge contract mode, we need to maintain the position of the first argument,
                 // which is the scrutinized value, to maintain good contract error messages.
@@ -281,7 +281,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // better to keep the position of the other argument (instead of the position of
                 // the merge), since the result will inherit everything from it.
                 let final_pos = if let MergeMode::Standard(_) = mode {
-                    lens.peek().pos_idx()
+                    lens.value().pos_idx()
                 } else {
                     pos1.to_inherited(&mut self.context.pos_table)
                 };
