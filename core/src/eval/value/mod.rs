@@ -1029,7 +1029,7 @@ impl NickelValue {
                 Term::Annotated(..) => Some("Annotated"),
                 Term::Let(..)
                 | Term::LetPattern(..)
-                | Term::App(_, _)
+                | Term::App(_)
                 | Term::Var(_)
                 | Term::Op1(_)
                 | Term::Op2(_)

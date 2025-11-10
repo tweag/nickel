@@ -114,7 +114,7 @@ impl RecursivePriority {
 /// If we find a recursive priority annotation we return the field's value
 /// with the internal application removed.
 fn split_recursive_priority(value: &NickelValue) -> (RecursivePriority, NickelValue) {
-    if let Some(Term::App(head, arg)) = value.as_term() {
+    if let Some(Term::App(AppData { head, arg })) = value.as_term() {
         match head.as_term() {
             Some(Term::Var(id)) if id.label() == "$rec_default" => {
                 return (RecursivePriority::Default, arg.clone());
@@ -1043,17 +1043,17 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             .append(allocator.line())
             .append(data.body.pretty(allocator).nest(2))
             .group(),
-            Term::App(head, arg) => match head.as_term() {
-                Some(Term::App(iop, t))
-                    if matches!(iop.as_term(), Some(Term::Op1(data)) if data.op == UnaryOp::IfThenElse) =>
+            Term::App(AppData { head, arg }) => match head.as_term() {
+                Some(Term::App(AppData { head: lazy_op, arg: arg_op }))
+                    if matches!(lazy_op.as_term(), Some(Term::Op1(data_op)) if data_op.op == UnaryOp::IfThenElse) =>
                 {
-                    if let Some(Term::Op1(data)) = iop.as_term() && let Op1Data { op: UnaryOp::IfThenElse, arg: cond } = &**data {
+                    if let Some(Term::Op1(data)) = lazy_op.as_term() && let Op1Data { op: UnaryOp::IfThenElse, arg: cond } = &**data {
                         docs![
                             allocator,
                             "if ",
                             cond,
                             " then",
-                            docs![allocator, allocator.line(), t].nest(2),
+                            docs![allocator, allocator.line(), arg_op].nest(2),
                             allocator.line(),
                             "else",
                             docs![allocator, allocator.line(), arg].nest(2)

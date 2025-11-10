@@ -9,8 +9,8 @@ use crate::{
     files::FileId,
     identifier::LocIdent,
     term::{
-        AnnotatedData, FunData, FunPatternData, Import, LetData, LetPatternData, MatchData,
-        Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
+        AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData,
+        MatchData, Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
     },
 };
 
@@ -178,7 +178,7 @@ pub enum TermContent {
     FunPattern(ValueLens<Box<FunPatternData>>),
     Let(ValueLens<Box<LetData>>),
     LetPattern(ValueLens<Box<LetPatternData>>),
-    App(ValueLens<(NickelValue, NickelValue)>),
+    App(ValueLens<AppData>),
     Var(ValueLens<LocIdent>),
     RecRecord(ValueLens<Box<RecRecordData>>),
     Closurize(ValueLens<NickelValue>),
@@ -435,7 +435,7 @@ impl ValueLens<Box<LetPatternData>> {
     }
 }
 
-impl ValueLens<(NickelValue, NickelValue)> {
+impl ValueLens<AppData> {
     /// Creates a new lens extracting [crate::term::Term::App].
     ///
     /// # Safety
@@ -450,11 +450,11 @@ impl ValueLens<(NickelValue, NickelValue)> {
     }
 
     /// Extractor for [crate::term::Term::App].
-    fn term_app_extractor(value: NickelValue) -> (NickelValue, NickelValue) {
+    fn term_app_extractor(value: NickelValue) -> AppData {
         let term = ValueLens::<TermData>::content_extractor(value);
 
-        if let Term::App(fun, arg) = term {
-            (fun, arg)
+        if let Term::App(data) = term {
+            data
         } else {
             unreachable!()
         }
