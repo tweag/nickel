@@ -762,18 +762,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let idx = self.get_var(*id, &env, pos_idx)?;
                     self.enter_cache_index(Some(*id), idx, pos_idx, env)?
                 }
-                ValueContentRef::Term(Term::App(head, arg)) => {
+                ValueContentRef::Term(Term::App(data)) => {
                     self.call_stack.enter_app(&self.context.pos_table, pos_idx);
 
                     self.stack.push_arg(
                         Closure {
-                            value: arg.clone(),
+                            value: data.arg.clone(),
                             env: env.clone(),
                         },
                         pos_idx,
                     );
                     Closure {
-                        value: head.clone(),
+                        value: data.head.clone(),
                         env,
                     }
                 }
@@ -1077,7 +1077,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                             match value {
                                 Some(value) => NickelValue::term(
-                                    Term::App(extend, value),
+                                    Term::app(extend, value),
                                     pos_dyn_field.to_inherited(&mut self.context.pos_table),
                                 ),
                                 None => extend,
@@ -1582,11 +1582,11 @@ pub fn subst<C: Cache>(
                     "Pattern {:?} has not been transformed before evaluation", lens.restore()
                 ),
                 TermContent::App(lens) => {
-                    let (head, arg) = lens.take();
-                    let head = subst(pos_table, cache, head, initial_env, env);
-                    let arg = subst(pos_table, cache, arg, initial_env, env);
+                    let mut data = lens.take();
+                    data.head = subst(pos_table, cache, data.head, initial_env, env);
+                    data.arg = subst(pos_table, cache, data.arg, initial_env, env);
 
-                    NickelValue::term(Term::App(head, arg), pos_idx)
+                    NickelValue::term(Term::App(data), pos_idx)
                 }
                 TermContent::Match(lens) => {
                     let data = lens.take();

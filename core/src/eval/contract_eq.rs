@@ -207,9 +207,9 @@ fn contract_eq_bounded(
                             }
                         })
                 }
-                (Term::App(head1, arg1), Term::App(head2, arg2)) => {
-                    contract_eq_bounded(state, head1, env1, head2, env2)
-                        && contract_eq_bounded(state, arg1, env1, arg2, env2)
+                (Term::App(data1), Term::App(data2)) => {
+                    contract_eq_bounded(state, &data1.head, env1, &data2.head, env2)
+                        && contract_eq_bounded(state, &data1.arg, env1, &data2.arg, env2)
                 }
                 // All variables must be bound at this stage. This is checked by the typechecker when
                 // walking annotations. However, we may assume that `env` is a local environment (that it

@@ -8,8 +8,9 @@ use crate::{
     identifier::Ident,
     term::pattern::*,
     term::{
-        AnnotatedData, FunData, FunPatternData, IndexMap, LetData, LetPatternData, MatchBranch,
-        Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
+        AnnotatedData, AppData, FunData, FunPatternData, IndexMap, LetData, LetPatternData,
+        MatchBranch, MatchData, Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term,
+        TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -84,29 +85,8 @@ impl CollectFreeVars for Term {
             Term::FunPattern(data) => data.collect_free_vars(free_vars),
             Term::Let(data) => data.collect_free_vars(free_vars),
             Term::LetPattern(data) => data.collect_free_vars(free_vars),
-            Term::App(t1, t2) => {
-                t1.collect_free_vars(free_vars);
-                t2.collect_free_vars(free_vars);
-            }
-            Term::Match(data) => {
-                for MatchBranch {
-                    pattern,
-                    guard,
-                    body,
-                } in data.branches.iter_mut()
-                {
-                    let mut fresh = HashSet::new();
-
-                    if let Some(guard) = guard {
-                        guard.collect_free_vars(&mut fresh);
-                    }
-                    body.collect_free_vars(&mut fresh);
-
-                    pattern.remove_bindings(&mut fresh);
-
-                    free_vars.extend(fresh);
-                }
-            }
+            Term::App(data) => data.collect_free_vars(free_vars),
+            Term::Match(data) => data.collect_free_vars(free_vars),
             Term::Op1(data) => data.collect_free_vars(free_vars),
             Term::Op2(data) => data.collect_free_vars(free_vars),
             Term::OpN(data) => data.collect_free_vars(free_vars),
@@ -349,6 +329,34 @@ impl CollectFreeVars for AnnotatedData {
         }
 
         self.inner.collect_free_vars(set);
+    }
+}
+
+impl CollectFreeVars for AppData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        self.head.collect_free_vars(set);
+        self.arg.collect_free_vars(set);
+    }
+}
+
+impl CollectFreeVars for MatchData {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for MatchBranch {
+            pattern,
+            guard,
+            body,
+        } in self.branches.iter_mut()
+        {
+            let mut fresh = HashSet::new();
+
+            if let Some(guard) = guard {
+                guard.collect_free_vars(&mut fresh);
+            }
+
+            body.collect_free_vars(&mut fresh);
+            pattern.remove_bindings(&mut fresh);
+            set.extend(fresh);
+        }
     }
 }
 

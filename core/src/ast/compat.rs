@@ -437,34 +437,34 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                 data.body.to_ast(alloc, pos_table),
                 data.attrs.rec,
             ),
-            Term::App(fun, arg) => {
+            Term::App(data) => {
                 // We have to special-case if-then-else, which is encoded as a primop application
                 // of the unary operator if-then-else to the condition, followed by two normal
                 // applications for the if and else branches, which is a bit painful to match.
-                if let Some(Term::App(fun_inner, arg_inner)) = fun.as_term()
-                    && let Some(Term::Op1(data)) = fun_inner.as_term()
+                if let Some(Term::App(data_inner)) = data.head.as_term()
+                    && let Some(Term::Op1(data)) = data_inner.head.as_term()
                     && data.op == term::UnaryOp::IfThenElse
                 {
                     return alloc.if_then_else(
                         data.arg.to_ast(alloc, pos_table),
-                        arg_inner.to_ast(alloc, pos_table),
-                        arg.to_ast(alloc, pos_table),
+                        data_inner.arg.to_ast(alloc, pos_table),
+                        data.arg.to_ast(alloc, pos_table),
                     );
                 }
 
-                let mut args = vec![arg.to_ast(alloc, pos_table)];
-                let mut maybe_next_app = fun.as_term();
+                let mut args = vec![data.arg.to_ast(alloc, pos_table)];
+                let mut maybe_next_app = data.head.as_term();
 
-                while let Some(Term::App(next_fun, next_arg)) = maybe_next_app {
-                    args.push(next_arg.to_ast(alloc, pos_table));
-                    maybe_next_app = next_fun.as_term();
+                while let Some(Term::App(data_next)) = maybe_next_app {
+                    args.push(data_next.arg.to_ast(alloc, pos_table));
+                    maybe_next_app = data_next.head.as_term();
                 }
 
                 // Application is left-associative: `f x y` is parsed as `(f x) y`. So we see the
                 // outer argument `y` first, and `args` will be `[y, x]`. We need to reverse it to
                 // match the expected order of a flat application node.
                 args.reverse();
-                alloc.app(fun.to_ast(alloc, pos_table), args)
+                alloc.app(data.head.to_ast(alloc, pos_table), args)
             }
             Term::Var(id) => Node::Var(*id),
             Term::RecRecord(data) => {
@@ -1560,7 +1560,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                         // see [^nary-constructors-unrolling]
                         let arg_pos = arg.pos;
                         NickelValue::term(
-                            Term::App(result, arg.to_mainline(pos_table)),
+                            Term::app(result, arg.to_mainline(pos_table)),
                             pos_table.push(head_pos.fuse(arg_pos)),
                         )
                     })
