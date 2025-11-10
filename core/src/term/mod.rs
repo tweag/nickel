@@ -254,7 +254,7 @@ pub enum Term {
     /// something in the recursive environment. And if we wrote `r.foo` instead, we should raise a
     /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
     /// evaluated, will raise a proper missing field definition error. This is precisely the
-    /// behavior of `RuntimeError` behaves.
+    /// behavior of `RuntimeError`.
     RuntimeError(EvalErrorKind),
 }
 
