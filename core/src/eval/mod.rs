@@ -904,7 +904,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
                     // should probably do a `content()` call at the top of the eval function.
                     let result = match value.clone().content() {
-                        ValueContent::Array(lens) if lens.peek().is_inline_empty_array() => {
+                        ValueContent::Array(lens) if lens.value().is_inline_empty_array() => {
                             lens.restore()
                         }
                         ValueContent::Array(lens) => {
@@ -933,7 +933,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                             NickelValue::array(array, pending_contracts, pos_idx)
                         }
-                        ValueContent::Record(lens) if lens.peek().is_inline_empty_record() => {
+                        ValueContent::Record(lens) if lens.value().is_inline_empty_record() => {
                             lens.restore()
                         }
                         ValueContent::Record(lens) => NickelValue::record(

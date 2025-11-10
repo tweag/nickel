@@ -44,7 +44,7 @@ impl<T> ValueLens<T> {
     }
 
     /// Peeks at the underlying value, without consuming the lens.
-    pub fn peek(&self) -> &NickelValue {
+    pub fn value(&self) -> &NickelValue {
         &self.value
     }
 
@@ -73,7 +73,7 @@ impl<T: ValueBlockData + Clone> ValueLens<Container<T>> {
                 if v.is_inline() {
                     Container::Empty
                 } else {
-                    Container::Alloc(ValueLens::<T>::content_extractor(v))
+                    Container::Alloc(ValueLens::<T>::extract_or_clone(v))
                 }
             },
         }
@@ -89,17 +89,25 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     pub(super) unsafe fn content_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
-            lens: Self::content_extractor,
+            lens: Self::extract_or_clone,
         }
     }
 
-    /// Extractor for a value block.
-    fn content_extractor(value: NickelValue) -> T {
-        // Safety: the fields of LazyValueLens are private, so it can only be constructed from
-        // within this module. We maintain the invariant that if `content_extractor` is used as a
-        // lens for a `LazyValueLens` object, then `T : ValueBlockData` and `self.value` is a value
-        // block whose tag matches `T::TAG`, so `self.value.data` is a valid pointer to a
-        // `ValueBlockHeader` followed by a `U` at the right offset.
+    /// Custom extractor for a value block. If the reference is 1-counted, the content is extracted
+    /// and the first closure is called with an owned value. Otherwise, the second closure is
+    /// called with a reference to the content. This makes it possible to finer things than the
+    /// blunt clone of [Self::extract_or_clone], such as avoiding cloning the outer `Box` wrapper
+    /// of some `Term` variants when the data is shared.
+    fn with_content<F, G, R>(value: NickelValue, on_owned: F, on_ref: G) -> R
+    where
+        F: FnOnce(T) -> R,
+        G: FnOnce(&T) -> R,
+    {
+        // Safety: the fields of `ValueLens` are private, so it can only be constructed from within
+        // this module. We maintain the invariant that if `with_content` is used as a lens for
+        // a `ValueLens` object, then `T : ValueBlockData` and `self.value` is a value block whose
+        // tag matches `T::TAG`, so `self.value.data` is a valid pointer to a `ValueBlockHeader`
+        // followed by a `U` at the right offset.
         unsafe {
             let ptr = NonNull::new_unchecked(value.data as *mut u8);
             let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count;
@@ -118,11 +126,16 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
                 // While we don't want the destructor to run, we do want to clean up the original
                 // allocation.
                 dealloc(ptr.as_ptr(), T::TAG.block_layout());
-                content
+                on_owned(content)
             } else {
-                ptr_content.as_ref().clone()
+                on_ref(ptr_content.as_ref())
             }
         }
+    }
+
+    /// Standard extractor for a value block.
+    fn extract_or_clone(value: NickelValue) -> T {
+        Self::with_content(value, |v| v, |data| data.clone())
     }
 }
 
@@ -315,10 +328,81 @@ macro_rules! impl_term_lens {
 
             // Extractor for `Term::$term_cons`.
             fn $lens_extrct(value: NickelValue) -> $type {
-                let term = ValueLens::<TermData>::content_extractor(value);
-
-                if let Term::$term_cons(data) = term {
+                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(value) {
                     data
+                } else {
+                    unreachable!()
+                }
+            }
+
+            /// Peeks at the underlying term data without taking ownership.
+            pub fn peek(&self) -> &$type {
+                if let Some(Term::$term_cons(data)) = self.value.as_term() {
+                    data
+                } else {
+                    unreachable!()
+                }
+            }
+        }
+    };
+}
+
+/// Same as `impl_term_lens!`, but specialized for terms with boxed payload, where the reference
+/// and the extraction code are different. In particular, we try to avoid allocating a new [Box]
+/// when copying non-1RC content (in practice, we always want to move the result on the stack).
+macro_rules! impl_term_boxed_lens {
+    ( $lens_cons:ident, $lens_extrct:ident, $term_cons:ident, $type:ty ) => {
+        impl ValueLens<Box<$type>> {
+            // Creates a new lens extracting `Term::$term_cons`.
+            //
+            // # Safety
+            //
+            // `value` must be a value block with tag `DataTag::Term`, and the inner term must
+            // match `Term::$term_cons`.
+            pub(super) unsafe fn $lens_cons(value: NickelValue) -> Self {
+                Self {
+                    value,
+                    lens: Self::$lens_extrct,
+                }
+            }
+
+            // Extractor for `Term::$term_cons`.
+            fn $lens_extrct(value: NickelValue) -> Box<$type> {
+                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(value) {
+                    data
+                } else {
+                    unreachable!()
+                }
+            }
+
+            /// Variant of `take()` for boxed term data that returns the data unboxed. When the
+            /// value is shared, [Self::take_unboxed] avoids cloning the outer box and directly
+            /// clones the inner data instead. If you're going to move out of the box anyway,
+            /// prefer this variant, which should avoid an ephemeral heap-allocation.
+            pub fn take_unboxed(self) -> $type {
+                ValueLens::<TermData>::with_content(
+                    self.value,
+                    |owned| {
+                        if let Term::$term_cons(data) = owned {
+                            *data
+                        } else {
+                            unreachable!()
+                        }
+                    },
+                    |as_ref| {
+                        if let Term::$term_cons(data) = as_ref {
+                            (**data).clone()
+                        } else {
+                            unreachable!()
+                        }
+                    },
+                )
+            }
+
+            /// Returns a reference to the inner term data without taking ownership.
+            pub fn data(&self) -> &$type {
+                if let Some(Term::$term_cons(data)) = self.value.as_term() {
+                    &**data
                 } else {
                     unreachable!()
                 }
@@ -356,7 +440,7 @@ impl ValueLens<NickelValue> {
 
     /// Extractor for [Term::Value].
     fn term_value_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermData>::content_extractor(value);
+        let term = ValueLens::<TermData>::extract_or_clone(value);
 
         if let Term::Value(inner) = term {
             inner
@@ -367,7 +451,7 @@ impl ValueLens<NickelValue> {
 
     /// Extractor for [Term::Closurize].
     fn term_closurize_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermData>::content_extractor(value);
+        let term = ValueLens::<TermData>::extract_or_clone(value);
 
         if let Term::Closurize(inner) = term {
             inner
@@ -386,31 +470,31 @@ impl_term_lens!(
 
 impl_term_lens!(term_fun_lens, term_fun_extractor, Fun, FunData);
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_fun_pat_lens,
     term_fun_pat_extractor,
     FunPattern,
-    Box<FunPatternData>
+    FunPatternData
 );
 
 impl_term_lens!(term_let_lens, term_let_extractor, Let, Box<LetData>);
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_let_pat_lens,
     term_let_pat_extractor,
     LetPattern,
-    Box<LetPatternData>
+    LetPatternData
 );
 
 impl_term_lens!(term_app_lens, term_app_extractor, App, AppData);
 
 impl_term_lens!(term_var_lens, term_var_extractor, Var, LocIdent);
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_rec_record_lens,
     term_rec_record_extractor,
     RecRecord,
-    Box<RecRecordData>
+    RecRecordData
 );
 
 impl_term_lens!(term_match_lens, term_match_extractor, Match, MatchData);

@@ -26,10 +26,12 @@ pub fn transform_one(pos_table: &mut PosTable, value: NickelValue) -> NickelValu
     match value.content() {
         ValueContent::Term(term) => match term {
             TermContent::LetPattern(lens) => {
-                let data = lens.take();
-                NickelValue::term(desugar_let(pos_table, *data), pos_idx)
+                let data = lens.take_unboxed();
+                NickelValue::term(desugar_let(pos_table, data), pos_idx)
             }
-            TermContent::FunPattern(lens) => NickelValue::term(desugar_fun(*lens.take()), pos_idx),
+            TermContent::FunPattern(lens) => {
+                NickelValue::term(desugar_fun(lens.take_unboxed()), pos_idx)
+            }
             lens => lens.restore(),
         },
         lens => lens.restore(),
