@@ -49,10 +49,12 @@ pub mod strict {
     where
         R: ImportResolver,
     {
-        let tolerant_result = super::tolerant::resolve_imports(pos_table, value, resolver);
-        match tolerant_result.import_errors.first() {
-            Some(err) => Err(err.clone()),
-            None => Ok(tolerant_result.into()),
+        let mut tolerant_result = super::tolerant::resolve_imports(pos_table, value, resolver);
+
+        if !tolerant_result.import_errors.is_empty() {
+            Err(tolerant_result.import_errors.swap_remove(0))
+        } else {
+            Ok(tolerant_result.into())
         }
     }
 
@@ -81,7 +83,7 @@ pub mod strict {
 pub mod tolerant {
     use super::ImportResolver;
     use crate::{
-        error::ImportError,
+        error::{ImportError, ImportErrorKind},
         eval::{value::NickelValue, value::ValueContentRef},
         files::FileId,
         position::PosTable,
@@ -118,7 +120,7 @@ pub mod tolerant {
         // If an import is resolved, then stack it.
         let transformed = value
             .traverse(
-                &mut |value: NickelValue| -> Result<NickelValue, ImportError> {
+                &mut |value: NickelValue| -> Result<NickelValue, ImportErrorKind> {
                     let (value, err) = transform_one(pos_table, value, resolver, source_file);
                     if let Some(err) = err {
                         import_errors.push(err);

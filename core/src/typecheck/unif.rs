@@ -1085,7 +1085,7 @@ impl<'ast> PropagateConstrs<'ast> for UnifRecordRows<'ast> {
                     rrows: RecordRowsF::Extend { row, .. },
                     ..
                 } if var_constr.contains(&row.id.ident()) => {
-                    Err(RowUnifError::RecordRowConflict(row.clone()))
+                    Err(Box::new(RowUnifErrorKind::RecordRowConflict(row.clone())))
                 }
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { tail, .. },
@@ -1139,7 +1139,7 @@ impl<'ast> PropagateConstrs<'ast> for UnifEnumRows<'ast> {
                         },
                     ..
                 } if var_constr.contains(&row.id.ident()) => {
-                    Err(RowUnifError::EnumRowConflict(row.clone()))
+                    Err(Box::new(RowUnifErrorKind::EnumRowConflict(row.clone())))
                 }
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { tail, .. },
@@ -1239,17 +1239,19 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                 (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
                     s1s.clone()
                         .unify((*s2s).clone(), state, ctxt)
-                        .map_err(|err| UnifError::DomainMismatch {
+                        .map_err(|err| UnifErrorKind::DomainMismatch {
                             expected: UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
                             inferred: UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
-                            cause: Box::new(err),
+                            cause: err,
                         })?;
                     s1t.clone()
                         .unify((*s2t).clone(), state, ctxt)
-                        .map_err(|err| UnifError::CodomainMismatch {
-                            expected: UnifType::concrete(TypeF::Arrow(s1s, s1t)),
-                            inferred: UnifType::concrete(TypeF::Arrow(s2s, s2t)),
-                            cause: Box::new(err),
+                        .map_err(|err| {
+                            Box::new(UnifErrorKind::CodomainMismatch {
+                                expected: UnifType::concrete(TypeF::Arrow(s1s, s1t)),
+                                inferred: UnifType::concrete(TypeF::Arrow(s2s, s2t)),
+                                cause: err,
+                            })
                         })
                 }
                 (TypeF::Contract((t1, env1)), TypeF::Contract((t2, env2)))
@@ -1317,12 +1319,12 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                     substd1.unify(substd2, state, ctxt)
                 }
                 (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
-                    Err(UnifError::UnboundTypeVariable(ident.into()))
+                    Err(Box::new(UnifErrorKind::UnboundTypeVariable(ident.into())))
                 }
-                (ty1, ty2) => Err(UnifError::TypeMismatch {
+                (ty1, ty2) => Err(Box::new(UnifErrorKind::TypeMismatch {
                     expected: UnifType::concrete(ty1),
                     inferred: UnifType::concrete(ty2),
-                }),
+                })),
             },
             (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
                 // [^check-unif-var-level]: If we are unifying a variable with a rigid type
@@ -1336,10 +1338,10 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                     state.table.force_type_updates(constant_level);
 
                     if state.table.get_level(id) < constant_level {
-                        return Err(UnifError::VarLevelMismatch {
+                        return Err(Box::new(UnifErrorKind::VarLevelMismatch {
                             constant_id: cst_id,
                             var_kind: VarKindDiscriminant::Type,
-                        });
+                        }));
                     }
                 }
 
@@ -1347,17 +1349,19 @@ impl<'ast> Unify<'ast> for UnifType<'ast> {
                 Ok(())
             }
             (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
-            (UnifType::Constant(i1), UnifType::Constant(i2)) => Err(UnifError::ConstMismatch {
-                var_kind: VarKindDiscriminant::Type,
-                expected_const_id: i1,
-                inferred_const_id: i2,
-            }),
+            (UnifType::Constant(i1), UnifType::Constant(i2)) => {
+                Err(Box::new(UnifErrorKind::ConstMismatch {
+                    var_kind: VarKindDiscriminant::Type,
+                    expected_const_id: i1,
+                    inferred_const_id: i2,
+                }))
+            }
             (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
-                Err(UnifError::WithConst {
+                Err(Box::new(UnifErrorKind::WithConst {
                     var_kind: VarKindDiscriminant::Type,
                     expected_const_id: i,
                     inferred: ty,
-                })
+                }))
             }
         }
     }
@@ -1387,7 +1391,7 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                 },
             ) => match (erows1, erows2) {
                 (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
-                    Err(RowUnifError::UnboundTypeVariable(id))
+                    Err(Box::new(RowUnifErrorKind::UnboundTypeVariable(id)))
                 }
                 (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
                 (
@@ -1396,14 +1400,14 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                         row: UnifEnumRow { id, .. },
                         ..
                     },
-                ) => Err(RowUnifError::ExtraRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::ExtraRow(id))),
                 (
                     EnumRowsF::Extend {
                         row: UnifEnumRow { id, .. },
                         ..
                     },
                     EnumRowsF::Empty,
-                ) => Err(RowUnifError::MissingRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
                 (EnumRowsF::Extend { row, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
                     let uerows2 = UnifEnumRows::Concrete {
                         erows: erows2,
@@ -1414,8 +1418,8 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
                         uerows2.remove_row(&row.id, &row.typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
-                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict(row.clone()),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row.id),
+                            RemoveRowError::Conflict => RowUnifErrorKind::EnumRowConflict(row.clone()),
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1426,17 +1430,17 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                         match (row.typ, ty2) {
                             (Some(typ), Some(ty2)) => {
                                 typ.unify(ty2, state, ctxt).map_err(|err| {
-                                    RowUnifError::EnumRowMismatch {
+                                    RowUnifErrorKind::EnumRowMismatch {
                                         id: row.id,
-                                        cause: Some(Box::new(err)),
+                                        cause: Some(err),
                                     }
                                 })?;
                             }
                             (Some(_), None) | (None, Some(_)) => {
-                                return Err(RowUnifError::EnumRowMismatch {
+                                return Err(Box::new(RowUnifErrorKind::EnumRowMismatch {
                                     id: row.id,
                                     cause: None,
-                                });
+                                }));
                             }
                             (None, None) => (),
                         }
@@ -1453,10 +1457,10 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                     state.table.force_erows_updates(constant_level);
 
                     if state.table.get_erows_level(id) < constant_level {
-                        return Err(RowUnifError::VarLevelMismatch {
+                        return Err(Box::new(RowUnifErrorKind::VarLevelMismatch {
                             constant_id: cst_id,
                             var_kind: VarKindDiscriminant::EnumRows,
-                        });
+                        }));
                     }
                 }
 
@@ -1466,19 +1470,19 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
             }
             (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
             (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
-                Err(RowUnifError::ConstMismatch {
+                Err(Box::new(RowUnifErrorKind::ConstMismatch {
                     var_kind: VarKindDiscriminant::EnumRows,
                     expected_const_id: i1,
                     inferred_const_id: i2,
-                })
+                }))
             }
             (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
                 //TODO ROWS: should we refactor RowUnifError as well?
-                Err(RowUnifError::WithConst {
+                Err(Box::new(RowUnifErrorKind::WithConst {
                     var_kind: VarKindDiscriminant::EnumRows,
                     expected_const_id: i,
                     inferred: UnifType::concrete(TypeF::Enum(uerows)),
-                })
+                }))
             }
         }
     }
@@ -1508,12 +1512,16 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                 },
             ) => match (rrows1, rrows2) {
                 (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
-                    Err(RowUnifError::UnboundTypeVariable(id))
+                    Err(Box::new(RowUnifErrorKind::UnboundTypeVariable(id)))
                 }
                 (RecordRowsF::Empty, RecordRowsF::Empty)
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail),
-                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn) => {
+                    Err(Box::new(RowUnifErrorKind::ExtraDynTail))
+                }
+                (RecordRowsF::TailDyn, RecordRowsF::Empty) => {
+                    Err(Box::new(RowUnifErrorKind::MissingDynTail))
+                }
                 (
                     RecordRowsF::Empty,
                     RecordRowsF::Extend {
@@ -1527,7 +1535,7 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                         row: UnifRecordRow { id, .. },
                         ..
                     },
-                ) => Err(RowUnifError::ExtraRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::ExtraRow(id))),
                 (
                     RecordRowsF::Extend {
                         row: UnifRecordRow { id, .. },
@@ -1541,7 +1549,7 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                         ..
                     },
                     RecordRowsF::Empty,
-                ) => Err(RowUnifError::MissingRow(id)),
+                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
@@ -1551,9 +1559,9 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     let (ty2_result, urrows2_without_ty2) = urrows2
                         .remove_row(&row.id, &row.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifError::MissingRow(row.id),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row.id),
                             RemoveRowError::Conflict => {
-                                RowUnifError::RecordRowConflict(row.clone())
+                                RowUnifErrorKind::RecordRowConflict(row.clone())
                             }
                         })?;
 
@@ -1563,9 +1571,9 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     // row
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
                         row.typ.unify(ty2, state, ctxt).map_err(|err| {
-                            RowUnifError::RecordRowMismatch {
+                            RowUnifErrorKind::RecordRowMismatch {
                                 id: row.id,
-                                cause: Box::new(err),
+                                cause: err,
                             }
                         })?;
                     }
@@ -1581,10 +1589,10 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     state.table.force_rrows_updates(constant_level);
 
                     if state.table.get_rrows_level(id) < constant_level {
-                        return Err(RowUnifError::VarLevelMismatch {
+                        return Err(Box::new(RowUnifErrorKind::VarLevelMismatch {
                             constant_id: cst_id,
                             var_kind: VarKindDiscriminant::RecordRows,
-                        });
+                        }));
                     }
                 }
 
@@ -1594,18 +1602,18 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
             }
             (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
             (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
-                Err(RowUnifError::ConstMismatch {
+                Err(Box::new(RowUnifErrorKind::ConstMismatch {
                     var_kind: VarKindDiscriminant::RecordRows,
                     expected_const_id: i1,
                     inferred_const_id: i2,
-                })
+                }))
             }
             (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
-                Err(RowUnifError::WithConst {
+                Err(Box::new(RowUnifErrorKind::WithConst {
                     var_kind: VarKindDiscriminant::RecordRows,
                     expected_const_id: i,
                     inferred: UnifType::concrete(TypeF::Record(urrows)),
-                })
+                }))
             }
         }
     }

@@ -11,7 +11,6 @@
 //!   we'll *never* break them, just that stability is a priority.
 //! - Embeddability: our interfaces are designed to be usable from
 //!   other languages.
-#![allow(clippy::result_large_err)]
 
 use std::{
     ffi::OsString,
@@ -160,8 +159,8 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<nickel_lang_core::error::ExportError> for Error {
-    fn from(e: nickel_lang_core::error::ExportError) -> Self {
+impl From<nickel_lang_core::error::ExportErrorData> for Error {
+    fn from(e: nickel_lang_core::error::ExportErrorData) -> Self {
         Error {
             error: Box::new(e.into()),
             files: Files::empty(),

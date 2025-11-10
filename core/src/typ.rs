@@ -42,7 +42,7 @@
 //! only be equated with itself.
 use crate::{
     environment::Environment,
-    error::{EvalErrorData, ParseError, ParseErrors, TypecheckError},
+    error::{EvalErrorKind, ParseError, ParseErrors, TypecheckErrorData},
     eval::value::{Array, NickelValue},
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
@@ -166,20 +166,20 @@ impl Traverse<Type> for EnumRows {
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub LocIdent);
 
-impl From<UnboundTypeVariableError> for EvalErrorData {
+impl From<UnboundTypeVariableError> for EvalErrorKind {
     fn from(err: UnboundTypeVariableError) -> Self {
         let UnboundTypeVariableError(id) = err;
         let pos = id.pos;
-        EvalErrorData::UnboundIdentifier(id, pos)
+        EvalErrorKind::UnboundIdentifier(id, pos)
     }
 }
 
-impl From<UnboundTypeVariableError> for TypecheckError {
+impl From<UnboundTypeVariableError> for TypecheckErrorData {
     fn from(err: UnboundTypeVariableError) -> Self {
-        use crate::{ast::alloc::AstAlloc, error::TypecheckErrorData};
+        use crate::{ast::alloc::AstAlloc, error::TypecheckErrorKind};
 
-        TypecheckError::new(AstAlloc::new(), |_alloc| {
-            TypecheckErrorData::UnboundTypeVariable(err.0)
+        TypecheckErrorData::new(AstAlloc::new(), |_alloc| {
+            TypecheckErrorKind::UnboundTypeVariable(err.0)
         })
     }
 }

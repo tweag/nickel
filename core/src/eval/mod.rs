@@ -35,7 +35,7 @@
 //!   Consecutive indices are popped from the stack and are updated to point to the current evaluated
 //!   term.
 //! - **Import**: import must have been resolved before the evaluation starts. An unresolved import
-//!   causes an [`crate::error::EvalErrorData::InternalError`]. A resolved import, identified by a
+//!   causes an [`crate::error::EvalErrorKind::InternalError`]. A resolved import, identified by a
 //!   `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
 //! ## Operators
@@ -77,7 +77,10 @@ use crate::{
     cache::{CacheHub as ImportCaches, ImportResolver},
     closurize::{Closurize, closurize_rec_record},
     environment::Environment as GenericEnvironment,
-    error::{Error, EvalCtxt, EvalError, EvalErrorData, Reporter, warning::Warning},
+    error::{
+        Error, EvalCtxt, EvalError, EvalErrorData, EvalErrorKind, PointedExportErrorData, Reporter,
+        warning::Warning,
+    },
     files::{FileId, Files},
     identifier::{Ident, LocIdent},
     metrics::{increment, measure_runtime},
@@ -91,6 +94,7 @@ use crate::{
         string::NickelString,
     },
     transform::gen_pending_contracts,
+    typ::UnboundTypeVariableError,
 };
 
 use std::{
@@ -166,6 +170,23 @@ impl<R: ImportResolver, C: Cache> VmContext<R, C> {
             cache: C::new(),
             pos_table,
         }
+    }
+}
+
+/// Many functions in [self] and submodules returns an error of type [EvalErrorKind]. However, this
+/// error is large, so we box it to avoid performance issues related to large error variant (and to
+/// satisfy clippy).
+pub type ErrorKind = Box<EvalErrorKind>;
+
+impl From<UnboundTypeVariableError> for ErrorKind {
+    fn from(err: UnboundTypeVariableError) -> Self {
+        Box::new(err.into())
+    }
+}
+
+impl From<PointedExportErrorData> for ErrorKind {
+    fn from(err: PointedExportErrorData) -> Self {
+        Box::new(err.into())
     }
 }
 
@@ -438,7 +459,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         for id in path {
             let Some(current_value) = field.value else {
-                return self.throw_with_ctxt(EvalErrorData::MissingFieldDef {
+                return self.throw_with_ctxt(EvalErrorKind::MissingFieldDef {
                     id: *prev_id,
                     metadata: field.metadata,
                     pos_record: prev_pos_idx,
@@ -466,7 +487,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let Some(next_field) = container.get(*id).cloned() else {
                         let pos_op = self.context.pos_table.push(id.pos);
 
-                        return self.throw_with_ctxt(EvalErrorData::FieldMissing {
+                        return self.throw_with_ctxt(EvalErrorKind::FieldMissing {
                             id: *id,
                             field_names: container.field_names(RecordOpKind::IgnoreEmptyOpt),
                             operator: "extract_field".to_owned(),
@@ -482,7 +503,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 _ => {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
-                    return self.throw_with_ctxt(EvalErrorData::QueryNonRecord {
+                    return self.throw_with_ctxt(EvalErrorKind::QueryNonRecord {
                         pos: prev_pos_idx,
                         id: *id,
                         value: current_evaled.value,
@@ -494,7 +515,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
 
         if field.value.is_none() && require_defined {
-            return self.throw_with_ctxt(EvalErrorData::MissingFieldDef {
+            return self.throw_with_ctxt(EvalErrorKind::MissingFieldDef {
                 id: *prev_id,
                 metadata: field.metadata,
                 pos_record: prev_pos_idx,
@@ -521,17 +542,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     }
 
     /// Wraps [Self::err_with_ctxt] in the `Err` variant.
-    fn throw_with_ctxt<T>(&mut self, error: EvalErrorData) -> Result<T, EvalError> {
+    fn throw_with_ctxt<T>(&mut self, error: EvalErrorKind) -> Result<T, EvalError> {
         Err(self.err_with_ctxt(error))
     }
 
-    /// Wraps an evaluation error [crate::error::EvalErrorData] with the current evaluation context
+    /// Wraps an evaluation error [crate::error::EvalError] with the current evaluation context
     /// ([Self::eval_ctxt]) to make a [crate::error::EvalError].
-    fn err_with_ctxt(&mut self, error: EvalErrorData) -> EvalError {
-        EvalError {
+    fn err_with_ctxt(&mut self, error: EvalErrorKind) -> EvalError {
+        Box::new(EvalErrorData {
             error,
             ctxt: self.eval_ctxt(),
-        }
+        })
     }
 
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
@@ -569,7 +590,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         mut idx: CacheIndex,
         pos_idx: PosIdx,
         env: Environment,
-    ) -> Result<Closure, EvalErrorData> {
+    ) -> Result<Closure, ErrorKind> {
         // idx may be a 1-counted RC, so we make sure we drop any reference to it from `env`, which
         // is going to be discarded anyway
         std::mem::drop(env);
@@ -578,10 +599,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
             Ok(None) => {}
             Err(_blackholed_error) => {
-                return Err(EvalErrorData::InfiniteRecursion(
+                return Err(Box::new(EvalErrorKind::InfiniteRecursion(
                     self.call_stack.clone(),
                     pos_idx,
-                ));
+                )));
             }
         }
 
@@ -598,10 +619,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             ValueContent::Term(lens)
                 if matches!(
                     lens.term(),
-                    Term::RuntimeError(EvalErrorData::MissingFieldDef { .. })
+                    Term::RuntimeError(EvalErrorKind::MissingFieldDef { .. })
                 ) =>
             {
-                let Term::RuntimeError(EvalErrorData::MissingFieldDef {
+                let Term::RuntimeError(EvalErrorKind::MissingFieldDef {
                     id,
                     metadata,
                     pos_record,
@@ -612,7 +633,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 NickelValue::term(
-                    Term::RuntimeError(EvalErrorData::MissingFieldDef {
+                    Term::RuntimeError(EvalErrorKind::MissingFieldDef {
                         id,
                         metadata,
                         pos_record,
@@ -628,14 +649,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     }
 
     /// Fetches a closure from the local or the initial environment, or fails with
-    /// [crate::error::EvalErrorData::UnboundIdentifier] with either the variable position, or the
+    /// [crate::error::EvalError::UnboundIdentifier] with either the variable position, or the
     /// provided fallback position if the former isn't defined.
     fn get_var(
         &self,
         id: LocIdent,
         env: &Environment,
         pos_idx: PosIdx,
-    ) -> Result<CacheIndex, EvalErrorData> {
+    ) -> Result<CacheIndex, ErrorKind> {
         get_var(&self.context.pos_table, id, &self.initial_env, env, pos_idx)
     }
 
@@ -657,13 +678,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ///  - the evaluated term with its final environment
     pub fn eval_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
         self.eval_closure_impl(closure)
-            .map_err(|err| self.err_with_ctxt(err))
+            .map_err(|err| self.err_with_ctxt(*err))
     }
 
     /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
-    /// `?` operator on [crate::error::EvalErrorData], and only add the missing context to make it
+    /// `?` operator on [crate::error::EvalError], and only add the missing context to make it
     /// an [crate:error::EvalError] once at the end.
-    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, EvalErrorData> {
+    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, ErrorKind> {
         #[cfg(feature = "metrics")]
         let start_time = std::time::Instant::now();
 
@@ -725,10 +746,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
-                            break Err(EvalErrorData::BlameError {
+                            break Err(Box::new(EvalErrorKind::BlameError {
                                 evaluated_arg: data.label.get_evaluated_arg(&self.context.cache),
                                 label: data.label.clone(),
-                            });
+                            }));
                         }
                     }
                 }
@@ -819,7 +840,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // the original list.
                     let mut args_iter = data.args.iter();
                     let fst_arg = args_iter.next().ok_or_else(|| {
-                        EvalErrorData::NotEnoughArgs(data.op.arity(), data.op.to_string(), pos_idx)
+                        EvalErrorKind::NotEnoughArgs(data.op.arity(), data.op.to_string(), pos_idx)
                     })?;
 
                     let pending: Vec<Closure> = args_iter
@@ -952,7 +973,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         let includes_as_terms: Result<Vec<_>, _> = data
                             .includes
                             .iter()
-                            .map(|incl| -> Result<_, EvalErrorData> {
+                            .map(|incl| -> Result<_, ErrorKind> {
                                 let field = Field {
                                     value: Some(NickelValue::thunk(
                                         self.get_var(incl.ident, &env, PosIdx::NONE)?,
@@ -1067,29 +1088,29 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     if let Some(val) = self.context.import_resolver.get(*id) {
                         val.into()
                     } else {
-                        break Err(EvalErrorData::InternalError(
+                        break Err(Box::new(EvalErrorKind::InternalError(
                             format!("Resolved import not found ({id:?})"),
                             pos_idx,
-                        ));
+                        )));
                     }
                 }
                 ValueContentRef::Term(Term::Import(Import::Path { path, .. })) => {
-                    break Err(EvalErrorData::InternalError(
+                    break Err(Box::new(EvalErrorKind::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
                         pos_idx,
-                    ));
+                    )));
                 }
                 ValueContentRef::Term(Term::Import(Import::Package { id })) => {
-                    return Err(EvalErrorData::InternalError(
+                    return Err(Box::new(EvalErrorKind::InternalError(
                         format!("Unresolved package import ({id})"),
                         pos_idx,
-                    ));
+                    )));
                 }
                 ValueContentRef::Term(Term::ParseError(parse_error)) => {
-                    break Err(EvalErrorData::ParseError(parse_error.clone()));
+                    break Err(Box::new(EvalErrorKind::ParseError(parse_error.clone())));
                 }
                 ValueContentRef::Term(Term::RuntimeError(error)) => {
-                    break Err(error.clone());
+                    break Err(Box::new(error.clone()));
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -1163,10 +1184,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::FunPattern(..) | Term::LetPattern(..)) => {
-                    break Err(EvalErrorData::InternalError(
+                    break Err(Box::new(EvalErrorKind::InternalError(
                         "unexpected let-pattern or fun-pattern during evaluation".to_owned(),
                         pos_idx,
-                    ));
+                    )));
                 }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
@@ -1187,7 +1208,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // are supposed to evaluate an application, but the left hand side isn't a
                     // function)
                     else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.context.cache) {
-                        break Err(EvalErrorData::NotAFunc(evaluated.value, arg.value, pos_app));
+                        break Err(Box::new(EvalErrorKind::NotAFunc(
+                            evaluated.value,
+                            arg.value,
+                            pos_app,
+                        )));
                     }
                     // Finally, if the stack is empty, it's all good: it just means we are done
                     // evaluating.
@@ -1257,7 +1282,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 );
                                 inner(this, acc, value_with_ctr, recursion_limit.saturating_sub(1));
                             } else {
-                                acc.push(this.err_with_ctxt(EvalErrorData::MissingFieldDef {
+                                acc.push(this.err_with_ctxt(EvalErrorKind::MissingFieldDef {
                                     id: *id,
                                     metadata: field.metadata.clone(),
                                     pos_record: pos_idx,
@@ -1452,14 +1477,14 @@ fn get_var(
     initial_env: &Environment,
     env: &Environment,
     pos_idx: PosIdx,
-) -> Result<CacheIndex, EvalErrorData> {
+) -> Result<CacheIndex, ErrorKind> {
     env.get(&id.ident())
         .or_else(|| initial_env.get(&id.ident()))
         .cloned()
-        .ok_or(EvalErrorData::UnboundIdentifier(
+        .ok_or(Box::new(EvalErrorKind::UnboundIdentifier(
             id,
             id.pos.or(pos_table.get(pos_idx)),
-        ))
+        )))
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.

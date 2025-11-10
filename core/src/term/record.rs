@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     combine::Combine,
-    error::EvalErrorData,
+    error::EvalErrorKind,
     identifier::{Ident, LocIdent},
     label::Label,
     position::PosIdx,
@@ -316,14 +316,16 @@ pub struct RecordData {
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
 /// definition and isn't optional.
 #[derive(Clone, Debug)]
-pub struct MissingFieldDefError {
+pub struct MissingFieldDefErrorData {
     pub id: LocIdent,
     pub metadata: FieldMetadata,
 }
 
-impl MissingFieldDefError {
-    pub fn into_eval_err(self, pos_record: PosIdx, pos_access: PosIdx) -> EvalErrorData {
-        EvalErrorData::MissingFieldDef {
+pub type MissingFieldDefError = Box<MissingFieldDefErrorData>;
+
+impl MissingFieldDefErrorData {
+    pub fn into_eval_err(self, pos_record: PosIdx, pos_access: PosIdx) -> EvalErrorKind {
+        EvalErrorKind::MissingFieldDef {
             id: self.id,
             metadata: self.metadata,
             pos_record,
@@ -423,10 +425,10 @@ impl RecordData {
                         ),
                     )))
                 }
-                None if !field.metadata.opt => Some(Err(MissingFieldDefError {
+                None if !field.metadata.opt => Some(Err(Box::new(MissingFieldDefErrorData {
                     id: *id,
                     metadata: field.metadata.clone(),
-                })),
+                }))),
                 None => None,
             })
     }
@@ -443,10 +445,10 @@ impl RecordData {
             match field.value {
                 Some(ref v) if !field.metadata.not_exported => Some(Ok((id.ident(), v))),
                 None if !field.metadata.opt && !field.metadata.not_exported => {
-                    Some(Err(MissingFieldDefError {
+                    Some(Err(Box::new(MissingFieldDefErrorData {
                         id: *id,
                         metadata: field.metadata.clone(),
-                    }))
+                    })))
                 }
                 _ => None,
             }
@@ -467,10 +469,10 @@ impl RecordData {
                 value: None,
                 metadata: metadata @ FieldMetadata { opt: false, .. },
                 ..
-            }) => Err(MissingFieldDefError {
+            }) => Err(Box::new(MissingFieldDefErrorData {
                 id: *id,
                 metadata: metadata.clone(),
-            }),
+            })),
             Some(Field {
                 value: Some(value),
                 pending_contracts,

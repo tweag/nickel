@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang_core::error::{Error, EvalError, EvalErrorData, NullReporter};
+use nickel_lang_core::error::{Error, EvalErrorData, EvalErrorKind, NullReporter};
 use nickel_lang_utils::{
     annotated_test::{TestCase, read_annotated_test_case},
     project_root::project_root,
@@ -28,10 +28,10 @@ fn check_example_file(path: &str) {
         }
         Expectation::Blame => assert_matches!(
             p.eval_deep(),
-            Err(Error::EvalError(EvalError {
-                error: EvalErrorData::BlameError { .. },
+            Err(Error::EvalError(data)) if matches!(*data, EvalErrorData {
+                error: EvalErrorKind::BlameError { .. },
                 ctxt: _
-            }))
+            })
         ),
         Expectation::Ignore => (),
     }

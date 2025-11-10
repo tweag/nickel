@@ -24,7 +24,7 @@
 //! we can generate inlined versions on-the-fly here).
 use super::*;
 use crate::{
-    error::EvalErrorData,
+    error::EvalErrorKind,
     eval::value::NickelValue,
     metrics::increment,
     mk_app,
@@ -1026,7 +1026,7 @@ impl Compile for MatchData {
         }
 
         let error_case = NickelValue::term(
-            Term::RuntimeError(EvalErrorData::NonExhaustiveMatch {
+            Term::RuntimeError(EvalErrorKind::NonExhaustiveMatch {
                 value: value.clone(),
                 pos: pos_idx,
             }),

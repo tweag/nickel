@@ -5,7 +5,7 @@ use super::{
 };
 
 use crate::{
-    error::{EvalErrorData, ParseError},
+    error::{EvalErrorKind, ParseError},
     files::FileId,
     identifier::LocIdent,
     term::{
@@ -192,7 +192,7 @@ pub enum TermContent {
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
     ParseError(ValueLens<ParseError>),
-    RuntimeError(ValueLens<EvalErrorData>),
+    RuntimeError(ValueLens<EvalErrorKind>),
 }
 
 impl TermContent {
@@ -775,7 +775,7 @@ impl ValueLens<ParseError> {
     }
 }
 
-impl ValueLens<EvalErrorData> {
+impl ValueLens<EvalErrorKind> {
     /// Creates a new lens extracting [crate::term::Term::RuntimeError].
     ///
     /// # Safety
@@ -790,7 +790,7 @@ impl ValueLens<EvalErrorData> {
     }
 
     /// Extractor for [crate::term::Term::RuntimeError].
-    fn term_runtime_error_extractor(value: NickelValue) -> EvalErrorData {
+    fn term_runtime_error_extractor(value: NickelValue) -> EvalErrorKind {
         let term = ValueLens::<TermData>::content_extractor(value);
 
         if let Term::RuntimeError(err) = term {

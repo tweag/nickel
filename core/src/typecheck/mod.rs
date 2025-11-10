@@ -61,7 +61,7 @@ use crate::{
     },
     cache::AstImportResolver,
     environment::Environment,
-    error::{TypecheckError, TypecheckErrorData},
+    error::{TypecheckError, TypecheckErrorData, TypecheckErrorKind},
     identifier::{Ident, LocIdent},
     mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
     position::TermPos,
@@ -1275,12 +1275,13 @@ impl<'ast> Context<'ast> {
     }
 
     /// Retrieves a variable from the type environment, or fail with
-    /// [crate::error::TypecheckErrorData::UnboundIdentifier] instead.
+    /// [crate::error::TypecheckErrorKind::UnboundIdentifier] instead.
     pub fn get_type(&self, id: LocIdent) -> Result<UnifType<'ast>, TypecheckError> {
         self.type_env.get(&id.ident()).cloned().ok_or_else(|| {
-            TypecheckError::new(AstAlloc::new(), |_alloc| {
-                TypecheckErrorData::UnboundIdentifier(id)
+            TypecheckErrorData::new(AstAlloc::new(), |_alloc| {
+                TypecheckErrorKind::UnboundIdentifier(id)
             })
+            .into()
         })
     }
 }
@@ -2446,12 +2447,13 @@ impl<'ast> Check<'ast> for &'ast Ast<'ast> {
             }
             Node::Type(typ) => {
                 if let Some(contract) = typ.find_contract() {
-                    Err(TypecheckError::new(AstAlloc::new(), |alloc| {
-                        TypecheckErrorData::CtrTypeInTermPos {
+                    Err(Box::new(TypecheckErrorData::new(
+                        AstAlloc::new(),
+                        |alloc| TypecheckErrorKind::CtrTypeInTermPos {
                             contract: Ast::clone_to(contract.clone(), alloc),
                             pos_type: self.pos,
-                        }
-                    }))
+                        },
+                    )))
                 } else {
                     Ok(())
                 }
