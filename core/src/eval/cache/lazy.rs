@@ -601,7 +601,7 @@ impl Thunk {
             .map(|id| NickelValue::from(Term::Var(id.into())));
 
         args.fold(as_function_closurized, |partial_app, arg| {
-            NickelValue::from(Term::App(partial_app, arg))
+            NickelValue::from(Term::app(partial_app, arg))
         })
     }
 

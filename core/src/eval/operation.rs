@@ -621,7 +621,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 );
 
                                 NickelValue::term(
-                                    Term::App(f_as_var.clone(), t_with_ctrs),
+                                    Term::app(f_as_var.clone(), t_with_ctrs),
                                     pos_op_inh,
                                 )
                                 .closurize(&mut self.context.cache, env.clone())

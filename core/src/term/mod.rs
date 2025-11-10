@@ -127,6 +127,12 @@ pub struct AnnotatedData {
     pub inner: NickelValue,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AppData {
+    pub head: NickelValue,
+    pub arg: NickelValue,
+}
+
 /// The runtime representation of a Nickel computation.
 ///
 /// # History
@@ -172,7 +178,7 @@ pub enum Term {
     LetPattern(Box<LetPatternData>),
 
     /// An application. Push the argument on the stack and proceed with the evaluation of the head.
-    App(NickelValue, NickelValue),
+    App(AppData),
 
     /// A variable. Fetch the corresponding value from the environment.
     Var(LocIdent),
@@ -757,7 +763,7 @@ impl Term {
             Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
-            | Term::App(_, _)
+            | Term::App(_)
             | Term::Var(_)
             | Term::Op1(_)
             | Term::Op2(_)
@@ -937,6 +943,10 @@ impl Term {
 
     pub fn annotated(annot: TypeAnnotation, inner: NickelValue) -> Self {
         Term::Annotated(Box::new(AnnotatedData { annot, inner }))
+    }
+
+    pub fn app(head: NickelValue, arg: NickelValue) -> Self {
+        Term::App(AppData { head, arg })
     }
 }
 
@@ -1798,10 +1808,10 @@ impl Traverse<NickelValue> for Term {
 
                 Term::LetPattern(data)
             }
-            Term::App(head, arg) => {
-                let head = head.traverse(f, order)?;
-                let arg = arg.traverse(f, order)?;
-                Term::App(head, arg)
+            Term::App(mut data) => {
+                data.head = data.head.traverse(f, order)?;
+                data.arg = data.arg.traverse(f, order)?;
+                Term::App(data)
             }
             Term::Match(data) => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
@@ -1956,9 +1966,10 @@ impl Traverse<NickelValue> for Term {
                 .arg1
                 .traverse_ref(f, state)
                 .or_else(|| data.arg2.traverse_ref(f, state)),
-            Term::App(t1, t2) => t1
+            Term::App(data) => data
+                .head
                 .traverse_ref(f, state)
-                .or_else(|| t2.traverse_ref(f, state)),
+                .or_else(|| data.arg.traverse_ref(f, state)),
             Term::RecRecord(data) => data
                 .record
                 .fields
@@ -2007,7 +2018,7 @@ pub mod make {
     macro_rules! mk_app {
         ( $f:expr, $arg:expr) => {
             $crate::eval::value::NickelValue::from(
-                $crate::term::Term::App(
+                $crate::term::Term::app(
                     $crate::eval::value::NickelValue::from($f),
                     $crate::eval::value::NickelValue::from($arg)
                 )
