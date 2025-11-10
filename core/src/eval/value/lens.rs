@@ -449,7 +449,7 @@ impl_term_boxed_lens!(
     FunPatternData
 );
 
-impl_term_lens!(term_let_lens, term_let_extractor, Let, Box<LetData>);
+impl_term_boxed_lens!(term_let_lens, term_let_extractor, Let, LetData);
 
 impl_term_boxed_lens!(
     term_let_pat_lens,
@@ -471,24 +471,19 @@ impl_term_boxed_lens!(
 
 impl_term_lens!(term_match_lens, term_match_extractor, Match, MatchData);
 
-impl_term_lens!(term_op1_lens, term_op1_extractor, Op1, Box<Op1Data>);
+impl_term_boxed_lens!(term_op1_lens, term_op1_extractor, Op1, Op1Data);
 
-impl_term_lens!(term_op2_lens, term_op2_extractor, Op2, Box<Op2Data>);
+impl_term_boxed_lens!(term_op2_lens, term_op2_extractor, Op2, Op2Data);
 
 impl_term_lens!(term_opn_lens, term_opn_extractor, OpN, OpNData);
 
-impl_term_lens!(
-    term_sealed_lens,
-    term_sealed_extractor,
-    Sealed,
-    Box<SealedData>
-);
+impl_term_boxed_lens!(term_sealed_lens, term_sealed_extractor, Sealed, SealedData);
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_annotated_lens,
     term_annotated_extractor,
     Annotated,
-    Box<AnnotatedData>
+    AnnotatedData
 );
 
 impl_term_lens!(term_import_lens, term_import_extractor, Import, Import);
