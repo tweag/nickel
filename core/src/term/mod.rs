@@ -143,9 +143,6 @@ pub struct AnnotatedData {
 /// "code" in the future VM, that is, computations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
-    /// An evaluated expression.
-    Value(NickelValue),
-
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions yet to be concatenated.
     ///
@@ -745,7 +742,7 @@ impl Term {
     /// [crate::eval::value::NickelValue::type_of].
     pub fn type_of(&self) -> Option<&'static str> {
         match self {
-            Term::Value(value) | Term::Closurize(value) => value.type_of(),
+            Term::Closurize(value) => value.type_of(),
             Term::RecRecord(..) => Some("Record"),
             Term::Fun(_) | Term::FunPattern(_) => Some("Function"),
             // We could print a separate type for predicates. For the time being, we just consider
@@ -772,7 +769,6 @@ impl Term {
     /// normal form isn't evaluated further by the virtual machine.
     pub fn is_whnf(&self) -> bool {
         match self {
-            Term::Value(value) => value.is_whnf(),
             Term::Fun(..)
             // Match expressions are function
             | Term::Match {..} => true,
@@ -801,22 +797,11 @@ impl Term {
         matches!(self, Term::Annotated(..))
     }
 
-    /// Determine if a term is a constant. Calls to
-    /// [crate::eval::value::NickelValue::is_constant] if this term is a value, or returns
-    /// `false` otherwise.
-    pub fn is_constant(&self) -> bool {
-        if let Term::Value(value) = self {
-            value.is_constant()
-        } else {
-            false
-        }
-    }
-
     /// Determine if a term is an atom of the surface syntax. Atoms are basic elements of the
     /// syntax that can freely substituted without being parenthesized.
     pub fn fmt_is_atom(&self) -> bool {
         match self {
-            Term::Value(value) | Term::Closurize(value) => value.fmt_is_atom(),
+            Term::Closurize(value) => value.fmt_is_atom(),
             Term::StrChunks(..) | Term::RecRecord(..) | Term::Var(..) => true,
             // Those special cases aren't really atoms, but mustn't be parenthesized because they
             // are really functions taking additional non-strict arguments and printed as "partial"
@@ -854,16 +839,6 @@ impl Term {
         match self {
             Term::StrChunks(chunks) => StrChunk::try_chunks_as_static_str(chunks),
             _ => None,
-        }
-    }
-
-    /// Converts a primitive value (number, string, boolean, enum tag or null) to a Nickel string,
-    /// or returns `None` if the term isn't a primitive value.
-    pub fn to_nickel_string(&self) -> Option<NickelString> {
-        if let Term::Value(value) = self {
-            value.to_nickel_string()
-        } else {
-            None
         }
     }
 
@@ -1904,10 +1879,6 @@ impl Traverse<NickelValue> for Term {
                 data.inner = data.inner.traverse(f, order)?;
                 Term::Annotated(data)
             }
-            Term::Value(value) => {
-                let value = value.traverse(f, order)?;
-                Term::Value(value)
-            }
             Term::Closurize(value) => {
                 let value = value.traverse(f, order)?;
                 Term::Closurize(value)
@@ -1940,9 +1911,7 @@ impl Traverse<NickelValue> for Term {
             }),
             Term::Op1(data) => data.arg.traverse_ref(f, state),
             Term::Sealed(data) => data.inner.traverse_ref(f, state),
-            Term::Fun(FunData { arg: _, body: t }) | Term::Value(t) | Term::Closurize(t) => {
-                t.traverse_ref(f, state)
-            }
+            Term::Fun(FunData { arg: _, body: t }) | Term::Closurize(t) => t.traverse_ref(f, state),
             Term::FunPattern(data) => data.body.traverse_ref(f, state),
             Term::Let(data) => data
                 .bindings
