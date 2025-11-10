@@ -231,7 +231,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn process_unary_operation(&mut self, eval_data: Op1EvalData) -> Result<Closure, ErrorKind> {
         let Op1EvalData {
             orig_pos_arg,
-            arg: Closure { value, env },
+            arg: Closure { mut value, env },
             pos_op,
             op,
         } = eval_data;
@@ -435,16 +435,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Enum", 2)
                 }
             }
-            UnaryOp::LabelFlipPol => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            UnaryOp::LabelFlipPol => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.polarity = label.polarity.flip();
-                    Ok(NickelValue::label(label, pos_op_inh).into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            }
             UnaryOp::LabelPol => {
                 if let Some(label) = value.as_label() {
                     Ok(NickelValue::from(label.polarity)
@@ -454,46 +452,38 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Label")
                 }
             }
-            UnaryOp::LabelGoDom => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            UnaryOp::LabelGoDom => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.path.push(ty_path::Elem::Domain);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoCodom => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            }
+            UnaryOp::LabelGoCodom => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.path.push(ty_path::Elem::Codomain);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoArray => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            }
+            UnaryOp::LabelGoArray => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.path.push(ty_path::Elem::Array);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoDict => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            }
+            UnaryOp::LabelGoDict => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.path.push(ty_path::Elem::Dict);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
+                    Ok(value.with_pos_idx(pos_op_inh).into())
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            }
             UnaryOp::RecordAccess(id) => {
                 match value.as_record() {
                     Some(Container::Alloc(record)) => {
@@ -680,10 +670,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     })
                     .collect();
 
-                Ok(Closure {
-                    value: NickelValue::array(ts, Vec::new(), pos_op_inh),
-                    env: Environment::new(),
-                })
+                Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
             }
             UnaryOp::RecordMap => {
                 let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
@@ -834,7 +821,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ArrayLength => {
-                //TODO[RFC007]: empty array
                 if let Some(container) = value.as_array() {
                     // A num does not have any free variable so we can drop the environment
                     Ok(NickelValue::number(container.len(), pos_op_inh).into())
@@ -1217,15 +1203,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::RecordEmptyWithTail => {
-                let lens = value.content();
-
-                let ValueContent::Record(lens) = lens else {
-                    return mk_type_error!("Record", value = lens.restore());
+                let Some(record) = value.as_record() else {
+                    return mk_type_error!("Record");
                 };
 
-                let record = lens.take().unwrap_or_alloc();
                 let mut result = RecordData::empty();
-                result.sealed_tail = record.sealed_tail;
+                result.sealed_tail = record.into_opt().and_then(|r| r.sealed_tail.clone());
 
                 Ok(Closure {
                     value: NickelValue::record(result, pos_op_inh),
@@ -1329,19 +1312,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ))
                     })
             }
-            UnaryOp::LabelPushDiag => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
+            UnaryOp::LabelPushDiag => {
+                if let ValueContentRefMut::Label(label) = value.content_make_mut() {
                     label.push_diagnostic();
-                    Ok(Closure {
-                        value: NickelValue::label(label, pos),
-                        env,
-                    })
+                    Ok(Closure { value, env })
+                } else {
+                    mk_type_error!("Label")
                 }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Some(s) = value.as_string() {
@@ -1710,16 +1688,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("SealingKey", 1, value1);
                 };
 
-                let Some(label) = value2.as_label() else {
-                    return mk_type_error!("Label", 2, value2);
+                let label = match value2.content() {
+                    ValueContent::Label(lens) => lens.take(),
+                    lens => {
+                        return mk_type_error!("Label", 2, lens.restore());
+                    }
                 };
 
                 Ok(mk_fun!(
                     "x",
-                    NickelValue::term(
-                        Term::sealed(*key, mk_term::var("x"), label.clone()),
-                        pos_op_inh
-                    )
+                    NickelValue::term(Term::sealed(*key, mk_term::var("x"), label), pos_op_inh)
                 )
                 .into())
             }
@@ -1966,15 +1944,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     });
                 }
 
-                let mut label;
-
-                match value2.content() {
-                    ValueContent::Label(lens) => {
-                        label = lens.take();
-                    }
-                    lens => {
-                        return mk_type_error!("Label", 2, lens.restore());
-                    }
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
 
                 increment!(format!(
@@ -2010,7 +1981,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .get_then(idx.clone(), |c| c.value.pos_idx()),
                 );
                 label.arg_idx = Some(idx.clone());
-                let new_label = NickelValue::label(label, pos2);
+                let label_value = value2;
 
                 // If we're evaluating a plain contract application but we are applying
                 // something with the signature of a custom contract, we need to setup some
@@ -2028,7 +1999,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     BinaryOp::ContractApply,
                 ) = (value1.content_ref(), &op)
                 {
-                    self.stack.push_arg(new_label.clone().into(), pos_op_inh);
+                    self.stack.push_arg(label_value.clone().into(), pos_op_inh);
 
                     self.stack.push_op_cont(
                         OperationCont::Op1(
@@ -2047,7 +2018,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // Prepare the stack to represent the evaluation context
                 // `%contract/attach_default_label% [.] label`
                 if let BinaryOp::ContractCheck = &op {
-                    self.stack.push_arg(new_label.clone().into(), pos_op_inh);
+                    self.stack.push_arg(label_value.clone().into(), pos_op_inh);
 
                     self.stack.push_op_cont(
                         OperationCont::Op1(
@@ -2066,7 +2037,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // and proceed with the evaluation of `functoid`.
                 self.stack.push_tracked_arg(idx, stack_value_pos);
                 self.stack.push_arg(
-                    new_label.into(),
+                    label_value.into(),
                     pos2.to_inherited(&mut self.context.pos_table),
                 );
 
@@ -2138,14 +2109,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     &env1,
                 );
 
-                let Some(label) = value2.as_label() else {
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                let mut label = label.clone();
-
                 match value1.as_record() {
-                    Some(Container::Empty) => Ok(NickelValue::label(label, pos2).into()),
+                    Some(Container::Empty) => Ok(value2.into()),
                     Some(Container::Alloc(record_data)) => {
                         // If the contract returned a label as part of its error
                         // data, blame that one instead.
@@ -2155,7 +2124,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .and_then(|field| field.value.as_ref())
                             .and_then(NickelValue::as_label)
                         {
-                            label = user_label.clone();
+                            *label = user_label.clone();
                         }
 
                         if let Some(msg) = record_data
@@ -2164,7 +2133,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .and_then(|field| field.value.as_ref())
                             .and_then(NickelValue::as_string)
                         {
-                            label = label.with_diagnostic_message(msg.clone().into_inner());
+                            label.set_diagnostic_message(msg.clone().into_inner());
                         }
 
                         if let Some(notes) = record_data
@@ -2186,10 +2155,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?;
 
-                            label = label.with_diagnostic_notes(notes);
+                            label.set_diagnostic_notes(notes);
                         }
 
-                        Ok(NickelValue::label(label, pos2).into())
+                        Ok(value2.into())
                     }
                     _ => {
                         mk_type_error!("Record", 1, value1)
@@ -2333,15 +2302,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("String", 1, value1);
                 };
 
-                let Some(label) = value2.as_label() else {
+                let ValueContentRefMut::Label(label) = value2.content_make_mut() else {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                let mut label = label.clone();
                 label
                     .path
                     .push(ty_path::Elem::Field(field.clone().into_inner().into()));
-                Ok(NickelValue::label(label, pos_op_inh).into())
+                Ok(value2.with_pos_idx(pos_op_inh).into())
             }
             BinaryOp::RecordGet => {
                 // This error should be impossible to trigger. The parser
@@ -3451,15 +3419,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 debug_assert!(args_iter.next().is_none());
 
-                let Some(label) = arg1.as_label() else {
-                    return Err(Box::new(EvalErrorKind::InternalError(
-                        format!(
-                            "The {op} operator was expecting \
+                let label = match arg1.content() {
+                    ValueContent::Label(lens) => lens.take(),
+                    lens => {
+                        return Err(Box::new(EvalErrorKind::InternalError(
+                            format!(
+                                "The {op} operator was expecting \
                                 a first argument of type Label, got {}",
-                            arg1.type_of().unwrap_or("<unevaluated>")
-                        ),
-                        pos_op,
-                    )));
+                                lens.restore().type_of().unwrap_or("<unevaluated>")
+                            ),
+                            pos_op,
+                        )));
+                    }
                 };
 
                 self.merge(
@@ -3511,8 +3482,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
-                let Some(label) = arg2.as_label() else {
-                    return mk_type_error("Label", 2, arg_pos2, arg2);
+                let label = match arg2.content() {
+                    ValueContent::Label(lens) => lens.take(),
+                    lens => return mk_type_error("Label", 2, arg_pos2, lens.restore()),
                 };
 
                 if arg3.is_inline_empty_record() {
@@ -3537,12 +3509,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let tail_closurized = NickelValue::record_posless(tail.clone())
                     .closurize(&mut self.context.cache, env4);
                 let fields = tail.fields.keys().map(|s| s.ident()).collect();
-                r.sealed_tail = Some(record::SealedTail::new(
-                    *s,
-                    label.clone(),
-                    tail_closurized,
-                    fields,
-                ));
+                r.sealed_tail = Some(record::SealedTail::new(*s, label, tail_closurized, fields));
 
                 Ok(Closure {
                     value: arg3,
@@ -3579,8 +3546,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("SealingKey", 1, arg_pos1, arg1);
                 };
 
-                let Some(label) = arg2.as_label() else {
-                    return mk_type_error("Label", 2, arg_pos2, arg2);
+                let label = match arg2.content() {
+                    ValueContent::Label(lens) => lens.take(),
+                    lens => return mk_type_error("Label", 2, arg_pos2, lens.restore()),
                 };
 
                 let Some(container) = arg3.as_record() else {
@@ -3594,7 +3562,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .ok_or_else(|| {
                         Box::new(EvalErrorKind::BlameError {
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                            label: label.clone(),
+                            label,
                         })
                     })
                     .map(|tail_unsealed| Closure {
@@ -3991,10 +3959,9 @@ fn eq<C: Cache>(
         ) if array_data1.array.len() == array_data2.array.len() => {
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
-
-            // We should apply all contracts here, otherwise we risk having wrong values, think
+            //
+            // We should apply all contracts here, otherwise we risk having wrong values. Think of
             // record contracts with default values, wrapped terms, etc.
-
             let mut eqs = array_data1
                 .array
                 .iter()
