@@ -396,7 +396,7 @@ macro_rules! impl_term_boxed_lens {
             }
 
             /// Returns a reference to the inner term data without taking ownership.
-            pub fn data(&self) -> &$type {
+            pub fn peek(&self) -> &$type {
                 if let Some(Term::$term_cons(data)) = self.value.as_term() {
                     &**data
                 } else {
