@@ -22,7 +22,9 @@ pub type RowUnifError<'ast> = Box<RowUnifErrorKind<'ast>>;
 #[derive(Debug, PartialEq)]
 pub enum RowUnifErrorKind<'ast> {
     /// The LHS had a binding that was missing in the RHS.
-    MissingRow(LocIdent),
+    MissingRecordRow(LocIdent),
+    /// The LHS had a binding that was missing in the RHS.
+    MissingEnumRow(LocIdent),
     /// The LHS had a `Dyn` tail that was missing in the RHS.
     MissingDynTail,
     /// The RHS had a binding that was not in the LHS.
@@ -70,6 +72,12 @@ pub enum RowUnifErrorKind<'ast> {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RowKind {
+    Record,
+    Enum,
+}
+
 impl<'ast> RowUnifErrorKind<'ast> {
     /// Convert a row unification error to a unification error.
     ///
@@ -87,7 +95,14 @@ impl<'ast> RowUnifErrorKind<'ast> {
         inferred: UnifType<'ast>,
     ) -> UnifError<'ast> {
         Box::new(match self {
-            RowUnifErrorKind::MissingRow(id) => UnifErrorKind::MissingRow {
+            RowUnifErrorKind::MissingRecordRow(id) => UnifErrorKind::MissingRow {
+                kind: RowKind::Record,
+                id,
+                expected,
+                inferred,
+            },
+            RowUnifErrorKind::MissingEnumRow(id) => UnifErrorKind::MissingRow {
+                kind: RowKind::Enum,
                 id,
                 expected,
                 inferred,
@@ -195,6 +210,7 @@ pub enum UnifErrorKind<'ast> {
     /// Tried to unify two rows, but a row from the expected type was absent from the inferred type.
     MissingRow {
         id: LocIdent,
+        kind: RowKind,
         expected: UnifType<'ast>,
         inferred: UnifType<'ast>,
     },
@@ -426,10 +442,12 @@ impl<'ast> UnifErrorKind<'ast> {
             },
             UnifErrorKind::MissingRow {
                 id,
+                kind,
                 expected,
                 inferred,
             } => TypecheckErrorKind::MissingRow {
                 id,
+                kind,
                 expected: Type::clone_to(
                     expected.to_type(state.ast_alloc, names_reg, state.table),
                     alloc,

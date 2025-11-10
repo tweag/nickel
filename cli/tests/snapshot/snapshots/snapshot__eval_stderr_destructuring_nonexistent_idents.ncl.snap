@@ -2,11 +2,12 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: type error: missing row `b`
+error: type error: missing field `b`
   ┌─ [INPUTS_PATH]/errors/destructuring_nonexistent_idents.ncl:4:18
   │
 4 │   let { a, b } = { a = 1, c = 2 } in
-  │                  ^^^^^^^^^^^^^^^^ this expression
+  │            -     ^^^^^^^^^^^^^^^^ this record lacks `b`
+  │            │      
+  │            `b` required here
   │
-  = Expected an expression of type `{ b : _a, a : _b }`, which contains the field `b`
-  = Found an expression of type `{ a : _c, c : _d }`, which does not contain the field `b`
+  = Attempted to access field `b` on an expression of type `{ a : _c, c : _d }`
