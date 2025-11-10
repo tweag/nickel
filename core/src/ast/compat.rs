@@ -584,9 +584,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
             Term::ParseError(error) => alloc.parse_error((**error).clone()),
             Term::RuntimeError(_) => panic!("didn't expect a runtime error at parsing stage"),
-            Term::Value(value) | Term::Closurize(value) => {
-                Ast::from_mainline(alloc, pos_table, value).node
-            }
+            Term::Closurize(value) => Ast::from_mainline(alloc, pos_table, value).node,
         }
     }
 }

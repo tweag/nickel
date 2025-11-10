@@ -1202,7 +1202,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Term::ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             Term::ParseError(_) => allocator.text("%<parse error>"),
             Term::RuntimeError(_) => allocator.text("%<runtime error>"),
-            Term::Value(val) | Term::Closurize(val) => val.pretty(allocator),
+            Term::Closurize(val) => val.pretty(allocator),
         }
     }
 }

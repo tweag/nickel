@@ -4,7 +4,7 @@ use crate::{
     eval::value::{ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
     metrics,
-    term::{IndexMap, Number, Term, TypeAnnotation, record::RecordData},
+    term::{IndexMap, Number, TypeAnnotation, record::RecordData},
 };
 
 use serde::{
@@ -501,15 +501,6 @@ pub fn validate(format: ExportFormat, value: &NickelValue) -> Result<(), Pointed
                             .map_err(|err| err.with_elem(NickelPointerElem::Index(index)))
                     })?;
                 Ok(())
-            }
-            // Not sure if we should allow this. But supporting wrapped values might alleviate the
-            // pre-processing substitution work to be done upfront.
-            ValueContentRef::Term(term) => {
-                if let Term::Value(nickel_val) = term {
-                    do_validate(format, nickel_val)
-                } else {
-                    Err(ExportErrorKind::NonSerializable(value.clone()).into())
-                }
             }
             _ => Err(ExportErrorKind::NonSerializable(value.clone()).into()),
         }

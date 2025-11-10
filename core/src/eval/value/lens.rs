@@ -186,7 +186,6 @@ impl ValueLens<bool> {
 /// This is the same type as [crate::term::Term] but where all the enum variant arguments have been
 /// wrapped in a lens.
 pub enum TermContent {
-    Value(ValueLens<NickelValue>),
     StrChunks(ValueLens<Vec<StrChunk<NickelValue>>>),
     Fun(ValueLens<FunData>),
     FunPattern(ValueLens<Box<FunPatternData>>),
@@ -212,7 +211,6 @@ impl TermContent {
     /// Do not access the content and restore the original value unchanged.
     pub fn restore(self) -> NickelValue {
         match self {
-            TermContent::Value(lens) => lens.restore(),
             TermContent::StrChunks(lens) => lens.restore(),
             TermContent::Fun(lens) => lens.restore(),
             TermContent::FunPattern(lens) => lens.restore(),
@@ -239,7 +237,6 @@ impl TermContent {
     /// matching before deciding to take data out.
     pub fn term(&self) -> &Term {
         let value = match self {
-            TermContent::Value(lens) => &lens.value,
             TermContent::StrChunks(lens) => &lens.value,
             TermContent::Fun(lens) => &lens.value,
             TermContent::FunPattern(lens) => &lens.value,
@@ -268,7 +265,6 @@ impl TermContent {
     /// Unconditionally take the inner `Term` out, ignoring the actual shape of the content.
     pub fn take(self) -> Term {
         let value = match self {
-            TermContent::Value(lens) => lens.value,
             TermContent::StrChunks(lens) => lens.value,
             TermContent::Fun(lens) => lens.value,
             TermContent::FunPattern(lens) => lens.value,
@@ -417,19 +413,6 @@ impl ValueLens<NickelValue> {
     /// # Safety
     ///
     /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
-    /// match [crate::term::Term::Value].
-    pub(super) unsafe fn term_value_lens(value: NickelValue) -> Self {
-        Self {
-            value,
-            lens: Self::term_value_extractor,
-        }
-    }
-
-    /// Creates a new lens extracting [crate::term::Term::Value].
-    ///
-    /// # Safety
-    ///
-    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
     /// match [crate::term::Term::Closurize].
     pub(super) unsafe fn term_closurize_lens(value: NickelValue) -> Self {
         Self {
@@ -438,18 +421,7 @@ impl ValueLens<NickelValue> {
         }
     }
 
-    /// Extractor for [Term::Value].
-    fn term_value_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermData>::extract_or_clone(value);
-
-        if let Term::Value(inner) = term {
-            inner
-        } else {
-            unreachable!()
-        }
-    }
-
-    /// Extractor for [Term::Closurize].
+    /// Extractor for [crate::term::Term::Closurize].
     fn term_closurize_extractor(value: NickelValue) -> NickelValue {
         let term = ValueLens::<TermData>::extract_or_clone(value);
 

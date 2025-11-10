@@ -803,9 +803,6 @@ impl NickelValue {
                             let term: &TermData = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
 
                             ValueContent::Term(match term {
-                                Term::Value(_) => {
-                                    TermContent::Value(ValueLens::term_value_lens(self))
-                                }
                                 Term::StrChunks(_) => {
                                     TermContent::StrChunks(ValueLens::term_str_chunks_lens(self))
                                 }
@@ -1024,7 +1021,7 @@ impl NickelValue {
             ValueContentRef::Record(_) => Some("Record"),
             ValueContentRef::String(_) => Some("String"),
             ValueContentRef::Term(term) => match term {
-                Term::Value(v) | Term::Closurize(v) => v.type_of(),
+                Term::Closurize(v) => v.type_of(),
                 Term::RecRecord(..) => Some("Record"),
                 Term::Fun(..) | Term::FunPattern(..) => Some("Function"),
                 Term::Match { .. } => Some("MatchExpression"),
