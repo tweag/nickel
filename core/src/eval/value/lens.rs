@@ -300,8 +300,11 @@ macro_rules! impl_term_lens {
             //
             // # Safety
             //
-            // `value` must be a value block with tag `DataTag::Term`, and the inner term must
-            // match `Term::$term_cons`.
+            // `value` must be a value block with tag `DataTag::Term`.
+            //
+            // # Panics
+            //
+            // Panics if the inner term doesn't match `Term::$term_cons`.
             pub(super) unsafe fn $lens_cons(value: NickelValue) -> Self {
                 Self {
                     value,
