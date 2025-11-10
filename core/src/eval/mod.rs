@@ -117,6 +117,7 @@ use operation::OperationCont;
 use stack::{Stack, StrAccData};
 use value::{
     Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef, ValueContentRefMut,
+    lens::TermContent,
 };
 
 use self::cache::{Cache, CacheIndex};
@@ -700,16 +701,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             let pos_idx = value.pos_idx();
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
-            closure = match value.content_ref() {
-                ValueContentRef::Thunk(thunk) => {
-                    self.enter_cache_index(None, thunk.clone(), pos_idx, env)?
+            closure = match value.content() {
+                ValueContent::Thunk(lens) => {
+                    self.enter_cache_index(None, lens.take(), pos_idx, env)?
                 }
-                ValueContentRef::Term(Term::Sealed(data)) => {
+                ValueContent::Term(TermContent::Sealed(lens)) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        value: NickelValue::term(Term::Sealed(data.clone()), pos_idx),
+                        value: lens.peek().clone(),
                         env: env.clone(),
                     };
+
+                    let data = lens.take();
 
                     // Update at the original index (the index which holds the result of the op) in
                     // both cases, even if we continue with a seq.
@@ -741,7 +744,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         Some(OperationCont::Op1(UnaryOp::Seq, _)) => {
                             // Then, evaluate / `Seq` the inner value.
                             Closure {
-                                value: data.inner.clone(),
+                                value: data.inner,
                                 env,
                             }
                         }
@@ -749,14 +752,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(Box::new(EvalErrorKind::BlameError {
                                 evaluated_arg: data.label.get_evaluated_arg(&self.context.cache),
-                                label: data.label.clone(),
+                                label: data.label,
                             }));
                         }
                     }
                 }
-                ValueContentRef::Term(Term::Var(id)) => {
-                    let idx = self.get_var(*id, &env, pos_idx)?;
-                    self.enter_cache_index(Some(*id), idx, pos_idx, env)?
+                ValueContent::Term(TermContent::Var(lens)) => {
+                    let id = lens.take();
+                    let idx = self.get_var(id, &env, pos_idx)?;
+                    self.enter_cache_index(Some(id), idx, pos_idx, env)?
                 }
                 ValueContentRef::Term(Term::App(data)) => {
                     self.call_stack.enter_app(&self.context.pos_table, pos_idx);
@@ -773,13 +777,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Let(data)) => {
+                ValueContent::Term(TermContent::Let(lens)) => {
                     let mut indices = Vec::new();
                     let init_env = env.clone();
+                    let data = lens.take();
 
-                    for (x, bound) in &data.bindings {
+                    for (x, bound) in data.bindings {
                         let bound_closure = Closure {
-                            value: bound.clone(),
+                            value: bound,
                             env: init_env.clone(),
                         };
 
@@ -801,28 +806,32 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
 
                     Closure {
-                        value: data.body.clone(),
+                        value: data.body,
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Op1(data)) => {
+                ValueContent::Term(TermContent::Op1(lens)) => {
+                    let data = lens.take();
+
                     self.stack.push_op_cont(
-                        OperationCont::Op1(data.op.clone(), data.arg.pos_idx()),
+                        OperationCont::Op1(data.op, data.arg.pos_idx()),
                         self.call_stack.len(),
                         pos_idx,
                     );
 
                     Closure {
-                        value: data.arg.clone(),
+                        value: data.arg,
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::Op2(data)) => {
+                ValueContent::Term(TermContent::Op2(lens)) => {
+                    let data = lens.take();
+
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            data.op.clone(),
+                            data.op,
                             Closure {
-                                value: data.arg2.clone(),
+                                value: data.arg2,
                                 env: env.clone(),
                             },
                             data.arg1.pos_idx(),
@@ -832,14 +841,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     );
 
                     Closure {
-                        value: data.arg1.clone(),
+                        value: data.arg1,
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::OpN(data)) => {
+                ValueContent::Term(TermContent::OpN(lens)) => {
+                    let data = lens.take();
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
-                    let mut args_iter = data.args.iter();
+                    let mut args_iter = data.args.into_iter();
                     let fst_arg = args_iter.next().ok_or_else(|| {
                         EvalErrorKind::NotEnoughArgs(data.op.arity(), data.op.to_string(), pos_idx)
                     })?;
@@ -847,14 +857,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let pending: Vec<Closure> = args_iter
                         .rev()
                         .map(|value| Closure {
-                            value: value.clone(),
+                            value,
                             env: env.clone(),
                         })
                         .collect();
 
                     self.stack.push_op_cont(
                         OperationCont::OpN {
-                            op: data.op.clone(),
+                            op: data.op,
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
                             current_pos_idx: fst_arg.pos_idx(),
@@ -864,12 +874,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     );
 
                     Closure {
-                        value: fst_arg.clone(),
+                        value: fst_arg,
                         env,
                     }
                 }
-                ValueContentRef::Term(Term::StrChunks(chunks)) => {
-                    let mut chunks_iter = chunks.iter().cloned();
+                ValueContent::Term(TermContent::StrChunks(lens)) => {
+                    let chunks = lens.take();
+
+                    let mut chunks_iter = chunks.into_iter();
+
                     match chunks_iter.next_back() {
                         None => NickelValue::string(NickelString::new(), pos_idx).into(),
                         Some(chunk) => {
@@ -898,7 +911,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     }
                 }
-                ValueContentRef::Term(Term::Closurize(value)) => {
+                ValueContent::Term(TermContent::Closurize(lens)) => {
+                    let value = lens.take();
+
                     // Closurization is done the first time we see a value, so under normal
                     // conditions, this value should not be shared and we should be able to
                     // mutate it directly.
@@ -961,7 +976,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // We can use an empty environment for a freshly closurized value
                     result.into()
                 }
-                ValueContentRef::Term(Term::RecRecord(data)) => {
+                ValueContent::Term(TermContent::RecRecord(lens)) => {
+                    let mut data = lens.take();
+
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
 
@@ -973,14 +990,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let (mut static_part, dyn_fields) = if !data.closurized {
                         let includes_as_terms: Result<Vec<_>, _> = data
                             .includes
-                            .iter()
+                            .into_iter()
                             .map(|incl| -> Result<_, ErrorKind> {
                                 let field = Field {
                                     value: Some(NickelValue::thunk(
                                         self.get_var(incl.ident, &env, PosIdx::NONE)?,
                                         self.context.pos_table.push(incl.ident.pos),
                                     )),
-                                    metadata: incl.metadata.clone(),
+                                    metadata: incl.metadata,
                                     pending_contracts: Vec::new(),
                                 };
 
@@ -999,21 +1016,20 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // restriction might be lifted in the future (we would probably merge the
                         // included field and the other definition pieces), but for now it's
                         // simpler this way.
-                        let mut record = data.record.clone();
-                        record.fields.extend(includes_as_terms?);
+                        data.record.fields.extend(includes_as_terms?);
 
                         closurize_rec_record(
                             &mut self.context.cache,
-                            record,
-                            data.dyn_fields.clone(),
-                            data.deps.clone(),
+                            data.record,
+                            data.dyn_fields,
+                            data.deps,
                             env,
                         )
                     } else {
                         // In a record that has been already closurized, we expect include
                         // expressions to be evaluated away.
                         debug_assert!(data.includes.is_empty());
-                        (data.record.clone(), data.dyn_fields.clone())
+                        (data.record, data.dyn_fields)
                     };
 
                     let rec_env = fixpoint::rec_env(
@@ -1022,8 +1038,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_idx,
                     );
 
-                    for rt in static_part.fields.values_mut() {
-                        fixpoint::patch_field(&mut self.context.cache, rt, &rec_env);
+                    for value in static_part.fields.values_mut() {
+                        fixpoint::patch_field(&mut self.context.cache, value, &rec_env);
                     }
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
@@ -1083,10 +1099,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     extended.with_pos_idx(pos_idx).into()
                 }
-                ValueContentRef::Term(Term::ResolvedImport(id)) => {
+                ValueContent::Term(TermContent::ResolvedImport(lens)) => {
+                    let id = lens.take();
+
                     increment!(format!("import:{id:?}"));
 
-                    if let Some(val) = self.context.import_resolver.get(*id) {
+                    if let Some(val) = self.context.import_resolver.get(id) {
                         val.into()
                     } else {
                         break Err(Box::new(EvalErrorKind::InternalError(
@@ -1095,23 +1113,25 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         )));
                     }
                 }
-                ValueContentRef::Term(Term::Import(Import::Path { path, .. })) => {
-                    break Err(Box::new(EvalErrorKind::InternalError(
-                        format!("Unresolved import ({})", path.to_string_lossy()),
-                        pos_idx,
-                    )));
+                ValueContent::Term(TermContent::Import(lens)) => match lens.take() {
+                    Import::Path { path, format: _ } => {
+                        break Err(Box::new(EvalErrorKind::InternalError(
+                            format!("Unresolved import ({})", path.to_string_lossy()),
+                            pos_idx,
+                        )));
+                    }
+                    Import::Package { id } => {
+                        break Err(Box::new(EvalErrorKind::InternalError(
+                            format!("Unresolved package import ({id})"),
+                            pos_idx,
+                        )));
+                    }
+                },
+                ValueContent::Term(TermContent::ParseError(lens)) => {
+                    break Err(Box::new(EvalErrorKind::ParseError((*lens.take()).clone())));
                 }
-                ValueContentRef::Term(Term::Import(Import::Package { id })) => {
-                    return Err(Box::new(EvalErrorKind::InternalError(
-                        format!("Unresolved package import ({id})"),
-                        pos_idx,
-                    )));
-                }
-                ValueContentRef::Term(Term::ParseError(parse_error)) => {
-                    break Err(Box::new(EvalErrorKind::ParseError((**parse_error).clone())));
-                }
-                ValueContentRef::Term(Term::RuntimeError(error)) => {
-                    break Err(error.clone());
+                ValueContent::Term(TermContent::RuntimeError(lens)) => {
+                    break Err(lens.take());
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -1120,15 +1140,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
-                ValueContentRef::Term(Term::Annotated(data)) => {
+                ValueContent::Term(TermContent::Annotated(lens)) => {
                     increment!("contract:free-standing(annotated)");
 
+                    let data = lens.take();
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
                     let static_contract = data.annot.static_contract(&mut self.context.pos_table);
                     let contracts = data.annot.pending_contracts(&mut self.context.pos_table)?;
                     let pos_inner = data.inner.pos_idx();
-                    let inner = data.inner.clone();
+                    let inner = data.inner;
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
                         static_ctr?.apply(inner, pos_inner)
@@ -1146,9 +1167,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
                 // Function call if there's no continuation on the stack (otherwise, the function
                 // is just an argument to a primop or to put in the eval cache)
-                ValueContentRef::Term(Term::Fun(FunData { arg, body })) if !has_cont_on_stack => {
+                ValueContent::Term(TermContent::Fun(lens)) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
                     {
+                        let FunData { arg, body } = lens.take();
+
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
                         Closure {
@@ -1156,7 +1179,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         }
                     } else {
-                        break Ok(Closure { value, env });
+                        break Ok(Closure {
+                            value: lens.restore(),
+                            env,
+                        });
                     }
                 }
                 // A match expression acts as a function (in Nickel, a match expression corresponds
@@ -1167,10 +1193,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
-                ValueContentRef::Term(Term::Match(data)) if !has_cont_on_stack => {
+                ValueContent::Term(TermContent::Match(lens)) if !has_cont_on_stack => {
+                    let data = lens.take();
+
                     if let Some((arg, _)) = self.stack.pop_arg(&self.context.cache) {
                         Closure {
-                            value: data.clone().compile(
+                            value: data.compile(
                                 &mut self.context.pos_table,
                                 arg.value.closurize(&mut self.context.cache, arg.env),
                                 pos_idx,
@@ -1179,20 +1207,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     } else {
                         break Ok(Closure {
-                            value: NickelValue::term(Term::Match(data.clone()), pos_idx),
+                            value: NickelValue::term(Term::Match(data), pos_idx),
                             env,
                         });
                     }
                 }
-                ValueContentRef::Term(Term::FunPattern(..) | Term::LetPattern(..)) => {
+                ValueContent::Term(TermContent::FunPattern(_) | TermContent::LetPattern(_)) => {
                     break Err(Box::new(EvalErrorKind::InternalError(
                         "unexpected let-pattern or fun-pattern during evaluation".to_owned(),
                         pos_idx,
                     )));
                 }
                 // At this point, we've evaluated the current term to a weak head normal form.
-                _ => {
-                    let evaluated = Closure { value, env };
+                lens => {
+                    let evaluated = Closure {
+                        value: lens.restore(),
+                        env,
+                    };
 
                     // If there is a cache index update frame on the stack, we proceed with the
                     // update of the corresponding cached value.
