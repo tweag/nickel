@@ -762,7 +762,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let idx = self.get_var(id, &env, pos_idx)?;
                     self.enter_cache_index(Some(id), idx, pos_idx, env)?
                 }
-                ValueContentRef::Term(Term::App(data)) => {
+                ValueContent::Term(TermContent::App(lens)) => {
+                    let data = lens.data();
+
                     self.call_stack.enter_app(&self.context.pos_table, pos_idx);
 
                     self.stack.push_arg(
