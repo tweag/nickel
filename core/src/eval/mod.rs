@@ -704,10 +704,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContentRef::Thunk(thunk) => {
                     self.enter_cache_index(None, thunk.clone(), pos_idx, env)?
                 }
-                ValueContentRef::Term(Term::Value(value)) => Closure {
-                    value: value.clone(),
-                    env,
-                },
                 ValueContentRef::Term(Term::Sealed(data)) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
@@ -1670,11 +1666,6 @@ pub fn subst<C: Cache>(
                     // Currently, there is no interest in replacing variables inside contracts, thus we
                     // limit the work of `subst`.
                     NickelValue::term(Term::Annotated(data), pos_idx)
-                }
-                // We erase `Value` nodes during substitution. When performing substitution, the
-                // goal is to remove indirections.
-                TermContent::Value(lens) => {
-                    subst(pos_table, cache, lens.take(), initial_env, env)
                 }
                 TermContent::Closurize(lens) => {
                     NickelValue::term(Term::Closurize(subst(pos_table, cache, lens.take(), initial_env, env)), pos_idx)

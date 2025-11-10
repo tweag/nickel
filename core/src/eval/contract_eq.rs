@@ -326,10 +326,7 @@ fn contract_eq_bounded(
                     data1.key == data2.key
                         && contract_eq_bounded(state, &data1.inner, env1, &data2.inner, env2)
                 }
-                (Term::Value(v1), Term::Value(v2))
-                | (Term::Closurize(v1), Term::Value(v2))
-                | (Term::Value(v1), Term::Closurize(v2))
-                | (Term::Closurize(v1), Term::Closurize(v2)) => {
+                (Term::Closurize(v1), Term::Closurize(v2)) => {
                     contract_eq_bounded(state, v1, env1, v2, env2)
                 }
                 // We don't treat imports, parse errors, functions, let-bindings nor pairs of terms

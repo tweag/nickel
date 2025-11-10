@@ -120,7 +120,7 @@ impl CollectFreeVars for Term {
                 }
             }
             Term::Annotated(data) => data.collect_free_vars(free_vars),
-            Term::Value(v) | Term::Closurize(v) => v.collect_free_vars(free_vars),
+            Term::Closurize(v) => v.collect_free_vars(free_vars),
         }
     }
 }
