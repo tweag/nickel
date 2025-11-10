@@ -16,6 +16,7 @@ use crate::{
 
 use std::{
     alloc::dealloc,
+    marker::PhantomData,
     mem::ManuallyDrop,
     ptr::{self, NonNull},
 };
@@ -25,16 +26,16 @@ use std::{
 /// moved out and the corresponding block is consumed. Otherwise, the content is cloned, similarly
 /// to [std::rc::Rc::unwrap_or_clone].
 ///
-/// [Self] can either be consumed using `take()`, returning the owned content of the data, or
-/// reverted back to the original value using `restore()`. When the structure of the lens isn't
-/// enough to check if the content should be taken or not, [Self] also provides [Self::peek] which
-/// returns a reference to the inner value, so that it can be examined arbitrarily.
+/// [Self] can either be consumed using `take()`, returning the owned content of the data, peeked
+/// at by reference using `peek()` or `value()`, or reverted back to the original value using
+/// `restore()`. When the structure of the lens isn't enough to check if the content should be
+/// taken or not, [Self] also provides [Self::peek] which returns a reference to the inner value,
+/// so that it can be examined arbitrarily.
 ///
 /// See also [super::ValueContent].
 pub struct ValueLens<T> {
     value: NickelValue,
-    /// An extractor for the data `T` to take out from the value block.
-    lens: fn(NickelValue) -> T,
+    phantom: PhantomData<T>,
 }
 
 impl<T> ValueLens<T> {
@@ -46,13 +47,6 @@ impl<T> ValueLens<T> {
     /// Peeks at the underlying value, without consuming the lens.
     pub fn value(&self) -> &NickelValue {
         &self.value
-    }
-
-    /// Consumes the value and return the content of the block. If the block is unique, it is
-    /// consumed. If the block is shared, the content is cloned. [Self::take] behaves very much
-    /// like [std::rc::Rc::unwrap_or_clone].
-    pub fn take(self) -> T {
-        (self.lens)(self.value)
     }
 }
 
@@ -67,15 +61,17 @@ impl<T: ValueBlockData + Clone> ValueLens<Container<T>> {
     pub(super) unsafe fn container_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
-            lens: |v| {
-                // The precondition ensures that if `v` is inline, it is the corresponding empty
-                // container.
-                if v.is_inline() {
-                    Container::Empty
-                } else {
-                    Container::Alloc(ValueLens::<T>::extract_or_clone(v))
-                }
-            },
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn take(self) -> Container<T> {
+        // The precondition ensures that if `v` is inline, it is the corresponding empty
+        // container.
+        if self.value.is_inline() {
+            Container::Empty
+        } else {
+            Container::Alloc(ValueLens::<T>::extract_or_clone(self.value))
         }
     }
 }
@@ -89,7 +85,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     pub(super) unsafe fn content_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
-            lens: Self::extract_or_clone,
+            phantom: PhantomData,
         }
     }
 
@@ -137,6 +133,10 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     fn extract_or_clone(value: NickelValue) -> T {
         Self::with_content(value, |v| v, |data| data.clone())
     }
+
+    pub fn take(self) -> T {
+        Self::extract_or_clone(self.value)
+    }
 }
 
 impl ValueLens<()> {
@@ -144,9 +144,11 @@ impl ValueLens<()> {
     pub(super) fn null_lens(value: NickelValue) -> Self {
         Self {
             value,
-            lens: |_| (),
+            phantom: PhantomData,
         }
     }
+
+    pub fn take(self) {}
 }
 
 impl ValueLens<bool> {
@@ -163,15 +165,14 @@ impl ValueLens<bool> {
     pub(super) unsafe fn bool_lens(value: NickelValue) -> Self {
         Self {
             value,
-            lens: Self::bool_extractor,
+            phantom: PhantomData,
         }
     }
 
-    /// Extractor for a bool value.
-    fn bool_extractor(value: NickelValue) -> bool {
+    pub fn take(self) -> bool {
         // Safety: we maintain the invariant throughout this module that if `T = InlineValue`, then
         // `self.value` must be an inline value.
-        match unsafe { value.as_inline_unchecked() } {
+        match unsafe { self.value.as_inline_unchecked() } {
             InlineValue::True => true,
             InlineValue::False => false,
             _ => panic!("unexpected non-boolean inline value in the extractor of ValueLens<bool>"),
@@ -318,13 +319,14 @@ macro_rules! impl_term_lens {
             pub(super) unsafe fn $lens_cons(value: NickelValue) -> Self {
                 Self {
                     value,
-                    lens: Self::$lens_extrct,
+                    phantom: PhantomData,
                 }
             }
 
             // Extractor for `Term::$term_cons`.
-            fn $lens_extrct(value: NickelValue) -> $type {
-                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(value) {
+            pub fn take(self) -> $type {
+                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(self.value)
+                {
                     data
                 } else {
                     unreachable!()
@@ -358,13 +360,13 @@ macro_rules! impl_term_boxed_lens {
             pub(super) unsafe fn $lens_cons(value: NickelValue) -> Self {
                 Self {
                     value,
-                    lens: Self::$lens_extrct,
+                    phantom: PhantomData,
                 }
             }
 
             // Extractor for `Term::$term_cons`.
-            fn $lens_extrct(value: NickelValue) -> Box<$type> {
-                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(value) {
+            pub fn take(self) -> Box<$type> {
+                if let Term::$term_cons(data) = ValueLens::<TermData>::extract_or_clone(self.value) {
                     data
                 } else {
                     unreachable!()
@@ -407,31 +409,12 @@ macro_rules! impl_term_boxed_lens {
     };
 }
 
-impl ValueLens<NickelValue> {
-    /// Creates a new lens extracting [crate::term::Term::Value].
-    ///
-    /// # Safety
-    ///
-    /// `value` must be a value block with tag [super::DataTag::Term], and the inner term must
-    /// match [crate::term::Term::Closurize].
-    pub(super) unsafe fn term_closurize_lens(value: NickelValue) -> Self {
-        Self {
-            value,
-            lens: Self::term_closurize_extractor,
-        }
-    }
-
-    /// Extractor for [crate::term::Term::Closurize].
-    fn term_closurize_extractor(value: NickelValue) -> NickelValue {
-        let term = ValueLens::<TermData>::extract_or_clone(value);
-
-        if let Term::Closurize(inner) = term {
-            inner
-        } else {
-            unreachable!()
-        }
-    }
-}
+impl_term_lens!(
+    term_closurize_lens,
+    term_closurize_extractor,
+    Closurize,
+    NickelValue
+);
 
 impl_term_lens!(
     term_str_chunks_lens,
