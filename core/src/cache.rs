@@ -14,7 +14,7 @@ use crate::{
         compat::{ToAst, ToMainline},
     },
     closurize::Closurize as _,
-    error::{Error, ImportErrorKind, ParseError, ParseErrors, TypecheckError},
+    error::{Error, ImportError, ImportErrorKind, ParseError, ParseErrors, TypecheckError},
     eval::{cache::Cache as EvalCache, value::NickelValue},
     files::{FileId, Files},
     identifier::LocIdent,
@@ -1210,7 +1210,7 @@ impl CacheHub {
         &mut self,
         pos_table: &mut PosTable,
         file_id: FileId,
-    ) -> Result<CacheOp<Vec<FileId>>, TermCacheError<ImportErrorKind>> {
+    ) -> Result<CacheOp<Vec<FileId>>, TermCacheError<ImportError>> {
         let entry = self.terms.terms.get(&file_id);
 
         match entry {
@@ -1393,7 +1393,7 @@ impl CacheHub {
         &mut self,
         pos_table: &mut PosTable,
         main_id: FileId,
-    ) -> Result<CacheOp<()>, AstCacheError<ImportErrorKind>> {
+    ) -> Result<CacheOp<()>, AstCacheError<ImportError>> {
         if self.terms.contains(main_id) {
             return Ok(CacheOp::Cached(()));
         }
@@ -1436,7 +1436,7 @@ impl CacheHub {
                     .sources
                     .parse_other(pos_table, file_id, format)
                     .map_err(|parse_err| {
-                        CacheError::Error(ImportErrorKind::ParseErrors(
+                        CacheError::Error(Box::new(ImportErrorKind::ParseErrors(
                             parse_err.into(),
                             self.import_data
                                 .rev_imports
@@ -1444,7 +1444,7 @@ impl CacheHub {
                                 .and_then(|map| map.get(&main_id))
                                 .copied()
                                 .unwrap_or_default(),
-                        ))
+                        )))
                     })?;
 
                 TermEntry {
@@ -1489,7 +1489,7 @@ impl CacheHub {
 
         done = matches!(
             self.compile(pos_table, file_id)
-                .map_err(|cache_err| cache_err.map_err(Error::import_error))?,
+                .map_err(|cache_err| cache_err.map_err(Error::ImportError))?,
             CacheOp::Done(_)
         ) || done;
 
@@ -1497,7 +1497,7 @@ impl CacheHub {
             .resolve_imports(pos_table, file_id)
             // force_cast(): since we compiled `file_id`, the term cache must be populated, and
             // thus `resolve_imports` should never throw `CacheError::IncompatibleState`.
-            .map_err(|cache_err| cache_err.map_err(Error::import_error).force_cast())?;
+            .map_err(|cache_err| cache_err.map_err(Error::ImportError).force_cast())?;
         done = matches!(imports, CacheOp::Done(_)) || done;
 
         let transform = self
@@ -1951,7 +1951,7 @@ pub trait ImportResolver {
         import: &term::Import,
         parent: Option<FileId>,
         pos_idx: PosIdx,
-    ) -> Result<(ResolvedTerm, FileId), ImportErrorKind>;
+    ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
     /// Return a reference to the file database.
     fn files(&self) -> &Files;
@@ -1981,7 +1981,7 @@ impl ImportResolver for CacheHub {
         import: &term::Import,
         parent: Option<FileId>,
         pos_idx: PosIdx,
-    ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
+    ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let pos = pos_table.get(pos_idx);
 
         let (possible_parents, path, pkg_id, format) = match import {
@@ -2387,7 +2387,7 @@ pub mod resolvers {
             _import: &Import,
             _parent: Option<FileId>,
             _pos_idx: PosIdx,
-        ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
+        ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
@@ -2438,7 +2438,7 @@ pub mod resolvers {
             import: &Import,
             _parent: Option<FileId>,
             pos_idx: PosIdx,
-        ) -> Result<(ResolvedTerm, FileId), ImportErrorKind> {
+        ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let Import::Path { path, .. } = import else {
                 panic!("simple resolver doesn't support packages");
             };

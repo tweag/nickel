@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     cache::resolvers::{DummyResolver, SimpleResolver},
-    error::{ImportErrorKind, NullReporter},
+    error::{ImportError, ImportErrorKind, NullReporter},
     files::Files,
     label::Label,
     parser::{ErrorTolerantParserCompat, grammar, lexer},
@@ -188,7 +188,7 @@ fn imports() {
         var: &str,
         import: &str,
         body: NickelValue,
-    ) -> Result<NickelValue, ImportErrorKind>
+    ) -> Result<NickelValue, ImportError>
     where
         R: ImportResolver,
     {
@@ -205,13 +205,13 @@ fn imports() {
     }
 
     // let x = import "does_not_exist" in x
-    match mk_import(&mut vm_ctxt, "x", "does_not_exist", mk_term::var("x")).unwrap_err() {
+    match *mk_import(&mut vm_ctxt, "x", "does_not_exist", mk_term::var("x")).unwrap_err() {
         ImportErrorKind::IOError(_, _, _) => (),
         _ => panic!(),
     };
 
     // let x = import "bad" in x
-    match mk_import(&mut vm_ctxt, "x", "bad", mk_term::var("x")).unwrap_err() {
+    match *mk_import(&mut vm_ctxt, "x", "bad", mk_term::var("x")).unwrap_err() {
         ImportErrorKind::ParseErrors(_, _) => (),
         _ => panic!(),
     };

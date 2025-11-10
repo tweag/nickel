@@ -6,9 +6,7 @@ use super::ImportResolver;
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
     use super::{ImportResolver, tolerant};
-    use crate::{
-        error::ImportErrorKind, eval::value::NickelValue, files::FileId, position::PosTable,
-    };
+    use crate::{error::ImportError, eval::value::NickelValue, files::FileId, position::PosTable};
 
     /// The result of an import resolution transformation.
     #[derive(Debug)]
@@ -47,14 +45,16 @@ pub mod strict {
         pos_table: &mut PosTable,
         value: NickelValue,
         resolver: &mut R,
-    ) -> Result<ResolveResult, ImportErrorKind>
+    ) -> Result<ResolveResult, ImportError>
     where
         R: ImportResolver,
     {
-        let tolerant_result = super::tolerant::resolve_imports(pos_table, value, resolver);
-        match tolerant_result.import_errors.first() {
-            Some(err) => Err(err.clone()),
-            None => Ok(tolerant_result.into()),
+        let mut tolerant_result = super::tolerant::resolve_imports(pos_table, value, resolver);
+
+        if !tolerant_result.import_errors.is_empty() {
+            Err(tolerant_result.import_errors.swap_remove(0))
+        } else {
+            Ok(tolerant_result.into())
         }
     }
 
@@ -66,7 +66,7 @@ pub mod strict {
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,
-    ) -> Result<NickelValue, ImportErrorKind>
+    ) -> Result<NickelValue, ImportError>
     where
         R: ImportResolver,
     {
@@ -83,7 +83,7 @@ pub mod strict {
 pub mod tolerant {
     use super::ImportResolver;
     use crate::{
-        error::ImportErrorKind,
+        error::{ImportError, ImportErrorKind},
         eval::{value::NickelValue, value::ValueContentRef},
         files::FileId,
         position::PosTable,
@@ -100,7 +100,7 @@ pub mod tolerant {
         /// Imports that were resolved without errors, but are potentially yet to be transformed.
         pub resolved_ids: Vec<FileId>,
         /// Errors produced when failing to resolve imports.
-        pub import_errors: Vec<ImportErrorKind>,
+        pub import_errors: Vec<ImportError>,
     }
 
     /// Performs imports resolution in an error tolerant way.
@@ -156,7 +156,7 @@ pub mod tolerant {
         value: NickelValue,
         resolver: &mut R,
         parent: Option<FileId>,
-    ) -> (NickelValue, Option<ImportErrorKind>)
+    ) -> (NickelValue, Option<ImportError>)
     where
         R: ImportResolver,
     {

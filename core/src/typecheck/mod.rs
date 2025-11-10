@@ -1275,7 +1275,7 @@ impl<'ast> Context<'ast> {
     }
 
     /// Retrieves a variable from the type environment, or fail with
-    /// [crate::error::TypecheckErrorData::UnboundIdentifier] instead.
+    /// [crate::error::TypecheckErrorKind::UnboundIdentifier] instead.
     pub fn get_type(&self, id: LocIdent) -> Result<UnifType<'ast>, TypecheckError> {
         self.type_env.get(&id.ident()).cloned().ok_or_else(|| {
             TypecheckErrorData::new(AstAlloc::new(), |_alloc| {

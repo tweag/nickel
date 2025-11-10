@@ -722,6 +722,12 @@ impl From<ImportErrorKind> for Error {
     }
 }
 
+impl From<ImportError> for Error {
+    fn from(error: ImportError) -> Error {
+        Error::ImportError(error)
+    }
+}
+
 impl From<ExportErrorData> for Error {
     fn from(error: ExportErrorData) -> Error {
         Error::ExportError(Box::new(error))
