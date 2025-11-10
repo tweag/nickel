@@ -500,14 +500,14 @@ impl_term_lens!(
     FileId
 );
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_parse_error_lens,
     term_parse_error_extractor,
     ParseError,
     ParseError
 );
 
-impl_term_lens!(
+impl_term_boxed_lens!(
     term_runtime_error_lens,
     term_runtime_error_extractor,
     RuntimeError,

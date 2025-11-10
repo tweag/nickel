@@ -708,11 +708,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContent::Term(TermContent::Sealed(lens)) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        value: lens.peek().clone(),
+                        value: lens.value().clone(),
                         env: env.clone(),
                     };
 
-                    let data = lens.take();
+                    let data = lens.take_unboxed();
 
                     // Update at the original index (the index which holds the result of the op) in
                     // both cases, even if we continue with a seq.
