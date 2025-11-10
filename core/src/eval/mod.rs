@@ -763,7 +763,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.enter_cache_index(Some(id), idx, pos_idx, env)?
                 }
                 ValueContent::Term(TermContent::App(lens)) => {
-                    let data = lens.data();
+                    let data = lens.peek();
 
                     self.call_stack.enter_app(&self.context.pos_table, pos_idx);
 
@@ -782,11 +782,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContent::Term(TermContent::Let(lens)) => {
                     let mut indices = Vec::new();
                     let init_env = env.clone();
-                    let data = lens.take();
+                    let data = lens.peek();
 
-                    for (x, bound) in data.bindings {
+                    for (x, bound) in &data.bindings {
                         let bound_closure = Closure {
-                            value: bound,
+                            value: bound.clone(),
                             env: init_env.clone(),
                         };
 
@@ -808,7 +808,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
 
                     Closure {
-                        value: data.body,
+                        value: data.body.clone(),
                         env,
                     }
                 }
@@ -921,7 +921,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // mutate it directly.
                     // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
                     // should probably do a `content()` call at the top of the eval function.
-                    let result = match value.clone().content() {
+                    let result = match value.content() {
                         ValueContent::Array(lens) if lens.value().is_inline_empty_array() => {
                             lens.restore()
                         }
@@ -1102,11 +1102,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     extended.with_pos_idx(pos_idx).into()
                 }
                 ValueContent::Term(TermContent::ResolvedImport(lens)) => {
-                    let id = lens.take();
+                    let id = lens.peek();
 
                     increment!(format!("import:{id:?}"));
 
-                    if let Some(val) = self.context.import_resolver.get(id) {
+                    if let Some(val) = self.context.import_resolver.get(*id) {
                         val.into()
                     } else {
                         break Err(Box::new(EvalErrorKind::InternalError(
@@ -1130,7 +1130,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 },
                 ValueContent::Term(TermContent::ParseError(lens)) => {
-                    break Err(Box::new(EvalErrorKind::ParseError((*lens.take()).clone())));
+                    break Err(Box::new(EvalErrorKind::ParseError(
+                        (lens.take_unboxed()).clone(),
+                    )));
                 }
                 ValueContent::Term(TermContent::RuntimeError(lens)) => {
                     break Err(lens.take());
@@ -1145,13 +1147,17 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContent::Term(TermContent::Annotated(lens)) => {
                     increment!("contract:free-standing(annotated)");
 
-                    let data = lens.take();
+                    // Most operations take contracts by reference anyway. The only thing we end up
+                    // doing is cloning values, which is cheap, so we might as well not bother
+                    // trying to `take()`.
+                    let data = lens.peek();
+
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
                     let static_contract = data.annot.static_contract(&mut self.context.pos_table);
                     let contracts = data.annot.pending_contracts(&mut self.context.pos_table)?;
                     let pos_inner = data.inner.pos_idx();
-                    let inner = data.inner;
+                    let inner = data.inner.clone();
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
                         static_ctr?.apply(inner, pos_inner)
@@ -1172,7 +1178,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContent::Term(TermContent::Fun(lens)) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
                     {
-                        let FunData { arg, body } = lens.take();
+                        let FunData { arg, body } = lens.peek();
 
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
