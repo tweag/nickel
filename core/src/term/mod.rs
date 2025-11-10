@@ -142,8 +142,6 @@ pub struct AnnotatedData {
 /// representation described in RFC007. The remaining constructors of [Term] are the equivalent of
 /// "code" in the future VM, that is, computations.
 #[derive(Debug, Clone, PartialEq)]
-// This attribute is temporary; we will box the remaining variants soon.
-#[allow(clippy::large_enum_variant)]
 pub enum Term {
     /// An evaluated expression.
     Value(NickelValue),
@@ -230,7 +228,7 @@ pub enum Term {
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
-    ParseError(ParseError),
+    ParseError(Box<ParseError>),
 
     /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
     /// without the need to store them in the AST. However, some cases require a term which aborts
@@ -255,7 +253,7 @@ pub enum Term {
     /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
     /// evaluated, will raise a proper missing field definition error. This is precisely the
     /// behavior of `RuntimeError`.
-    RuntimeError(EvalErrorKind),
+    RuntimeError(Box<EvalErrorKind>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -937,6 +935,10 @@ impl Term {
 
     pub fn annotated(annot: TypeAnnotation, inner: NickelValue) -> Self {
         Term::Annotated(Box::new(AnnotatedData { annot, inner }))
+    }
+
+    pub fn parse_error(error: ParseError) -> Self {
+        Term::ParseError(Box::new(error))
     }
 }
 

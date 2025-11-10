@@ -582,7 +582,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             }
             Term::Import(term::Import::Package { id }) => alloc.import_package(*id),
             Term::ResolvedImport(_) => panic!("didn't expect a resolved import at parsing stage"),
-            Term::ParseError(error) => alloc.parse_error(error.clone()),
+            Term::ParseError(error) => alloc.parse_error((**error).clone()),
             Term::RuntimeError(_) => panic!("didn't expect a runtime error at parsing stage"),
             Term::Value(value) | Term::Closurize(value) => {
                 Ast::from_mainline(alloc, pos_table, value).node
@@ -1671,13 +1671,13 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     // causes an unbound variable error (which it shouldn't anyway if the term has
                     // been correctly typechecked), we pack this error as a parse error in the AST.
                     .unwrap_or_else(|err| {
-                        Term::ParseError(ParseError::UnboundTypeVariables(vec![err.0])).into()
+                        Term::parse_error(ParseError::UnboundTypeVariables(vec![err.0])).into()
                     });
 
                 NickelValue::typ(typ, contract, pos_table.push(ast.pos))
             }
             Node::ParseError(error) => {
-                NickelValue::term(Term::ParseError((*error).clone()), pos_table.push(ast.pos))
+                NickelValue::term(Term::parse_error((*error).clone()), pos_table.push(ast.pos))
             }
         };
 

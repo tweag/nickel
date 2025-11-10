@@ -616,31 +616,36 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let closure = self.context.cache.get(idx);
 
         let value = match closure.value.content() {
-            ValueContent::Term(lens)
-                if matches!(
-                    lens.term(),
-                    Term::RuntimeError(EvalErrorKind::MissingFieldDef { .. })
-                ) =>
-            {
-                let Term::RuntimeError(EvalErrorKind::MissingFieldDef {
-                    id,
-                    metadata,
-                    pos_record,
-                    pos_access: PosIdx::NONE,
-                }) = lens.take()
-                else {
-                    unreachable!();
-                };
+            ValueContent::Term(lens) => {
+                if let Term::RuntimeError(data) = lens.term()
+                    && let EvalErrorKind::MissingFieldDef { .. } = &**data
+                {
+                    let Term::RuntimeError(err_data) = lens.take() else {
+                        unreachable!();
+                    };
 
-                NickelValue::term(
-                    Term::RuntimeError(EvalErrorKind::MissingFieldDef {
+                    let EvalErrorKind::MissingFieldDef {
                         id,
                         metadata,
                         pos_record,
-                        pos_access: pos_idx,
-                    }),
-                    pos_idx,
-                )
+                        pos_access: PosIdx::NONE,
+                    } = *err_data
+                    else {
+                        unreachable!();
+                    };
+
+                    NickelValue::term(
+                        Term::RuntimeError(Box::new(EvalErrorKind::MissingFieldDef {
+                            id,
+                            metadata,
+                            pos_record,
+                            pos_access: pos_idx,
+                        })),
+                        pos_idx,
+                    )
+                } else {
+                    lens.restore()
+                }
             }
             lens => lens.restore(),
         };
@@ -1107,10 +1112,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     )));
                 }
                 ValueContentRef::Term(Term::ParseError(parse_error)) => {
-                    break Err(Box::new(EvalErrorKind::ParseError(parse_error.clone())));
+                    break Err(Box::new(EvalErrorKind::ParseError((**parse_error).clone())));
                 }
                 ValueContentRef::Term(Term::RuntimeError(error)) => {
-                    break Err(Box::new(error.clone()));
+                    break Err(error.clone());
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
