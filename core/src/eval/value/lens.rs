@@ -8,11 +8,11 @@ use crate::{
     error::{EvalErrorKind, ParseError},
     files::FileId,
     identifier::LocIdent,
+    metrics::increment,
     term::{
         AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData,
         MatchData, Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
     },
-    metrics::increment,
 };
 
 use std::{
