@@ -1063,17 +1063,15 @@ impl NickelValue {
         match self.content_ref() {
             ValueContentRef::Null
             | ValueContentRef::Bool(_)
-            | ValueContentRef::Array(Container::Empty)
-            | ValueContentRef::Record(Container::Empty)
             | ValueContentRef::Number(_)
             | ValueContentRef::Label(_)
             | ValueContentRef::ForeignId(_)
             | ValueContentRef::SealingKey(_)
             | ValueContentRef::String(_) => true,
+            ValueContentRef::Array(cont) => cont.is_empty(),
+            ValueContentRef::Record(cont) => cont.is_empty(),
             ValueContentRef::EnumVariant(enum_variant) => enum_variant.arg.is_none(),
-            ValueContentRef::Array(_)
-            | ValueContentRef::Record(_)
-            | ValueContentRef::Thunk(_)
+            ValueContentRef::Thunk(_)
             | ValueContentRef::Term(_)
             | ValueContentRef::CustomContract(_)
             | ValueContentRef::Type(_) => false,
