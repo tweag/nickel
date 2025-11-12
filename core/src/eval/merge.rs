@@ -25,6 +25,8 @@
 //! resulting metadata is the result of merging the two original field's metadata. The semantics
 //! depend on each metadata.
 
+use nickel_lang_parser::ast::MergeKind;
+
 use super::*;
 use crate::{
     closurize::Closurize,
@@ -232,17 +234,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_term::var("some_array")
                 );
 
+                let merge_label : MergeLabel = mode.into();
+                let mut notes = vec!["\
+                    This equality contract was auto-generated from a merge operation on two arrays. \
+                    Arrays can only be merged if they are equal.".into()];
+                if merge_label.kind == MergeKind::PiecewiseDef {
+                    notes.push("\
+                        The arrays were merged because they were assigned to the same record field \
+                        piecewise. This is likely to have been a mistake. Check for duplicate \
+                        definitions of the same record field.".into());
+                }
+
                 let label = Label {
                     typ: Rc::new(TypeF::Contract(contract_for_display).into()),
-                    span: MergeLabel::from(mode).span,
+                    span: merge_label.span,
                     ..Default::default()
                 }
                 .with_diagnostic_message("cannot merge unequal arrays")
-                .with_append_diagnostic_note(
-                    "\
-                    This equality contract was auto-generated from a merge operation on two arrays. \
-                    Arrays can only be merged if they are equal.",
-                );
+                    .with_diagnostic_notes(notes);
 
                 // We don't actually use `contract.Equal` directly, because `contract` could have been
                 // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
