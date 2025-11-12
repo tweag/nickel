@@ -12,6 +12,7 @@ use crate::{
         AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData,
         MatchData, Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
     },
+    metrics::increment,
 };
 
 use std::{
@@ -110,6 +111,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
             let ptr_content = ptr.add(ValueBlockRc::data_offset::<T>()).cast::<T>();
 
             if ref_count == RefCount::ONE {
+                increment!("lens::take: copy avoided");
                 // Since we "move" the original content, we don't want to run the destructor (if
                 // `T` owns e.g. a `HashMap`, it would otherwise be de-allocated when `value` goes
                 // out of scope, and we would return a dangling value).
@@ -124,6 +126,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
                 dealloc(ptr.as_ptr(), T::TAG.block_layout());
                 on_owned(content)
             } else {
+                increment!("lens::take: copy required");
                 on_ref(ptr_content.as_ref())
             }
         }
