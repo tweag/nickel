@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: type error: missing field `a`
+  ┌─ [INPUTS_PATH]/errors/accessing_unknown_field.ncl:3:11
+  │
+3 │ (fun x => x.a) : {} -> _
+  │           ^ - `a` required here
+  │           │  
+  │           this record lacks `a`
+  │
+  = Attempted to access field `a` on an expression of type `{  }`

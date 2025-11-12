@@ -1243,7 +1243,7 @@ qualify as a record type and is parsed as a record contract. This throws an
 
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz : Bool}
-error: type error: missing row `baz`
+error: type error: missing field `baz`
 [...]
 ```
 

@@ -32,6 +32,7 @@ use crate::{
     serialize::{ExportFormat, NickelPointer, NickelPointerElem},
     term::{Number, pattern::Pattern, record::FieldMetadata},
     typ::{TypeF, VarKindDiscriminant},
+    typecheck::error::RowKind,
 };
 
 pub use nickel_lang_parser::error::{ParseError, ParseErrors};
@@ -366,6 +367,7 @@ pub enum TypecheckErrorKind<'ast> {
     /// A specific row was expected to be in the type of an expression, but was not.
     MissingRow {
         id: LocIdent,
+        kind: RowKind,
         expected: Type<'ast>,
         inferred: Type<'ast>,
         pos: TermPos,
@@ -2161,9 +2163,13 @@ impl IntoDiagnostics for TypecheckErrorData {
 impl<'ast> IntoDiagnostics for &'_ TypecheckErrorKind<'ast> {
     fn into_diagnostics(self, files: &mut Files) -> Vec<Diagnostic<FileId>> {
         fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
+            mk_expr_label_with_msg(span_opt, "this expression".into())
+        }
+
+        fn mk_expr_label_with_msg(span_opt: &TermPos, msg: String) -> Vec<Label<FileId>> {
             span_opt
                 .as_opt_ref()
-                .map(|span| vec![primary(span).with_message("this expression")])
+                .map(|span| vec![primary(span).with_message(msg)])
                 .unwrap_or_default()
         }
 
@@ -2187,6 +2193,34 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorKind<'ast> {
             }
             TypecheckErrorKind::MissingRow {
                 id,
+                kind: RowKind::Record,
+                expected,
+                inferred,
+                pos,
+            } => {
+                let id_access = match &expected.typ {
+                    TypeF::Record(r) => {
+                        r.find_row(id.ident()).and_then(|row| row.id.pos.into_opt())
+                    }
+                    _ => None,
+                };
+                let mut labels = mk_expr_label_with_msg(pos, format!("this record lacks `{id}`"));
+                if let Some(id_access) = id_access {
+                    labels
+                        .push(secondary(&id_access).with_message(format!("`{id}` required here")));
+                }
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("type error: missing field `{id}`"))
+                        .with_labels(labels)
+                        .with_notes(vec![format!(
+                            "Attempted to access field `{id}` on an expression of type `{inferred}`"
+                        )]),
+                ]
+            }
+            TypecheckErrorKind::MissingRow {
+                id,
+                kind: RowKind::Enum,
                 expected,
                 inferred,
                 pos,
@@ -2887,11 +2921,13 @@ impl CloneTo for TypecheckErrorKind<'_> {
             }
             TypecheckErrorKind::MissingRow {
                 id,
+                kind,
                 expected,
                 inferred,
                 pos,
             } => TypecheckErrorKind::MissingRow {
                 id,
+                kind,
                 expected: Type::clone_to(expected, dest),
                 inferred: Type::clone_to(inferred, dest),
                 pos,

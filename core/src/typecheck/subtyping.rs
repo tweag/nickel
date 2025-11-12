@@ -228,7 +228,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                     let (ty_res, urrows_without_ty_res) = urrows1
                         .remove_row(&row2.id, &row2.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row2.id),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingRecordRow(row2.id),
                             RemoveRowError::Conflict => {
                                 RowUnifErrorKind::RecordRowConflict(row2.clone())
                             }
@@ -267,7 +267,7 @@ impl<'ast> SubsumedBy<'ast> for UnifRecordRows<'ast> {
                         row: UnifRecordRow { id, .. },
                         ..
                     },
-                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
+                ) => Err(Box::new(RowUnifErrorKind::MissingRecordRow(id))),
                 (
                     RecordRowsF::Extend {
                         row: UnifRecordRow { id, .. },

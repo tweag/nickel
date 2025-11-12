@@ -1407,7 +1407,7 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                         ..
                     },
                     EnumRowsF::Empty,
-                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
+                ) => Err(Box::new(RowUnifErrorKind::MissingEnumRow(id))),
                 (EnumRowsF::Extend { row, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
                     let uerows2 = UnifEnumRows::Concrete {
                         erows: erows2,
@@ -1418,7 +1418,7 @@ impl<'ast> Unify<'ast> for UnifEnumRows<'ast> {
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
                         uerows2.remove_row(&row.id, &row.typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row.id),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingEnumRow(row.id),
                             RemoveRowError::Conflict => RowUnifErrorKind::EnumRowConflict(row.clone()),
                         })?;
 
@@ -1549,7 +1549,7 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                         ..
                     },
                     RecordRowsF::Empty,
-                ) => Err(Box::new(RowUnifErrorKind::MissingRow(id))),
+                ) => Err(Box::new(RowUnifErrorKind::MissingRecordRow(id))),
                 (RecordRowsF::Extend { row, tail }, rrows2 @ RecordRowsF::Extend { .. }) => {
                     let urrows2 = UnifRecordRows::Concrete {
                         rrows: rrows2,
@@ -1559,7 +1559,7 @@ impl<'ast> Unify<'ast> for UnifRecordRows<'ast> {
                     let (ty2_result, urrows2_without_ty2) = urrows2
                         .remove_row(&row.id, &row.typ, state, ctxt.var_level)
                         .map_err(|err| match err {
-                            RemoveRowError::Missing => RowUnifErrorKind::MissingRow(row.id),
+                            RemoveRowError::Missing => RowUnifErrorKind::MissingRecordRow(row.id),
                             RemoveRowError::Conflict => {
                                 RowUnifErrorKind::RecordRowConflict(row.clone())
                             }
