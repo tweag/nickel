@@ -8,12 +8,13 @@ use super::{primop::PrimOp, *};
 use crate::{
     combine::Combine,
     eval::value::{
-        ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
         ValueContentRefMut,
     },
     label,
-    position::{PosTable, RawSpan},
-    term, typ as mline_type,
+    position::{PosIdx, PosTable, RawSpan},
+    term::{self, record::RecordData},
+    typ as mline_type,
 };
 use indexmap::IndexMap;
 use nickel_lang_parser::{
@@ -1085,13 +1086,13 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
                     let pos_idx = pos_table.push(pos);
                     term::record::Field::from(
                         // See [^closurize-insertion]
-                        closurize(NickelValue::record(
+                        closurized_record(
                             term::record::RecordData {
                                 fields,
                                 ..Default::default()
                             },
                             pos_idx,
-                        )),
+                        ),
                     )
                 }
                 FieldPathElem::Expr(expr) => {
@@ -1108,13 +1109,13 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
 
                         term::record::Field::from(
                             // See [^closurize-insertion]
-                            closurize(NickelValue::record(
+                            closurized_record(
                                 term::record::RecordData {
                                     fields,
                                     ..Default::default()
                                 },
                                 pos_table.push(pos),
-                            )),
+                            ),
                         )
                     } else {
                         // The record we create isn't recursive, because it is only comprised of
@@ -1617,7 +1618,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                 // well-formed values. In particular, containers (arrays and non-recursive records)
                 // must be closurized the first time they are evaluated. So instead of being
                 // translated as arrays directly, we wrap them using the `Closurize` operation.
-                closurize(NickelValue::array(array, Vec::new(), pos_idx))
+                closurized_array(array, pos_idx)
             }
             Node::PrimOpApp { op, args } => {
                 let term = match (*op).to_mainline(pos_table) {
@@ -1819,11 +1820,10 @@ fn merge_fields(
                 }
 
                 // See [^closurize-insertion]
-                closurize(NickelValue::record_posless(RecordData::new(
-                    fields,
-                    Combine::combine(rd1.attrs, rd2.attrs),
-                    None,
-                )))
+                closurized_record(
+                    RecordData::new(fields, Combine::combine(rd1.attrs, rd2.attrs), None),
+                    PosIdx::NONE,
+                )
             }
             (lens1, lens2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
@@ -1871,9 +1871,28 @@ fn merge_fields(
     }
 }
 
-/// Wrap a value in a [crate::term::Term::Closurize] operator with the same position index.
-fn closurize(value: NickelValue) -> NickelValue {
-    let pos_idx = value.pos_idx();
+/// Build a [NickelValue] with the given array and an wraps it in a [Term::Closurize] operator with
+/// the same position index, if it is not empty.
+fn closurized_array(array: Array, pos_idx: PosIdx) -> NickelValue {
+    let empty = array.is_empty();
+    let value = NickelValue::array(array, Vec::new(), pos_idx);
 
-    NickelValue::term(term::Term::Closurize(value), pos_idx)
+    if !empty {
+        NickelValue::term(term::Term::Closurize(value), pos_idx)
+    } else {
+        value
+    }
+}
+
+/// Build a [NickelValue] with the given record and an wraps it in a [Term::Closurize] operator with
+/// the same position index, if it is not empty.
+fn closurized_record(record: RecordData, pos_idx: PosIdx) -> NickelValue {
+    let empty = record.is_empty();
+    let value = NickelValue::record(record, pos_idx);
+
+    if !empty {
+        NickelValue::term(term::Term::Closurize(value), pos_idx)
+    } else {
+        value
+    }
 }
