@@ -93,46 +93,28 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         // save this information now.
         let wrap_in_ok = matches!(mode, MergeMode::Contract(_));
 
-        let result = match (v1.content(), v2.content()) {
+        let result = match (v1.content_ref(), v2.content_ref()) {
             // Merge is idempotent on basic terms
-            (ValueContent::Null(_), ValueContent::Null(_)) => Ok(NickelValue::null()
-                .with_pos_idx(pos_op_inh)),
-            (ValueContent::Bool(lens1), ValueContent::Bool(lens2))
-                // phys_eq allows comparison in the guard without consuming both lenses, which we
-                // need for the result
-                if lens1.value().phys_eq(lens2.value()) =>
-            {
-                Ok(NickelValue::bool_value(
-                    lens1.take(),
-                    pos_op_inh,
-                ))
+            (ValueContentRef::Null, ValueContentRef::Null) => {
+                Ok(NickelValue::null().with_pos_idx(pos_op_inh))
             }
-            (ValueContent::Number(lens1), ValueContent::Number(lens2)) => {
-                let n1 = lens1.take();
-                let n2 = lens2.take();
-
+            (ValueContentRef::Bool(b1), ValueContentRef::Bool(b2)) if b1 == b2 => {
+                Ok(NickelValue::bool_value(b1, pos_op_inh))
+            }
+            (ValueContentRef::Number(n1), ValueContentRef::Number(n2)) => {
                 if n1 == n2 {
-                    Ok(NickelValue::number(
-                        n1,
-                        pos_op_inh,
-                    ))
+                    Ok(NickelValue::number(n1.clone(), pos_op_inh))
                 } else {
                     Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
-                        left_arg: NickelValue::number(n1, pos1),
-                        right_arg: NickelValue::number(n2, pos2),
+                        left_arg: NickelValue::number(n1.clone(), pos1),
+                        right_arg: NickelValue::number(n2.clone(), pos2),
                         merge_label: mode.into(),
                     }))
                 }
             }
-            (ValueContent::String(lens1), ValueContent::String(lens2)) => {
-                let s1 = lens1.take();
-                let s2 = lens2.take();
-
+            (ValueContentRef::String(s1), ValueContentRef::String(s2)) => {
                 if s1 == s2 {
-                    Ok(NickelValue::string(
-                        s1,
-                        pos_op_inh,
-                    ))
+                    Ok(NickelValue::string(s1, pos_op_inh))
                 } else {
                     Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
                         left_arg: NickelValue::string(s1, pos1),
@@ -141,27 +123,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }))
                 }
             }
-            (ValueContent::Label(lens1), ValueContent::Label(lens2)) => {
-                let label1 = lens1.take();
-                let label2 = lens2.take();
-
+            (ValueContentRef::Label(label1), ValueContentRef::Label(label2)) => {
                 if label1 == label2 {
-                    Ok(NickelValue::label(
-                        label1,
-                        pos_op_inh,
-                    ))
+                    Ok(NickelValue::label(label1.clone(), pos_op_inh))
                 } else {
                     Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
-                        left_arg: NickelValue::label(label1, pos1),
-                        right_arg: NickelValue::label(label2, pos2),
+                        left_arg: NickelValue::label(label1.clone(), pos1),
+                        right_arg: NickelValue::label(label2.clone(), pos2),
                         merge_label: mode.into(),
                     }))
                 }
             }
-            (ValueContent::EnumVariant(lens1), ValueContent::EnumVariant(lens2)) => {
-                let enum1 = lens1.take();
-                let enum2 = lens2.take();
-
+            (ValueContentRef::EnumVariant(enum1), ValueContentRef::EnumVariant(enum2)) => {
                 match (enum1, enum2) {
                     (
                         EnumVariantData {
@@ -172,10 +145,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             tag: tag2,
                             arg: None,
                         },
-                    ) if tag1 == tag2 => Ok(NickelValue::enum_tag(
-                        tag1,
-                        pos_op_inh,
-                    )),
+                    ) if tag1 == tag2 => Ok(NickelValue::enum_tag(*tag1, pos_op_inh)),
                     (
                         EnumVariantData {
                             tag: tag1,
@@ -188,19 +158,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ) if tag1 == tag2 => {
                         let arg = NickelValue::term_posless(Term::op2(
                             BinaryOp::Merge(mode.into()),
-                            arg1.closurize(&mut self.context.cache, env1),
-                            arg2.closurize(&mut self.context.cache, env2),
+                            arg1.clone().closurize(&mut self.context.cache, env1),
+                            arg2.clone().closurize(&mut self.context.cache, env2),
                         ));
 
-                        Ok(NickelValue::enum_variant(
-                            tag1,
-                            Some(arg),
-                            pos_op_inh,
-                        ))
+                        Ok(NickelValue::enum_variant(*tag1, Some(arg), pos_op_inh))
                     }
                     (enum1, enum2) => Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
-                        left_arg: NickelValue::enum_variant(enum1.tag, enum1.arg, pos1),
-                        right_arg: NickelValue::enum_variant(enum2.tag, enum2.arg, pos2),
+                        left_arg: NickelValue::enum_variant(enum1.tag, enum1.arg.clone(), pos1),
+                        right_arg: NickelValue::enum_variant(enum2.tag, enum2.arg.clone(), pos2),
                         merge_label: mode.into(),
                     })),
                 }
@@ -210,12 +176,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             // merging function. For the time being, we still need to be idempotent: thus we rewrite
             // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
             // minimum way such that it is idempotent.
-            (ValueContent::Array(lens1), ValueContent::Array(lens2)) => {
+            (ValueContentRef::Array(_), ValueContentRef::Array(_)) => {
                 use crate::{mk_app, stdlib, typ::TypeF};
                 use std::rc::Rc;
 
-                let v1 = lens1.restore().closurize(&mut self.context.cache, env1);
-                let v2 = lens2.restore().closurize(&mut self.context.cache, env2);
+                let v1 = v1.closurize(&mut self.context.cache, env1);
+                let v2 = v2.closurize(&mut self.context.cache, env2);
 
                 // We reconstruct the contract we apply later on just to fill the label. This will be
                 // printed out when reporting the error.
@@ -234,15 +200,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_term::var("some_array")
                 );
 
-                let merge_label : MergeLabel = mode.into();
+                let merge_label: MergeLabel = mode.into();
                 let mut notes = vec!["\
                     This equality contract was auto-generated from a merge operation on two arrays. \
                     Arrays can only be merged if they are equal.".into()];
                 if merge_label.kind == MergeKind::PiecewiseDef {
-                    notes.push("\
+                    notes.push(
+                        "\
                         The arrays were merged because they were assigned to the same record field \
                         piecewise. This is likely to have been a mistake. Check for duplicate \
-                        definitions of the same record field.".into());
+                        definitions of the same record field."
+                            .into(),
+                    );
                 }
 
                 let label = Label {
@@ -251,7 +220,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ..Default::default()
                 }
                 .with_diagnostic_message("cannot merge unequal arrays")
-                    .with_diagnostic_notes(notes);
+                .with_diagnostic_notes(notes);
 
                 // We don't actually use `contract.Equal` directly, because `contract` could have been
                 // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
@@ -270,10 +239,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             }
             // The empty record is the neutral element for merging. We treat this case specifically
             // for performance reasons: to avoid allocation, recomputation of fixpoint, etc.
-            (ValueContent::Record(lens), ValueContent::Record(empty))
-            | (ValueContent::Record(empty), ValueContent::Record(lens))
-                if empty.value().is_inline_empty_record() =>
-            {
+            (ValueContentRef::Record(_), ValueContentRef::Record(Container::Empty))
+            | (ValueContentRef::Record(Container::Empty), ValueContentRef::Record(_)) => {
+                let non_empty = if v1.is_inline_empty_record() { v2 } else { v1 };
+
                 // In merge contract mode, we need to maintain the position of the first argument,
                 // which is the scrutinized value, to maintain good contract error messages.
                 //
@@ -281,33 +250,33 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // better to keep the position of the other argument (instead of the position of
                 // the merge), since the result will inherit everything from it.
                 let final_pos = if let MergeMode::Standard(_) = mode {
-                    lens.value().pos_idx()
+                    non_empty.pos_idx()
                 } else {
                     pos1.to_inherited(&mut self.context.pos_table)
                 };
 
-
-                Ok(lens
-                    .restore()
+                Ok(non_empty
                     // In `MergeMode::Contract(_)` mode, we want to maintain
                     .with_pos_idx(final_pos))
             }
             // Merge put together the fields of records, and recursively merge
             // fields that are present in both terms
-            (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
-                let r1 = lens1.take().unwrap_or_alloc();
-                let r2 = lens2.take().unwrap_or_alloc();
-
+            (
+                ValueContentRef::Record(Container::Alloc(r1)),
+                ValueContentRef::Record(Container::Alloc(r2)),
+            ) => {
                 // While it wouldn't be impossible to merge records with sealed tails,
                 // working out how to do so in a "sane" way that preserves parametricity
                 // is non-trivial. It's also not entirely clear that this is something
                 // users will generally have reason to do, so in the meantime we've
                 // decided to just prevent this entirely
-                if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
+                if let Some(record::SealedTail { label, .. }) =
+                    r1.sealed_tail.as_ref().or(r2.sealed_tail.as_ref())
+                {
                     return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                         action: IllegalPolymorphicTailAction::Merge,
                         evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                        label,
+                        label: label.clone(),
                     }));
                 }
 
@@ -315,7 +284,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     left,
                     center,
                     right,
-                } = split::split(r1.fields, r2.fields);
+                } = split::split_ref(&r1.fields, &r2.fields);
 
                 match mode {
                     MergeMode::Contract(_) if !r2.attrs.open && !left.is_empty() => {
@@ -433,9 +402,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     final_pos,
                 ))
             }
-            (lens1, lens2) => Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
-                left_arg: lens1.restore(),
-                right_arg: lens2.restore(),
+            _ => Err(Box::new(EvalErrorKind::MergeIncompatibleArgs {
+                left_arg: v1,
+                right_arg: v2,
                 merge_label: mode.into(),
             })),
         };
@@ -690,6 +659,61 @@ pub mod split {
             left,
             center,
             right,
+        }
+    }
+
+    /// Same as [split], but takes the maps by reference, and clone data as needed.
+    pub fn split_ref<K, V1: Clone, V2: Clone>(
+        m1: &IndexMap<K, V1>,
+        m2: &IndexMap<K, V2>,
+    ) -> SplitResult<K, V1, V2>
+    where
+        K: std::hash::Hash + Eq + Clone,
+    {
+        let mut center = IndexMap::new();
+        // We reuse the hashmap structure to remember what has been already put in the center. To
+        // do so, we clone of the map and remove elements as found in the other. To limit the work
+        // done here, we clone the smallest of the two maps.
+        //
+        // We don't perserve the ordering of the non-cloned part. However, note that currently,
+        // what matters is that the iteration order on hashmap is _deterministic_. It's a bonus
+        // that it corresponds to insertion order for record literal, but we don't make any
+        // guarantee on the result of merging or other operations. Exporting will sort the result
+        // anyway.
+        if m1.len() < m2.len() {
+            let mut left = m1.clone();
+            let mut right = IndexMap::new();
+
+            for (key, v2) in m2.iter() {
+                if let Some(v1) = left.swap_remove(key) {
+                    center.insert(key.clone(), (v1, v2.clone()));
+                } else {
+                    right.insert(key.clone(), v2.clone());
+                }
+            }
+
+            SplitResult {
+                left,
+                center,
+                right,
+            }
+        } else {
+            let mut left = IndexMap::new();
+            let mut right = m2.clone();
+
+            for (key, v1) in m1.iter() {
+                if let Some(v2) = right.swap_remove(key) {
+                    center.insert(key.clone(), (v1.clone(), v2));
+                } else {
+                    left.insert(key.clone(), v1.clone());
+                }
+            }
+
+            SplitResult {
+                left,
+                center,
+                right,
+            }
         }
     }
 

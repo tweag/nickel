@@ -14,8 +14,8 @@ use super::{
     stack::StrAccData,
     subst,
     value::{
-        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContent,
-        ValueContentRef, ValueContentRefMut,
+        Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
+        ValueContentRefMut,
     },
 };
 
@@ -357,19 +357,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Bool")
                 }
             }
-            UnaryOp::Blame => match value.content() {
-                ValueContent::Label(lens) => {
-                    let label = lens.take();
+            UnaryOp::Blame => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
 
-                    Err(Box::new(EvalErrorKind::BlameError {
-                        evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                        label,
-                    }))
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+                Err(Box::new(EvalErrorKind::BlameError {
+                    evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                    label: label.clone(),
+                }))
+            }
             UnaryOp::EnumEmbed(_id) => {
                 if value.as_enum_variant().is_some() {
                     Ok(value.with_pos_idx(pos_op_inh).into())
@@ -435,16 +432,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Enum", 2)
                 }
             }
-            UnaryOp::LabelFlipPol => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.polarity = label.polarity.flip();
-                    Ok(NickelValue::label(label, pos_op_inh).into())
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            UnaryOp::LabelFlipPol => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.polarity = label.polarity.flip();
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
             UnaryOp::LabelPol => {
                 if let Some(label) = value.as_label() {
                     Ok(NickelValue::from(label.polarity)
@@ -454,46 +450,42 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     mk_type_error!("Label")
                 }
             }
-            UnaryOp::LabelGoDom => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.path.push(ty_path::Elem::Domain);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoCodom => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.path.push(ty_path::Elem::Codomain);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoArray => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.path.push(ty_path::Elem::Array);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
-            UnaryOp::LabelGoDict => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.path.push(ty_path::Elem::Dict);
-                    Ok(NickelValue::label(label, pos_op_inh).into())
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            UnaryOp::LabelGoDom => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.path.push(ty_path::Elem::Domain);
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
+            UnaryOp::LabelGoCodom => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.path.push(ty_path::Elem::Codomain);
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
+            UnaryOp::LabelGoArray => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.path.push(ty_path::Elem::Array);
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
+            UnaryOp::LabelGoDict => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.path.push(ty_path::Elem::Dict);
+                Ok(NickelValue::label(label, pos_op_inh).into())
+            }
             UnaryOp::RecordAccess(id) => {
                 match value.as_record() {
                     Some(Container::Alloc(record)) => {
@@ -602,38 +594,32 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ))
                 })?;
 
-                match value.content() {
-                    ValueContent::Array(lens) => {
-                        let array_data = lens.take().unwrap_or_alloc();
-                        let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
+                let Some(cont) = value.as_array() else {
+                    return mk_type_error!("Array");
+                };
 
-                        // Array elements are closurized to preserve laziness of data
-                        // structures. It maintains the invariant that any data structure only
-                        // contain indices (that is, currently, variables).
-                        let ts = array_data
-                            .array
-                            .into_iter()
-                            .map(|t| {
-                                let t_with_ctrs = RuntimeContract::apply_all(
-                                    t,
-                                    array_data.pending_contracts.iter().cloned(),
-                                    pos,
-                                );
+                let array_data = cont.to_owned().unwrap_or_alloc();
+                let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
 
-                                NickelValue::term(
-                                    Term::app(f_as_var.clone(), t_with_ctrs),
-                                    pos_op_inh,
-                                )
-                                .closurize(&mut self.context.cache, env.clone())
-                            })
-                            .collect();
+                // Array elements are closurized to preserve laziness of data
+                // structures. It maintains the invariant that any data structure only
+                // contain indices (that is, currently, variables).
+                let ts = array_data
+                    .array
+                    .into_iter()
+                    .map(|t| {
+                        let t_with_ctrs = RuntimeContract::apply_all(
+                            t,
+                            array_data.pending_contracts.iter().cloned(),
+                            pos,
+                        );
 
-                        Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
-                    }
-                    lens => {
-                        mk_type_error!("Array", value = lens.restore())
-                    }
-                }
+                        NickelValue::term(Term::app(f_as_var.clone(), t_with_ctrs), pos_op_inh)
+                            .closurize(&mut self.context.cache, env.clone())
+                    })
+                    .collect();
+
+                Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
             }
             UnaryOp::ArrayGen => {
                 let (f, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
@@ -690,63 +676,62 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     EvalErrorKind::NotEnoughArgs(2, String::from("record/map"), pos_op)
                 })?;
 
-                match value.content() {
-                    ValueContent::Record(lens) if lens.value().is_inline_empty_record() => {
-                        Ok(lens.restore().with_pos_idx(pos_op).into())
+                let Some(container) = value.as_record() else {
+                    return mk_type_error!("Record");
+                };
+
+                if let Container::Alloc(record) = container {
+                    let record = record.clone();
+                    // While it's certainly possible to allow mapping over
+                    // a record with a sealed tail, it's not entirely obvious
+                    // how that should behave. It's also not clear that this
+                    // is something users will actually need to do, so we've
+                    // decided to prevent this until we have a clearer idea
+                    // of potential use-cases.
+                    if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                        return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
+                            action: IllegalPolymorphicTailAction::Map,
+                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                            label,
+                        }));
                     }
-                    ValueContent::Record(lens) => {
-                        //unwrap(): we checked the empty record case above
-                        let record = lens.take().unwrap_alloc();
-                        // While it's certainly possible to allow mapping over
-                        // a record with a sealed tail, it's not entirely obvious
-                        // how that should behave. It's also not clear that this
-                        // is something users will actually need to do, so we've
-                        // decided to prevent this until we have a clearer idea
-                        // of potential use-cases.
-                        if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
-                                action: IllegalPolymorphicTailAction::Map,
-                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                                label,
-                            }));
-                        }
 
-                        let f_closure = f.value.closurize(&mut self.context.cache, f.env);
+                    let f_closure = f.value.closurize(&mut self.context.cache, f.env);
 
-                        // As for `ArrayMap` (see above), we closurize the content of fields
+                    // As for `ArrayMap` (see above), we closurize the content of fields
 
-                        let fields = record
-                            .fields
-                            .into_iter()
-                            .filter(|(_, field)| !field.is_empty_optional())
-                            .map_values_closurize(&mut self.context.cache, &env, |id, t| {
-                                let pos = self.context.pos_table.get(t.pos_idx()).into_inherited();
+                    let fields = record
+                        .fields
+                        .into_iter()
+                        .filter(|(_, field)| !field.is_empty_optional())
+                        .map_values_closurize(&mut self.context.cache, &env, |id, t| {
+                            let pos = self.context.pos_table.get(t.pos_idx()).into_inherited();
 
-                                mk_app!(
-                                    f_closure.clone(),
-                                    NickelValue::string_posless(id.label()),
-                                    t
-                                )
-                                .with_pos(&mut self.context.pos_table, pos)
-                            })
-                            .map_err(|miss_field_err| miss_field_err.into_eval_err(pos, pos_op))?;
+                            mk_app!(
+                                f_closure.clone(),
+                                NickelValue::string_posless(id.label()),
+                                t
+                            )
+                            .with_pos(&mut self.context.pos_table, pos)
+                        })
+                        .map_err(|miss_field_err| miss_field_err.into_eval_err(pos, pos_op))?;
 
-                        // By construction, mapping freezes the record. We set the frozen flag so
-                        // that operations that require the record to be frozen don't have to
-                        // perform the work again.
-                        let attrs = record.attrs.frozen();
+                    // By construction, mapping freezes the record. We set the frozen flag so
+                    // that operations that require the record to be frozen don't have to
+                    // perform the work again.
+                    let attrs = record.attrs.frozen();
 
-                        Ok(NickelValue::record(
-                            RecordData {
-                                fields,
-                                attrs,
-                                ..record
-                            },
-                            pos_op_inh,
-                        )
-                        .into())
-                    }
-                    lens => mk_type_error!("Record", 1, value = lens.restore()),
+                    Ok(NickelValue::record(
+                        RecordData {
+                            fields,
+                            attrs,
+                            ..record
+                        },
+                        pos_op_inh,
+                    )
+                    .into())
+                } else {
+                    Ok(value.with_pos_idx(pos_op).into())
                 }
             }
             UnaryOp::Seq => self
@@ -1109,17 +1094,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .with_pos_idx(pos)
                 }
 
-                match value.content() {
-                    ValueContent::Record(lens) if !lens.value().is_inline_empty_record() => {
-                        //unwrap(): the guard of the pattern exclude empty records
-                        let record = lens.take().unwrap_alloc();
+                match value.content_ref() {
+                    ValueContentRef::Record(Container::Alloc(record)) => {
                         let fields = record
                             .fields
-                            .into_iter()
+                            .iter()
                             .filter(|(_, field)| {
                                 !(field.is_empty_optional()
                                     || (ignore_not_exported && field.metadata.not_exported))
                             })
+                            .map(|(id, field)| (*id, field.clone()))
                             .map_values_closurize(&mut self.context.cache, &env, |_, value| {
                                 mk_term::op1(
                                     UnaryOp::Force {
@@ -1141,19 +1125,26 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .collect();
 
                         let pos_inh = pos.to_inherited(&mut self.context.pos_table);
-                        let cont = NickelValue::record(RecordData { fields, ..record }, pos_inh);
+                        let cont = NickelValue::record(
+                            RecordData {
+                                fields,
+                                attrs: record.attrs,
+                                sealed_tail: record.sealed_tail.clone(),
+                            },
+                            pos_inh,
+                        );
 
                         Ok(seq_terms(terms.into_iter(), pos_op, cont).into())
                     }
-                    ValueContent::Array(lens) if !lens.value().is_inline_empty_array() => {
+                    ValueContentRef::Array(Container::Alloc(array_data)) => {
                         //unwrap(): the guard of the pattern exclude empty arrays
                         let ArrayData {
-                            array: ts,
+                            array,
                             pending_contracts,
-                        } = lens.take().unwrap_alloc();
+                        } = array_data.clone();
                         let pos_inh = pos.to_inherited(&mut self.context.pos_table);
 
-                        let ts = ts
+                        let ts = array
                             .into_iter()
                             .map(|t| {
                                 mk_term::op1(
@@ -1181,8 +1172,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                     // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
                     // there's no lazy pending contract to apply.
-                    ValueContent::EnumVariant(lens) => {
-                        let EnumVariantData { tag, arg } = lens.take();
+                    ValueContentRef::EnumVariant(data) => {
+                        let EnumVariantData { tag, arg } = data.clone();
 
                         if let Some(arg) = arg {
                             let arg = mk_term::op1(
@@ -1210,22 +1201,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })
                         }
                     }
-                    lens => Ok(Closure {
-                        value: lens.restore(),
-                        env,
-                    }),
+                    _ => Ok(Closure { value, env }),
                 }
             }
             UnaryOp::RecordEmptyWithTail => {
-                let lens = value.content();
-
-                let ValueContent::Record(lens) = lens else {
-                    return mk_type_error!("Record", value = lens.restore());
+                let Some(container) = value.as_record() else {
+                    return mk_type_error!("Record");
                 };
 
-                let record = lens.take().unwrap_or_alloc();
                 let mut result = RecordData::empty();
-                result.sealed_tail = record.sealed_tail;
+                result.sealed_tail = container
+                    .into_opt()
+                    .and_then(|record| record.sealed_tail.clone());
 
                 Ok(Closure {
                     value: NickelValue::record(result, pos_op_inh),
@@ -1251,63 +1238,61 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return Ok(Closure { value, env });
                 }
 
-                // Ditto if the record is empty. We can also drop the environment.
-                if value.is_inline_empty_record() {
-                    return Ok(value.into());
-                }
+                let Some(container) = value.as_record() else {
+                    return mk_type_error!("Record");
+                };
 
-                match value.content() {
-                    ValueContent::Record(lens) => {
-                        //unwrap(): we already checked for empty record above (and return early)
-                        let record = lens.take().unwrap_alloc();
-
-                        // It's not clear what the semantics of freezing a record with a sealed tail
-                        // would be, as there might be dependencies between the sealed part and the
-                        // unsealed part. Merging is disallowed on records with tail, so we disallow
-                        // freezing as well.
-                        if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                            return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
-                                action: IllegalPolymorphicTailAction::Freeze,
-                                evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                                label,
-                            }));
-                        }
-
-                        let fields = record
-                            .fields
-                            .into_iter()
-                            .map(|(id, field)| {
-                                let value = field.value.map(|value| {
-                                    let pos = value.pos_idx();
-                                    RuntimeContract::apply_all(value, field.pending_contracts, pos)
-                                });
-
-                                let field = Field {
-                                    value,
-                                    pending_contracts: Vec::new(),
-                                    ..field
-                                }
-                                .closurize(&mut self.context.cache, env.clone());
-
-                                (id, field)
-                            })
-                            .collect();
-
-                        let attrs = record.attrs.frozen();
-
-                        Ok(Closure {
-                            value: NickelValue::record(
-                                RecordData {
-                                    fields,
-                                    attrs,
-                                    sealed_tail: None,
-                                },
-                                pos_op_inh,
-                            ),
-                            env,
-                        })
+                if let Container::Alloc(record) = container {
+                    // It's not clear what the semantics of freezing a record with a sealed tail
+                    // would be, as there might be dependencies between the sealed part and the
+                    // unsealed part. Merging is disallowed on records with tail, so we disallow
+                    // freezing as well.
+                    if let Some(record::SealedTail { label, .. }) = &record.sealed_tail {
+                        return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
+                            action: IllegalPolymorphicTailAction::Freeze,
+                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
+                            label: label.clone(),
+                        }));
                     }
-                    lens => mk_type_error!("Record", value = lens.restore()),
+
+                    let fields = record
+                        .fields
+                        .iter()
+                        .map(|(id, field)| {
+                            let field = field.clone();
+
+                            let value = field.value.map(|value| {
+                                let pos = value.pos_idx();
+                                RuntimeContract::apply_all(value, field.pending_contracts, pos)
+                            });
+
+                            let field = Field {
+                                value,
+                                pending_contracts: Vec::new(),
+                                ..field
+                            }
+                            .closurize(&mut self.context.cache, env.clone());
+
+                            (*id, field)
+                        })
+                        .collect();
+
+                    let attrs = record.attrs.frozen();
+
+                    Ok(Closure {
+                        value: NickelValue::record(
+                            RecordData {
+                                fields,
+                                attrs,
+                                sealed_tail: None,
+                            },
+                            pos_op_inh,
+                        ),
+                        env,
+                    })
+                } else {
+                    // Ditto if the record is empty. We can also drop the environment.
+                    Ok(value.into())
                 }
             }
             UnaryOp::Trace => {
@@ -1329,19 +1314,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         ))
                     })
             }
-            UnaryOp::LabelPushDiag => match value.content() {
-                ValueContent::Label(lens) => {
-                    let mut label = lens.take();
-                    label.push_diagnostic();
-                    Ok(Closure {
-                        value: NickelValue::label(label, pos),
-                        env,
-                    })
-                }
-                lens => {
-                    mk_type_error!("Label", value = lens.restore())
-                }
-            },
+            UnaryOp::LabelPushDiag => {
+                let Some(label) = value.as_label() else {
+                    return mk_type_error!("Label");
+                };
+
+                let mut label = label.clone();
+                label.push_diagnostic();
+                Ok(Closure {
+                    value: NickelValue::label(label, pos),
+                    env,
+                })
+            }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix => {
                 if let Some(s) = value.as_string() {
@@ -1433,41 +1417,41 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ))
                 })?;
 
-                match value.content() {
-                    ValueContent::Record(lens) => {
-                        let container = lens.take().into_opt();
+                let Some(container) = value.as_record() else {
+                    return mk_type_error!("Record");
+                };
 
-                        for (id, field) in container.map(|record| record.fields).unwrap_or_default()
-                        {
-                            debug_assert!(field.metadata.is_empty());
+                for (id, field) in container
+                    .into_opt()
+                    .into_iter()
+                    .flat_map(|record| record.fields.iter())
+                {
+                    debug_assert!(field.metadata.is_empty());
 
-                            if let Some(value) = field.value {
-                                if let Some(idx) = value.as_thunk() {
-                                    cont.env.insert(id.ident(), idx.clone());
-                                } else {
-                                    cont.env.insert(
-                                        id.ident(),
-                                        self.context.cache.add(
-                                            Closure {
-                                                value,
-                                                env: env.clone(),
-                                            },
-                                            BindingType::Normal,
-                                        ),
-                                    );
-                                }
-                            } else {
-                                // This should not really happen, as `with_env` is intended to be
-                                // used with very simple records: no metadata, no recursive fields,
-                                // no field without definition, etc.
-                                debug_assert!(false);
-                            }
+                    if let Some(value) = &field.value {
+                        if let Some(idx) = value.as_thunk() {
+                            cont.env.insert(id.ident(), idx.clone());
+                        } else {
+                            cont.env.insert(
+                                id.ident(),
+                                self.context.cache.add(
+                                    Closure {
+                                        value: value.clone(),
+                                        env: env.clone(),
+                                    },
+                                    BindingType::Normal,
+                                ),
+                            );
                         }
-
-                        Ok(cont)
+                    } else {
+                        // This should not really happen, as `with_env` is intended to be
+                        // used with very simple records: no metadata, no recursive fields,
+                        // no field without definition, etc.
+                        debug_assert!(false);
                     }
-                    lens => mk_type_error!("Record", value = lens.restore()),
                 }
+
+                Ok(cont)
             }
             UnaryOp::ContractCustom => {
                 let contract = if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
@@ -1656,11 +1640,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn process_binary_operation(&mut self, eval_data: Op2EvalData) -> Result<Closure, ErrorKind> {
         let Op2EvalData {
             op,
-            arg1:
-                Closure {
-                    value: mut value1,
-                    env: env1,
-                },
+            arg1: Closure {
+                value: value1,
+                env: env1,
+            },
             arg2:
                 Closure {
                     value: mut value2,
@@ -1966,16 +1949,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     });
                 }
 
-                let mut label;
-
-                match value2.content() {
-                    ValueContent::Label(lens) => {
-                        label = lens.take();
-                    }
-                    lens => {
-                        return mk_type_error!("Label", 2, lens.restore());
-                    }
+                let Some(label) = value2.as_label() else {
+                    return mk_type_error!("Label", 2, value2);
                 };
+
+                let mut label = label.clone();
 
                 increment!(format!(
                     "contract:originates_from_type {}",
@@ -2934,9 +2912,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: env_ctr,
                 } = ctr;
 
-                let label = match value1.content() {
-                    ValueContent::Label(lens) => lens.take(),
-                    lens => return mk_type_error!("Label", 1, lens.restore()),
+                let Some(label) = value1.as_label() else {
+                    return mk_type_error!("Label", 1, value1);
                 };
 
                 if value2.is_inline_empty_array() {
@@ -2958,7 +2935,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 RuntimeContract::push_dedup(
                     &mut array_data.pending_contracts,
                     &env2,
-                    RuntimeContract::new(contract, label),
+                    RuntimeContract::new(contract, label.clone()),
                     &Environment::new(),
                 );
 
@@ -2990,14 +2967,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 1, value1);
                 };
 
-                let container = match value2.content() {
-                    ValueContent::Record(lens) => lens.take(),
-                    lens => return mk_type_error!("Record", 2, lens.restore()),
+                let Some(container) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
                 };
 
-                let Container::Alloc(mut record_data) = container else {
+                let Container::Alloc(record_data) = container else {
                     return Ok(NickelValue::empty_record().with_pos_idx(pos2).into());
                 };
+
+                let mut record_data = record_data.clone();
 
                 // Applying a lazy contract unfreezes a record, as frozen record are
                 // expected to have all their contracts applied and thus an empty list of
@@ -3112,35 +3090,48 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .into())
             }
             BinaryOp::RecordSplitPair => {
-                let record1 = match value1.content() {
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
-                    lens => return mk_type_error!("Record", 1, lens.restore()),
+                let Some(cont1) = value1.as_record() else {
+                    return mk_type_error!("Record", 1, value1);
                 };
 
-                let record2 = match value2.content() {
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
-                    lens => return mk_type_error!("Record", 2, lens.restore()),
+                let Some(cont2) = value2.as_record() else {
+                    return mk_type_error!("Record", 2, value2);
                 };
 
-                //TODO: should we make a version of `split` that takes the maps as reference, to
-                //avoid taking ownership, which doesn't give much (we're mostly cloning
-                //`NickelValue`s, which is cheap)?
+                let record1 = cont1.into_opt();
+                let record2 = cont2.into_opt();
+
                 let split::SplitResult {
                     left,
                     center,
                     right,
-                } = split::split(record1.fields, record2.fields);
+                } = split::split_ref(
+                    record1
+                        .as_ref()
+                        .map(|r| &r.fields)
+                        .unwrap_or(&Default::default()),
+                    record2
+                        .as_ref()
+                        .map(|r| &r.fields)
+                        .unwrap_or(&Default::default()),
+                );
 
                 let left_only = NickelValue::record_posless(RecordData {
                     fields: left,
-                    sealed_tail: record1.sealed_tail,
-                    attrs: record1.attrs,
+                    sealed_tail: record1
+                        .as_ref()
+                        .map(|r| r.sealed_tail.clone())
+                        .unwrap_or_default(),
+                    attrs: record1.as_ref().map(|r| r.attrs).unwrap_or_default(),
                 });
 
                 let right_only = NickelValue::record_posless(RecordData {
                     fields: right,
-                    sealed_tail: record2.sealed_tail,
-                    attrs: record2.attrs,
+                    sealed_tail: record2
+                        .as_ref()
+                        .map(|r| r.sealed_tail.clone())
+                        .unwrap_or_default(),
+                    attrs: record2.as_ref().map(|r| r.attrs).unwrap_or_default(),
                 });
 
                 let (center1, center2): (IndexMap<LocIdent, Field>, IndexMap<LocIdent, Field>) =
@@ -3177,7 +3168,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 .into())
             }
             BinaryOp::RecordDisjointMerge => {
-                let ValueContentRefMut::Record(container1) = value1.content_make_mut() else {
+                let Some(container1) = value1.as_record() else {
                     return mk_type_error!("Record", 1, value1);
                 };
 
@@ -3210,26 +3201,38 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // original body of the record. In that case, the unsealed tail might have an
                 // additional sealed tail itself (tail can be sealed multiple times in a nested
                 // way), and the right behavior (tm) is to just keep it.
-                let sealed_tail = match (record1.sealed_tail.clone(), record2.sealed_tail.clone()) {
+                let sealed_tail = match (&record1.sealed_tail, &record2.sealed_tail) {
                     (Some(record::SealedTail { label, .. }), Some(_)) => {
                         return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                            label,
+                            label: label.clone(),
                         }));
                     }
-                    (tail1, tail2) => tail1.or(tail2),
+                    (tail1, tail2) => tail1.as_ref().or(tail2.as_ref()).cloned(),
                 };
 
                 // Note that because of record closurization, we assume here that the record data
                 // of each record are already closurized, so we don't really care about
                 // environments. Should that invariant change, we might get into trouble (trouble
                 // meaning undue `UnboundIdentifier` errors).
-                record1.fields.extend(record2.fields.clone());
-                record1.attrs = Combine::combine(record1.attrs, record2.attrs);
-                record1.sealed_tail = sealed_tail;
+                let mut fields =
+                    IndexMap::with_capacity(record1.fields.len() + record2.fields.len());
 
-                Ok(value1.with_pos_idx(pos_op_inh).into())
+                fields.extend(record1.fields.iter().map(|(k, v)| (*k, v.clone())));
+                fields.extend(record2.fields.iter().map(|(k, v)| (*k, v.clone())));
+
+                let attrs = Combine::combine(record1.attrs, record2.attrs);
+
+                Ok(NickelValue::record(
+                    RecordData {
+                        fields,
+                        attrs,
+                        sealed_tail,
+                    },
+                    pos_op_inh,
+                )
+                .into())
             }
         }
     }
@@ -3526,17 +3529,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error("Record", 3, arg_pos3, arg3);
                 };
 
-                let tail = match arg4.content() {
-                    // Even if the record to seal is empty, the correctness of polymorphic contracts
-                    // relies on the symmetry of sealing/unsealing operations. It's wiser to always
-                    // seal a tail, even when empty.
-                    ValueContent::Record(lens) => lens.take().unwrap_or_alloc(),
-                    lens => return mk_type_error("Record", 4, arg_pos4, lens.restore()),
+                // Even if the record to seal is empty, the correctness of polymorphic contracts
+                // relies on the symmetry of sealing/unsealing operations. It's wiser to always
+                // seal a tail, even when empty.
+                let Some(tail) = arg4.as_record() else {
+                    return mk_type_error("Record", 4, arg_pos4, arg4);
                 };
 
-                let tail_closurized = NickelValue::record_posless(tail.clone())
-                    .closurize(&mut self.context.cache, env4);
-                let fields = tail.fields.keys().map(|s| s.ident()).collect();
+                let tail_closurized = arg4.clone().closurize(&mut self.context.cache, env4);
+                let fields = tail
+                    .into_opt()
+                    .map(|r| r.fields.keys().map(|s| s.ident()).collect())
+                    .unwrap_or_default();
                 r.sealed_tail = Some(record::SealedTail::new(
                     *s,
                     label.clone(),
@@ -3903,7 +3907,7 @@ fn eq<C: Cache>(
                 left,
                 center,
                 right,
-            } = merge::split::split(r1.fields.clone(), r2.fields.clone());
+            } = merge::split::split_ref(&r1.fields, &r2.fields);
 
             // As for other record operations, we ignore optional fields without a definition.
             if !left.values().all(Field::is_empty_optional)

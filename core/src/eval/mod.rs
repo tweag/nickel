@@ -615,39 +615,31 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         // it was accessed:
         let closure = self.context.cache.get(idx);
 
-        let value = match closure.value.content() {
-            ValueContent::Term(lens) => {
-                if let Term::RuntimeError(data) = lens.term()
-                    && let EvalErrorKind::MissingFieldDef { .. } = &**data
-                {
-                    let Term::RuntimeError(err_data) = lens.take() else {
-                        unreachable!();
-                    };
+        let value = match closure.value.content_ref() {
+            ValueContentRef::Term(Term::RuntimeError(data))
+                if matches!(&**data, EvalErrorKind::MissingFieldDef { .. }) =>
+            {
+                let EvalErrorKind::MissingFieldDef {
+                    id,
+                    metadata,
+                    pos_record,
+                    pos_access: PosIdx::NONE,
+                } = (**data).clone()
+                else {
+                    unreachable!();
+                };
 
-                    let EvalErrorKind::MissingFieldDef {
+                NickelValue::term(
+                    Term::RuntimeError(Box::new(EvalErrorKind::MissingFieldDef {
                         id,
                         metadata,
                         pos_record,
-                        pos_access: PosIdx::NONE,
-                    } = *err_data
-                    else {
-                        unreachable!();
-                    };
-
-                    NickelValue::term(
-                        Term::RuntimeError(Box::new(EvalErrorKind::MissingFieldDef {
-                            id,
-                            metadata,
-                            pos_record,
-                            pos_access: pos_idx,
-                        })),
-                        pos_idx,
-                    )
-                } else {
-                    lens.restore()
-                }
+                        pos_access: pos_idx,
+                    })),
+                    pos_idx,
+                )
             }
-            lens => lens.restore(),
+            _ => closure.value,
         };
 
         Ok(Closure { value, ..closure })
@@ -899,30 +891,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::Closurize(value)) => {
-                    // Closurization is done the first time we see a value, so under normal
-                    // conditions, this value should not be shared and we should be able to
-                    // mutate it directly.
-                    // TODO[RFC007]: we clone the value, so taking the content is meaningless. We
-                    // should probably do a `content()` call at the top of the eval function.
-                    let result = match value.clone().content() {
-                        ValueContent::Array(lens) if lens.value().is_inline_empty_array() => {
-                            lens.restore()
-                        }
-                        ValueContent::Array(lens) => {
-                            // unwrap(): we treated the empty array case above
-                            let array_data = lens.take().into_opt().unwrap();
-
+                    let result = match value.content_ref() {
+                        ValueContentRef::Array(Container::Empty)
+                        | ValueContentRef::Record(Container::Empty) => value.clone(),
+                        ValueContentRef::Array(Container::Alloc(array_data)) => {
                             // This *should* make it unnecessary to call closurize in [operation].
                             // See the comment on the `BinaryOp::ArrayConcat` match arm.
                             let array = array_data
                                 .array
-                                .into_iter()
+                                .iter()
+                                .cloned()
                                 .map(|t| t.closurize(&mut self.context.cache, env.clone()))
                                 .collect();
 
                             let pending_contracts = array_data
                                 .pending_contracts
-                                .into_iter()
+                                .iter()
+                                .cloned()
                                 .map(|ctr| {
                                     RuntimeContract::new(
                                         ctr.contract
@@ -934,27 +919,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                             NickelValue::array(array, pending_contracts, pos_idx)
                         }
-                        ValueContent::Record(lens) if lens.value().is_inline_empty_record() => {
-                            lens.restore()
-                        }
-                        ValueContent::Record(lens) => NickelValue::record(
+                        ValueContentRef::Record(Container::Alloc(data)) => NickelValue::record(
                             // unwrap(): we treated the empty record case already
-                            lens.take()
-                                .into_opt()
-                                .unwrap()
-                                .closurize(&mut self.context.cache, env),
+                            data.clone().closurize(&mut self.context.cache, env),
                             pos_idx,
                         ),
-                        ValueContent::EnumVariant(lens) => {
-                            let EnumVariantData { tag, arg } = lens.take();
+                        ValueContentRef::EnumVariant(data) => {
+                            let EnumVariantData { tag, arg } = data.clone();
                             let arg = arg.map(|arg| arg.closurize(&mut self.context.cache, env));
                             NickelValue::enum_variant(tag, arg, pos_idx)
                         }
-                        lens => {
+                        _ => {
                             // This case is a red flag (it should be unreachable), but
                             // isn't a blocker per se, so we only fail in debug mode.
                             debug_assert!(false, "trying to closurize a non-container value");
-                            lens.restore()
+                            value.clone()
                         }
                     };
 
