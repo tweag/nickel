@@ -1526,7 +1526,7 @@ impl TryFrom<u64> for RefCount {
 /// The header for a heap-allocated Nickel value which is laid out at the beginning of a value
 /// block directly followed by the value data.
 // We set a minimal alignment of `4` bytes, so that pointers to the content of a value block
-// (which are aligned to the max of the alignement of `ValueBlockHeader` and the content) is
+// (which are aligned to the max of the alignment of `ValueBlockHeader` and the content) is
 // guaranteed to have at least the last 2 bits free for tagging (although we currently only use one
 // bits).
 #[repr(Rust, align(4))]

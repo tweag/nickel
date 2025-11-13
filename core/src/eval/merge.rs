@@ -86,7 +86,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ) -> Result<Closure, ErrorKind> {
         let pos1 = v1.pos_idx();
         let pos2 = v2.pos_idx();
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited();
 
         // Determines if we need to wrap the result in `'Ok` upon successful merging, which is the case
         // when in contract merge mode. We're going to move out of `mode` at some point, so we need to
@@ -252,7 +252,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let final_pos = if let MergeMode::Standard(_) = mode {
                     non_empty.pos_idx()
                 } else {
-                    pos1.to_inherited(&mut self.context.pos_table)
+                    pos1.to_inherited()
                 };
 
                 Ok(non_empty
@@ -334,7 +334,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let final_pos = if let MergeMode::Standard(_) = mode {
                     pos_op_inh
                 } else {
-                    pos1.to_inherited(&mut self.context.pos_table)
+                    pos1.to_inherited()
                 };
 
                 let merge_label = MergeLabel::from(mode);

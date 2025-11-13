@@ -1053,7 +1053,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             match value {
                                 Some(value) => NickelValue::term(
                                     Term::app(extend, value),
-                                    pos_dyn_field.to_inherited(&mut self.context.pos_table),
+                                    pos_dyn_field.to_inherited(),
                                 ),
                                 None => extend,
                             }
@@ -1282,22 +1282,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         let mut ret = Vec::new();
         inner(self, &mut ret, value, recursion_limit);
         ret
-    }
-
-    /// This is a temporary, ugly work-around for the fact that the VM owns both the position table
-    /// and the cache, but [crate::program::Program] sometimes need to access both at the same
-    /// time, mutably. Ideally, either the VM would borrow them, or the position table would be
-    /// owned by something else and just passed for evaluation, or any other design - but it sounds
-    /// abusive that the VM owns the two, which should be able to survive it or be initialized
-    /// before it.
-    pub(crate) fn _with_resolver_and_table<F, T>(&mut self, f: F) -> T
-    where
-        F: for<'a> FnOnce(&'a mut PosTable, &'a mut R) -> T,
-    {
-        f(
-            &mut self.context.pos_table,
-            &mut self.context.import_resolver,
-        )
     }
 }
 
