@@ -12,7 +12,7 @@ ncl_bench_group! {
         }, {
             name = "merge",
             path = "records/merge",
-            args = (500, 50),
+            args = (50, 10),
             eval_mode = EvalMode::DeepSeq,
     }
 }

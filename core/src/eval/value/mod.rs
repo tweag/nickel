@@ -22,6 +22,7 @@ use malachite::base::num::conversion::traits::ToSci as _;
 use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
+    borrow::ToOwned,
     convert::Infallible,
     fmt,
     mem::{ManuallyDrop, size_of, transmute},
@@ -2157,6 +2158,17 @@ impl<C: Default> Container<C> {
     /// [Container::Empty].
     pub fn unwrap_or_alloc(self) -> C {
         self.into_opt().unwrap_or_default()
+    }
+}
+
+impl<C: ToOwned> Container<&C> {
+    /// Clones the underlying container if `self` is [Self::Alloc], or returns [Self::Empty]
+    /// otherwise.
+    pub fn to_owned(&self) -> Container<C::Owned> {
+        match self {
+            Container::Empty => Container::Empty,
+            Container::Alloc(c) => Container::Alloc((*c).to_owned()),
+        }
     }
 }
 
