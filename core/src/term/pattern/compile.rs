@@ -60,38 +60,16 @@ fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> Ni
     )
 }
 
-/// Generate a Nickel expression which update the `REST_FIELD` field of the working bindings by
-/// remove the `field` from it.
+/// Generate a Nickel expression which removes `field` from `rest`.
 ///
 /// ```nickel
-/// %record/insert% "<REST_FIELD>"
-///   (%record/remove% "<REST_FIELD>" bindings_id)
-///   (%record/remove% "<field>"
-///     (%static_access(REST_FIELD) bindings_id)
-///   )
+/// %record/remove% "<field>" <rest>
 /// ```
-fn remove_from_rest(rest_field: LocIdent, field: LocIdent, bindings_id: LocIdent) -> NickelValue {
-    let rest = make::op1(UnaryOp::RecordAccess(rest_field), Term::Var(bindings_id));
-
-    let rest_shrinked = make::op2(
+fn remove_from_rest(rest: NickelValue, field: LocIdent) -> NickelValue {
+    make::op2(
         BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
         NickelValue::string_posless(field.label()),
         rest,
-    );
-
-    let bindings_shrinked = make::op2(
-        BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
-        NickelValue::string_posless(rest_field),
-        Term::Var(bindings_id),
-    );
-
-    mk_app!(
-        make::op2(
-            record_insert(),
-            NickelValue::string_posless(rest_field),
-            bindings_shrinked,
-        ),
-        rest_shrinked
     )
 }
 
@@ -279,7 +257,7 @@ impl CompilePart for PatternData {
         match self {
             PatternData::Wildcard => Term::Var(bindings_id).into(),
             PatternData::Any(id) => {
-                // %record/insert% "<id>" value_id bindings_id
+                // %record/insert% "<id>" bindings_id value_id
                 insert_binding(*id, value_id, bindings_id)
             }
             PatternData::Record(pat) => pat.compile_part(pos_table, value_id, bindings_id),
@@ -397,60 +375,31 @@ impl CompilePart for RecordPattern {
     // record when using the `..rest` construct, we need to remove matched fields from the
     // original value at each stage and thread this working value in addition to the bindings.
     //
-    // We don't have tuples, and to avoid adding an indirection (by storing the current state
-    // as `{rest, bindings}` where bindings itself is a record), we store this rest alongside
-    // the bindings in a special field which is a freshly generated identifier. This is an
-    // implementation detail which isn't very hard to change, should we have to.
+    // We don't have tuples, so we thread through the bindings-in-progress and
+    // the rest-in-progress as an array of two elements: `[bindings, rest]`.
+    // If a match fails, either the array itself or `bindings` is null.
     //
     // if %typeof% value_id == 'Record
-    //   let final_bindings_id =
-    //     <fold (field, value) in fields
-    //      - cont is the accumulator
-    //      - initial accumulator is `%record/insert% "<REST_FIELD>" bindings_id value_id`
-    //      >
-    //
-    //     # If there is a default value, we must set it before the %record/field_is_defined% check below,
-    //     # because the default acts as if the original matched value had this field defined
-    //     <if field.default.is_some()>
-    //       let value_id = <with_default_value value_id field default> in
-    //     <end if>
-    //
-    //      if %record/field_is_defined% field value_id then
-    //         <if !field_pat.annotation.is_empty()>
-    //           let value_id = value_id & { "<field>" | <field_pat.annotation> } in
-    //         <end if>
-    //
-    //         let local_bindings_id = cont in
-    //
-    //         if local_bindings_id == null then
-    //           null
-    //         else
-    //           let local_value_id = %static_access(field)% (%static_access(REST_FIELD)% local_bindings_id)
-    //           let local_bindings_id = <remove_from_rest(field, local_bindings_id)> in
-    //           <field.compile_part(local_value_id, local_bindings_id)>
-    //       else
-    //         null
-    //     <end fold>
-    //   in
-    //
-    //   if final_bindings_id == null then
+    //   let final_bindings_and_rest_id = <fold block (see below)> in
+    //   let
+    //     final_bindings_id = %array/at% final_bindings_and_rest_id 0,
+    //     final_rest_id = %array/at% final_bindings_and_rest_id 1,
+    //   if (final_bindings_and_rest_id == null) || (final_bindings_id == null) then
     //     null
     //   else
     //     <if self.tail is empty>
     //       # if tail is empty, check that the value doesn't contain extra fields
-    //       if (%static_access% <REST_FIELD> final_bindings_id) != {} then
+    //       if final_rest_id != {} then
     //         null
     //       else
-    //         %record/remove% "<REST>" final_bindings_id
+    //         final_bindings_id
     //     <else if self.tail is capture(rest)>
-    //       # move the rest from REST_FIELD to rest, and remove REST_FIELD
-    //       %record/remove% "<REST>"
     //         (%record/insert% <rest>
     //           final_bindings_id
-    //           (%static_access% <REST_FIELD> final_bindings_id)
+    //           final_rest_id
     //         )
     //     <else if self.tail is open>
-    //       %record/remove% "<REST>" final_bindings_id
+    //       final_bindings_id
     //     <end if>
     // else
     //   null
@@ -460,23 +409,45 @@ impl CompilePart for RecordPattern {
         value_id: LocIdent,
         bindings_id: LocIdent,
     ) -> NickelValue {
-        let rest_field = LocIdent::fresh();
+        // <id> == null
+        fn id_eq_null(id: LocIdent) -> NickelValue {
+            make::op2(BinaryOp::Eq, Term::Var(id), NickelValue::null())
+        }
 
-        // `%record/insert% "<REST>" bindings_id value_id`
-        let init_bindings = mk_app!(
+        // (<id1> == null) || (<id2> == null)
+        fn id1_or_id2_eq_null(id1: LocIdent, id2: LocIdent) -> NickelValue {
+            mk_app!(make::op1(UnaryOp::BoolOr, id_eq_null(id1)), id_eq_null(id2))
+        }
+
+        // %array/at% <array_id> <idx>
+        fn array_at(array_id: LocIdent, idx: usize) -> NickelValue {
             make::op2(
-                record_insert(),
-                NickelValue::string_posless(rest_field),
-                Term::Var(bindings_id)
-            ),
-            Term::Var(value_id)
-        );
+                BinaryOp::ArrayAt,
+                NickelValue::term_posless(Term::Var(array_id)),
+                NickelValue::number_posless(idx),
+            )
+        }
+
+        // [<first>, <second>]
+        //
+        // (specialized for the case that <second> is a Var)
+        fn array2(first: NickelValue, second: LocIdent) -> NickelValue {
+            NickelValue::array_posless(
+                [first, NickelValue::term_posless(Term::Var(second))]
+                    .into_iter()
+                    .collect(),
+                vec![],
+            )
+        }
+
+        let init_bindings = NickelValue::term_posless(Term::Var(bindings_id));
+        let init = array2(init_bindings, value_id);
 
         // The fold block:
         //
         // <fold (field, value) in fields
         //  - cont is the accumulator
-        //  - initial accumulator is `%record/insert% "<REST>" bindings_id value_id`
+        //  - initial accumulator is [bindings_id, value_id]
         // >
         //
         // # If there is a default value, we must set it before the %record/field_is_defined% check below,
@@ -493,38 +464,45 @@ impl CompilePart for RecordPattern {
         //     let value_id = value_id & { "<field>" | <field_pat.annotation> } in
         //   <end if>
         //
-        //   let local_bindings_id = cont in
-        //
-        //   if local_bindings_id == null then
+        //   let cont_and_rest_id = cont in
+        //   let
+        //     local_bindings_id = %array/at% cont_and_rest_id 0,
+        //     local_rest_id = %array/at% cont_and_rest_id 1,
+        //   in
+        //   if (cont_and_rest_id == null) || (local_bindings_id == null) then
         //     null
         //   else
-        //     let local_value_id = %static_access(field)% (%static_access(REST_FIELD)% local_bindings_id) in
-        //     let local_bindings_id = <remove_from_rest(field, local_bindings_id)> in
+        //     let local_value_id = %static_access(field)% local_rest_id in
+        //     let next_rest_id = <remove_from_rest(field, local_rest_id)> in
         //     <field.compile_part(local_value_id, local_bindings_id)>
-        let fold_block: NickelValue =
-            self.patterns.iter().fold(init_bindings, |cont, field_pat| {
+        let fold_block_and_rest: NickelValue =
+            self.patterns.iter().fold(init, |cont_and_rest, field_pat| {
                 let field = field_pat.matched_id;
                 let local_bindings_id = LocIdent::fresh();
                 let local_value_id = LocIdent::fresh();
+                let local_rest_id = LocIdent::fresh();
+                let next_rest_id = LocIdent::fresh();
+                let cont_and_rest_id = LocIdent::fresh();
 
-                // let bindings_id = <remove_from_rest(field, local_bindings_id)> in
-                // <field.compile_part(local_value_id, local_bindings_id)>
+                let rest = NickelValue::term_posless(Term::Var(local_rest_id));
+
+                // let next_rest_id = <remove_from_rest(field, cont_rest_id)> in
+                // [<field.compile_part(local_value_id, local_bindings_id)>, next_rest_id]
                 let updated_bindings_let = make::let_one_in(
-                    local_bindings_id,
-                    remove_from_rest(rest_field, field, local_bindings_id),
-                    field_pat
-                        .pattern
-                        .compile_part(pos_table, local_value_id, local_bindings_id),
-                );
-
-                // %static_access(field)% (%static_access(REST_FIELD)% local_bindings_id)
-                let extracted_value = make::op1(
-                    UnaryOp::RecordAccess(field),
-                    make::op1(
-                        UnaryOp::RecordAccess(rest_field),
-                        Term::Var(local_bindings_id),
+                    next_rest_id,
+                    remove_from_rest(rest.clone(), field),
+                    array2(
+                        field_pat.pattern.compile_part(
+                            pos_table,
+                            local_value_id,
+                            local_bindings_id,
+                        ),
+                        next_rest_id,
                     ),
                 );
+
+                // %static_access(field)% init_rest_id
+                let extracted_value = make::op1(UnaryOp::RecordAccess(field), rest);
 
                 // let local_value_id = <extracted_value> in <updated_bindings_let>
                 let inner_else_block =
@@ -532,22 +510,33 @@ impl CompilePart for RecordPattern {
 
                 // The innermost if:
                 //
-                // if local_bindings_id == null then
+                // if (cont_and_rest_id == null) || (local_bindings_id == null) then
                 //   null
                 // else
                 //  <inner_else_block>
                 let inner_if = make::if_then_else(
-                    make::op2(
-                        BinaryOp::Eq,
-                        Term::Var(local_bindings_id),
-                        NickelValue::null(),
-                    ),
+                    id1_or_id2_eq_null(cont_and_rest_id, local_bindings_id),
                     NickelValue::null(),
                     inner_else_block,
                 );
 
-                // let local_bindings_id = cont in <value_let>
-                let binding_cont_let = make::let_one_in(local_bindings_id, cont, inner_if);
+                // let cont_and_rest_id = cont_and_rest in
+                // let
+                //   local_bindings_id = %array/at% cont_and_rest_id 0,
+                //   local_rest_id = %array/at% cont_and_rest_id 1,
+                // in <value_let>
+                let binding_cont_let = make::let_one_in(
+                    cont_and_rest_id,
+                    cont_and_rest,
+                    make::let_in(
+                        false,
+                        [
+                            (local_bindings_id, array_at(cont_and_rest_id, 0)),
+                            (local_rest_id, array_at(cont_and_rest_id, 1)),
+                        ],
+                        inner_if,
+                    ),
+                );
 
                 // <if !field.annotation.is_empty()>
                 //   let value_id = <update_with_merge...> in <binding_cont_let>
@@ -602,79 +591,73 @@ impl CompilePart for RecordPattern {
             NickelValue::enum_tag_posless("Record"),
         );
 
-        let final_bindings_id = LocIdent::fresh();
+        let final_bindings_and_rest_id = LocIdent::fresh();
 
-        // %record/remove% "<REST>" final_bindings_id
-        let bindings_without_rest = make::op2(
-            BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
-            NickelValue::string_posless(rest_field),
-            Term::Var(final_bindings_id),
-        );
+        let final_bindings_id = LocIdent::fresh();
+        let final_rest_id = LocIdent::fresh();
+        let rest = NickelValue::term_posless(Term::Var(final_rest_id));
+        let final_bindings = NickelValue::term_posless(Term::Var(final_bindings_id));
 
         // the else block which depends on the tail of the record pattern
         let tail_block = match self.tail {
-            // if (%static_access% <REST_FIELD> final_bindings_id) != {} then
+            // if rest_id != {} then
             //   null
             // else
-            //   %record/remove% "<REST>" final_bindings_id
+            //   final_bindings_id
             TailPattern::Empty => make::if_then_else(
                 make::op1(
                     UnaryOp::BoolNot,
-                    make::op2(
-                        BinaryOp::Eq,
-                        make::op1(
-                            UnaryOp::RecordAccess(rest_field),
-                            Term::Var(final_bindings_id),
-                        ),
-                        NickelValue::empty_record(),
-                    ),
+                    make::op2(BinaryOp::Eq, rest, NickelValue::empty_record()),
                 ),
                 NickelValue::null(),
-                bindings_without_rest,
+                final_bindings.clone(),
             ),
-            // %record/remove% "<REST>"
-            //   (%record/insert% <rest>
-            //     final_bindings_id
-            //     (%static_access% <REST_FIELD> final_bindings_id)
-            //   )
-            TailPattern::Capture(rest) => make::op2(
-                BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
-                NickelValue::string_posless(rest_field),
-                mk_app!(
-                    make::op2(
-                        record_insert(),
-                        NickelValue::string_posless(rest.label()),
-                        Term::Var(final_bindings_id),
-                    ),
-                    make::op1(
-                        UnaryOp::RecordAccess(rest_field),
-                        Term::Var(final_bindings_id)
-                    )
+            // (%record/insert% rest_id
+            //   final_bindings_id
+            //   rest
+            // )
+            TailPattern::Capture(rest_id) => mk_app!(
+                make::op2(
+                    record_insert(),
+                    NickelValue::string_posless(rest_id.label()),
+                    Term::Var(final_bindings_id),
                 ),
+                rest
             ),
-            // %record/remove% "<REST>" final_bindings_id
-            TailPattern::Open => bindings_without_rest,
+            TailPattern::Open => final_bindings.clone(),
         };
 
-        // the last `final_bindings_id != null` guard:
+        // the last guard for checking if the match succeeded
         //
-        // if final_bindings_id == null then
+        // if (final_bindings_and_rest_id == null) || (final_bindings_id == null) then
         //   null
         // else
         //   <tail_block>
         let guard_tail_block = make::if_then_else(
-            make::op2(
-                BinaryOp::Eq,
-                Term::Var(final_bindings_id),
-                NickelValue::null(),
-            ),
+            id1_or_id2_eq_null(final_bindings_and_rest_id, final_bindings_id),
             NickelValue::null(),
             tail_block,
         );
 
         // The let enclosing the fold block and the final block:
-        // let final_bindings_id = <fold_block> in <tail_block>
-        let outer_let = make::let_one_in(final_bindings_id, fold_block, guard_tail_block);
+        // let final_bindings_and_rest_id = <fold_block> in
+        // let
+        //   final_bindings_id = %array/at% final_bindings_and_rest_id 0,
+        //   rest_id = %array/at% final_bindings_and_rest_id 1,
+        // in
+        //   <tail_block>
+        let outer_let = make::let_one_in(
+            final_bindings_and_rest_id,
+            fold_block_and_rest,
+            make::let_in(
+                false,
+                [
+                    (final_bindings_id, array_at(final_bindings_and_rest_id, 0)),
+                    (final_rest_id, array_at(final_bindings_and_rest_id, 1)),
+                ],
+                guard_tail_block,
+            ),
+        );
 
         // if <is_record> then <outer_let> else null
         make::if_then_else(is_record, outer_let, NickelValue::null())
