@@ -172,7 +172,7 @@ macro_rules! ncl_bench_group {
                             let id = cache.sources.add_file(bench.path(), InputFormat::Nickel).unwrap();
 
                             if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
-                                cache.parse_to_term(&mut pos_table, id, nickel_lang_core::cache::InputFormat::Nickel).unwrap();
+                                cache.parse_to_ast(id).unwrap();
                             } else{
                                 cache.prepare_eval_only(&mut pos_table, id).unwrap();
                                 runner = resolve_imports(&mut pos_table, runner, &mut cache).unwrap().transformed_term;

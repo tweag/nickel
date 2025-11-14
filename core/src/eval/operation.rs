@@ -31,7 +31,7 @@ use crate::{
     label::{Polarity, TypeVarData, ty_path},
     metrics::increment,
     mk_app, mk_fun, mk_record,
-    position::{PosIdx, PosTable},
+    position::PosIdx,
     serialize::{self, ExportFormat},
     stdlib::internals,
     term::{make as mk_term, record::*, string::NickelString, *},
@@ -239,7 +239,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         increment!(format!("primop:{op}"));
 
         let pos = value.pos_idx();
-        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited();
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr) => {
@@ -705,14 +705,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         .into_iter()
                         .filter(|(_, field)| !field.is_empty_optional())
                         .map_values_closurize(&mut self.context.cache, &env, |id, t| {
-                            let pos = self.context.pos_table.get(t.pos_idx()).into_inherited();
+                            let pos_idx = t.pos_idx().to_inherited();
 
                             mk_app!(
                                 f_closure.clone(),
                                 NickelValue::string_posless(id.label()),
                                 t
                             )
-                            .with_pos(&mut self.context.pos_table, pos)
+                            .with_pos_idx(pos_idx)
                         })
                         .map_err(|miss_field_err| miss_field_err.into_eval_err(pos, pos_op))?;
 
@@ -789,7 +789,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 RuntimeContract::apply_all(
                                     t.clone(),
                                     array_data.pending_contracts.iter().cloned(),
-                                    pos.to_inherited(&mut self.context.pos_table),
+                                    pos.to_inherited(),
                                 )
                                 .closurize(&mut self.context.cache, env.clone())
                             }),
@@ -1124,7 +1124,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             })
                             .collect();
 
-                        let pos_inh = pos.to_inherited(&mut self.context.pos_table);
+                        let pos_inh = pos.to_inherited();
                         let cont = NickelValue::record(
                             RecordData {
                                 fields,
@@ -1142,7 +1142,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             array,
                             pending_contracts,
                         } = array_data.clone();
-                        let pos_inh = pos.to_inherited(&mut self.context.pos_table);
+                        let pos_inh = pos.to_inherited();
 
                         let ts = array
                             .into_iter()
@@ -1187,7 +1187,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             let cont = NickelValue::enum_variant(
                                 tag,
                                 Some(arg.clone()),
-                                pos.to_inherited(&mut self.context.pos_table),
+                                pos.to_inherited(),
                             );
 
                             Ok(Closure {
@@ -1620,10 +1620,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ))
             })?;
 
-            Ok(
-                NickelValue::number(result, pos_op.to_inherited(&mut self.context.pos_table))
-                    .into(),
-            )
+            Ok(NickelValue::number(result, pos_op.to_inherited()).into())
         } else {
             Err(Box::new(EvalErrorKind::UnaryPrimopTypeError {
                 primop: op.to_string(),
@@ -1658,7 +1655,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
         let pos1 = value1.pos_idx();
         let pos2 = value2.pos_idx();
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited();
 
         macro_rules! mk_type_error {
             (op_name=$op_name:expr, $expected:expr, $arg_number:expr, $arg_evaled:expr) => {
@@ -2009,10 +2006,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
                     self.stack.push_op_cont(
-                        OperationCont::Op1(
-                            UnaryOp::ContractPostprocessResult,
-                            pos1.to_inherited(&mut self.context.pos_table),
-                        ),
+                        OperationCont::Op1(UnaryOp::ContractPostprocessResult, pos1.to_inherited()),
                         self.call_stack.len(),
                         pos_op_inh,
                     );
@@ -2030,7 +2024,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.stack.push_op_cont(
                         OperationCont::Op1(
                             UnaryOp::ContractAttachDefaultLabel,
-                            pos1.to_inherited(&mut self.context.pos_table),
+                            pos1.to_inherited(),
                         ),
                         self.call_stack.len(),
                         pos_op_inh,
@@ -2043,10 +2037,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // we prepare the stack to represent the evaluation context `[.] label value`
                 // and proceed with the evaluation of `functoid`.
                 self.stack.push_tracked_arg(idx, stack_value_pos);
-                self.stack.push_arg(
-                    new_label.into(),
-                    pos2.to_inherited(&mut self.context.pos_table),
-                );
+                self.stack.push_arg(new_label.into(), pos2.to_inherited());
 
                 // We convert the contract (which can be a custom contract, a record, a naked
                 // function, etc.) to a form that can be applied to a label and a value.
@@ -2209,13 +2200,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: env2,
                 };
 
-                match eq(
-                    &mut self.context.cache,
-                    &mut self.context.pos_table,
-                    c1,
-                    c2,
-                    pos_op_inh,
-                )? {
+                match eq(&mut self.context.cache, c1, c2, pos_op_inh)? {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -2679,7 +2664,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let elem_with_ctr = RuntimeContract::apply_all(
                     array_data.array.get(n_as_usize).unwrap().clone(),
                     array_data.pending_contracts.iter().cloned(),
-                    pos1.to_inherited(&mut self.context.pos_table),
+                    pos1.to_inherited(),
                 );
 
                 Ok(Closure {
@@ -3241,7 +3226,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     where
         F: Fn(&Number, &Number) -> bool,
     {
-        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited();
 
         self.binary_number_fn(
             |n1, n2| NickelValue::bool_value(f(n1, n2), pos_op_inh),
@@ -3253,7 +3238,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     where
         F: Fn(&Number, &Number) -> Number,
     {
-        let pos_op_inh = eval_data.pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = eval_data.pos_op.to_inherited();
 
         self.binary_number_fn(
             |n1, n2| NickelValue::number(f(n1, n2), pos_op_inh),
@@ -3355,7 +3340,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     fn process_nary_operation(&mut self, eval_data: OpNEvalData) -> Result<Closure, ErrorKind> {
         let OpNEvalData { op, args, pos_op } = eval_data;
         increment!(format!("primop:{op}"));
-        let pos_op_inh = pos_op.to_inherited(&mut self.context.pos_table);
+        let pos_op_inh = pos_op.to_inherited();
 
         let mk_type_error =
             |expected: &str, arg_number: usize, pos_arg: PosIdx, arg_evaluated: NickelValue| {
@@ -3651,9 +3636,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .type_environment
                     .insert(*key, TypeVarData { polarity });
 
-                Ok(arg3
-                    .with_pos_idx(arg_pos3.to_inherited(&mut self.context.pos_table))
-                    .into())
+                Ok(arg3.with_pos_idx(arg_pos3.to_inherited()).into())
             }
             NAryOp::ArraySlice => {
                 let mut args = args.into_iter();
@@ -3807,7 +3790,6 @@ fn type_tag(v: &NickelValue) -> &'static str {
 /// reasons, at least right now, not because we can't).
 fn eq<C: Cache>(
     cache: &mut C,
-    pos_table: &mut PosTable,
     c1: Closure,
     c2: Closure,
     pos_op: PosIdx,
@@ -4004,7 +3986,7 @@ fn eq<C: Cache>(
                 .iter()
                 .cloned()
                 .map(|elt| {
-                    let pos = elt.pos_idx().to_inherited(pos_table);
+                    let pos = elt.pos_idx().to_inherited();
                     RuntimeContract::apply_all(
                         elt,
                         array_data1.pending_contracts.iter().cloned(),
@@ -4015,7 +3997,7 @@ fn eq<C: Cache>(
                 .collect::<Vec<_>>()
                 .into_iter()
                 .zip(array_data2.array.iter().cloned().map(|elt| {
-                    let pos = elt.pos_idx().to_inherited(pos_table);
+                    let pos = elt.pos_idx().to_inherited();
                     RuntimeContract::apply_all(
                         elt,
                         array_data2.pending_contracts.iter().cloned(),
