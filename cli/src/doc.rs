@@ -10,7 +10,11 @@ use nickel_lang_core::{
     program::Program,
 };
 
-use crate::{customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions};
+use crate::{
+    customize::ExtractFieldOnly,
+    global::GlobalContext,
+    input::{InputOptions, NickelOnly},
+};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum DocFormat {
@@ -52,7 +56,7 @@ pub struct DocCommand {
     pub format: crate::doc::DocFormat,
 
     #[command(flatten)]
-    pub input: InputOptions<ExtractFieldOnly>,
+    pub input: InputOptions<ExtractFieldOnly, NickelOnly>,
 }
 
 const DEFAULT_OUT_DIR: &str = ".nickel/doc/";

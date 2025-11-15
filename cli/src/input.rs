@@ -8,7 +8,7 @@ use nickel_lang_package::{ManifestFile, config::Config as PackageConfig};
 use crate::{customize::Customize, global::GlobalContext};
 
 #[derive(clap::Parser, Debug)]
-pub struct InputOptions<Customize: clap::Args> {
+pub struct InputOptions<Customize: clap::Args, InputFormatOptions: clap::Args> {
     /// Input files. Omit to read from stdin. If multiple files are provided, the corresponding
     /// Nickel expressions are merged (combined with `&`) to produce the result.
     pub files: Vec<PathBuf>,
@@ -23,9 +23,8 @@ pub struct InputOptions<Customize: clap::Args> {
     #[arg(long, global = true)]
     pub nostdlib: bool,
 
-    /// Specify the format that stdin is in.
-    #[arg(long, global = true, value_enum, default_value_t)]
-    pub stdin_format: InputFormat,
+    #[command(flatten)]
+    pub format_options: InputFormatOptions,
 
     /// Adds a directory to the list of paths to search for imports in.
     ///
@@ -79,12 +78,14 @@ pub trait Prepare {
     fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>>;
 }
 
-impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
+impl<C: clap::Args + Customize, F: clap::Args + InputFormatOptions> Prepare for InputOptions<C, F> {
     fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>> {
         let mut program = match self.files.as_slice() {
-            [] => {
-                Program::new_from_stdin(self.stdin_format, std::io::stderr(), ctx.reporter.clone())
-            }
+            [] => Program::new_from_stdin(
+                self.format_options.stdin_format(),
+                std::io::stderr(),
+                ctx.reporter.clone(),
+            ),
             [p] => Program::new_from_file(p, std::io::stderr(), ctx.reporter.clone()),
             files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
@@ -145,5 +146,31 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         self.customize_mode.customize(program)
+    }
+}
+
+trait InputFormatOptions {
+    fn stdin_format(&self) -> InputFormat;
+}
+
+#[derive(clap::Args, Debug)]
+pub struct NickelOnly;
+
+impl InputFormatOptions for NickelOnly {
+    fn stdin_format(&self) -> InputFormat {
+        InputFormat::Nickel
+    }
+}
+
+#[derive(clap::Args, Debug)]
+pub struct StdinFormat {
+    /// Specify the format of the input from stdin
+    #[arg(long, value_enum, default_value_t, conflicts_with = "files")]
+    pub stdin_format: InputFormat,
+}
+
+impl InputFormatOptions for StdinFormat {
+    fn stdin_format(&self) -> InputFormat {
+        self.stdin_format
     }
 }

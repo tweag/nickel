@@ -8,7 +8,10 @@ use std::{
 use tempfile::NamedTempFile;
 
 use crate::{
-    customize::NoCustomizeMode, error::CliResult, global::GlobalContext, input::InputOptions,
+    customize::NoCustomizeMode,
+    error::CliResult,
+    global::GlobalContext,
+    input::{InputOptions, NickelOnly},
 };
 
 #[derive(Debug)]
@@ -93,7 +96,7 @@ impl Write for Output {
 #[derive(clap::Parser, Debug)]
 pub struct FormatCommand {
     #[command(flatten)]
-    input: InputOptions<NoCustomizeMode>,
+    input: InputOptions<NoCustomizeMode, NickelOnly>,
 
     /// Do not change the input files, instead return non-zero if any of the input file is badly formatted
     #[arg(long)]

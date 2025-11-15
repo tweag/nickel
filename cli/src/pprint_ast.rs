@@ -1,4 +1,8 @@
-use crate::{customize::NoCustomizeMode, global::GlobalContext, input::InputOptions};
+use crate::{
+    customize::NoCustomizeMode,
+    global::GlobalContext,
+    input::{InputOptions, NickelOnly},
+};
 
 #[derive(clap::Parser, Debug)]
 pub struct PprintAstCommand {
@@ -7,7 +11,7 @@ pub struct PprintAstCommand {
     pub transform: bool,
 
     #[command(flatten)]
-    pub inputs: InputOptions<NoCustomizeMode>,
+    pub inputs: InputOptions<NoCustomizeMode, NickelOnly>,
 }
 
 impl PprintAstCommand {

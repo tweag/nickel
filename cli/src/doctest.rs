@@ -30,13 +30,16 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::{
-    color_opt_from_clap, customize::ExtractFieldOnly, global::GlobalContext, input::InputOptions,
+    color_opt_from_clap,
+    customize::ExtractFieldOnly,
+    global::GlobalContext,
+    input::{InputOptions, NickelOnly},
 };
 
 #[derive(clap::Parser, Debug)]
 pub struct TestCommand {
     #[command(flatten)]
-    pub input: InputOptions<ExtractFieldOnly>,
+    pub input: InputOptions<ExtractFieldOnly, NickelOnly>,
 }
 
 /// The expected outcome of a test.

@@ -1,11 +1,15 @@
 use nickel_lang_core::typecheck::TypecheckMode;
 
-use crate::{customize::NoCustomizeMode, global::GlobalContext, input::InputOptions};
+use crate::{
+    customize::NoCustomizeMode,
+    global::GlobalContext,
+    input::{InputOptions, NickelOnly},
+};
 
 #[derive(clap::Parser, Debug)]
 pub struct TypecheckCommand {
     #[command(flatten)]
-    inputs: InputOptions<NoCustomizeMode>,
+    inputs: InputOptions<NoCustomizeMode, NickelOnly>,
 
     /// Start the type-checker in strict mode, so that the entire input is treated as a typed block.
     #[arg(long, global = true)]
