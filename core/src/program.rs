@@ -265,16 +265,17 @@ pub enum Input<T, S> {
     /// A filepath
     Path(S),
     /// The source is anything that can be Read from, the second argument is the name the source should have in the cache.
-    Source(T, S),
+    Source(T, S, InputFormat),
 }
 
 impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
     pub fn new_from_stdin(
+        stdin_format: InputFormat,
         trace: impl Write + 'static,
         reporter: impl Reporter<(Warning, Files)> + 'static,
     ) -> std::io::Result<Self> {
-        Program::new_from_source(io::stdin(), "<stdin>", trace, reporter)
+        Program::new_from_source_with_format(io::stdin(), "<stdin>", stdin_format, trace, reporter)
     }
 
     /// Contructor that abstracts over the Input type (file, string, etc.). Used by
@@ -301,11 +302,11 @@ impl<EC: EvalCache> Program<EC> {
                 let format = InputFormat::from_path(&path).unwrap_or_default();
                 cache.sources.add_file(path, format)?
             }
-            Input::Source(source, name) => {
+            Input::Source(source, name, format) => {
                 let path = PathBuf::from(name.into());
                 cache
                     .sources
-                    .add_source(SourcePath::Path(path, InputFormat::Nickel), source)?
+                    .add_source(SourcePath::Path(path, format), source)?
             }
         };
 
@@ -347,7 +348,7 @@ impl<EC: EvalCache> Program<EC> {
 
                     NickelValue::from(Term::Import(Import::Path { path, format }))
                 }
-                Input::Source(source, name) => {
+                Input::Source(source, name, format) => {
                     let name = name.into();
                     let mut import_path = OsString::new();
                     // See https://github.com/tweag/nickel/issues/2362 and the documentation of
@@ -357,11 +358,11 @@ impl<EC: EvalCache> Program<EC> {
 
                     cache
                         .sources
-                        .add_source(SourcePath::Path(name.into(), InputFormat::Nickel), source)
+                        .add_source(SourcePath::Path(name.into(), format), source)
                         .unwrap();
                     NickelValue::from(Term::Import(Import::Path {
                         path: import_path,
-                        format: InputFormat::Nickel,
+                        format,
                     }))
                 }
             })
@@ -424,7 +425,31 @@ impl<EC: EvalCache> Program<EC> {
         T: Read,
         S: Into<OsString>,
     {
-        Self::new_from_input(Input::Source(source, source_name), trace, reporter)
+        Self::new_from_input(
+            Input::Source(source, source_name, InputFormat::Nickel),
+            trace,
+            reporter,
+        )
+    }
+
+    /// Create a program by reading it from a generic source. The format of the source may be
+    /// specified to be something other than Nickel.
+    pub fn new_from_source_with_format<T, S>(
+        source: T,
+        source_name: S,
+        source_format: InputFormat,
+        trace: impl Write + 'static,
+        reporter: impl Reporter<(Warning, Files)> + 'static,
+    ) -> std::io::Result<Self>
+    where
+        T: Read,
+        S: Into<OsString>,
+    {
+        Self::new_from_input(
+            Input::Source(source, source_name, source_format),
+            trace,
+            reporter,
+        )
     }
 
     /// Create program from possibly multiple sources. The main program will be
@@ -439,7 +464,9 @@ impl<EC: EvalCache> Program<EC> {
         T: Read,
         S: Into<OsString>,
     {
-        let inputs = sources.into_iter().map(|(s, n)| Input::Source(s, n));
+        let inputs = sources
+            .into_iter()
+            .map(|(s, n)| Input::Source(s, n, InputFormat::Nickel));
         Self::new_from_inputs(inputs, trace, reporter)
     }
 

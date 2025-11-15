@@ -55,6 +55,7 @@ use typ::*;
 
 /// Supported input formats.
 #[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum InputFormat {
     #[default]
     Nickel,

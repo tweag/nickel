@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
+use nickel_lang_core::{ast::InputFormat, eval::cache::lazy::CBNCache, program::Program};
 
 #[cfg(feature = "package-experimental")]
 use nickel_lang_package::{ManifestFile, config::Config as PackageConfig};
@@ -22,6 +22,10 @@ pub struct InputOptions<Customize: clap::Args> {
     /// Skips the standard library import. For debugging only
     #[arg(long, global = true)]
     pub nostdlib: bool,
+
+    /// Specify the format that stdin is in.
+    #[arg(long, global = true, value_enum, default_value_t)]
+    pub stdin_format: InputFormat,
 
     /// Adds a directory to the list of paths to search for imports in.
     ///
@@ -78,7 +82,9 @@ pub trait Prepare {
 impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
     fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>> {
         let mut program = match self.files.as_slice() {
-            [] => Program::new_from_stdin(std::io::stderr(), ctx.reporter.clone()),
+            [] => {
+                Program::new_from_stdin(self.stdin_format, std::io::stderr(), ctx.reporter.clone())
+            }
             [p] => Program::new_from_file(p, std::io::stderr(), ctx.reporter.clone()),
             files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
