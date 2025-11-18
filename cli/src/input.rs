@@ -23,6 +23,7 @@ pub struct InputOptions<Customize: clap::Args, InputFormatOptions: clap::Args> {
     #[arg(long, global = true)]
     pub nostdlib: bool,
 
+    /// Options for setting the format of input from stdin
     #[command(flatten)]
     pub format_options: InputFormatOptions,
 
@@ -149,10 +150,16 @@ impl<C: clap::Args + Customize, F: clap::Args + InputFormatOptions> Prepare for 
     }
 }
 
+/// Trait to set the format when input to the cli is passed
+/// in from stdin. This is to allow the --stdin-format flag to
+/// override the default Nickel format for certain subcommands while
+/// other commands can exclude it.
 trait InputFormatOptions {
     fn stdin_format(&self) -> InputFormat;
 }
 
+/// Specifies that input from stdin should be treated as Nickel,
+/// and cannot be overridden. The command will not have the --stdin-format flag.
 #[derive(clap::Args, Debug)]
 pub struct NickelOnly;
 
@@ -162,6 +169,8 @@ impl InputFormatOptions for NickelOnly {
     }
 }
 
+/// Adds the --stdin-format flag to the subcommand to allow the format
+/// of stdin to be specified.
 #[derive(clap::Args, Debug)]
 pub struct StdinFormat {
     /// Specify the format of the input from stdin
