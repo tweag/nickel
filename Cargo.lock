@@ -3673,6 +3673,7 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "bumpalo",
+ "clap",
  "codespan",
  "codespan-reporting 0.13.1",
  "indexmap",

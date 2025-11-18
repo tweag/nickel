@@ -20,7 +20,7 @@ use crate::{
     customize::{Customize, ExtractFieldOnly},
     error::Warning,
     global::GlobalContext,
-    input::InputOptions,
+    input::{InputOptions, StdinFormat},
 };
 
 const VALUE_EXPORT_MAX_WIDTH: usize = 80;
@@ -54,7 +54,7 @@ pub struct QueryCommand {
     pub output: Option<PathBuf>,
 
     #[command(flatten)]
-    pub inputs: InputOptions<ExtractFieldOnly>,
+    pub inputs: InputOptions<ExtractFieldOnly, StdinFormat>,
 }
 
 #[derive(Clone, Debug, Serialize)]

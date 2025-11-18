@@ -12,10 +12,12 @@ readme.workspace = true
 
 [features]
 metrics = ["dep:metrics", "dep:metrics-util"]
+clap = ["dep:clap"]
 nix-experimental = []
 
 [dependencies]
 bumpalo.workspace = true
+clap = { workspace = true, features = ["derive"], optional = true }
 codespan.workspace = true
 codespan-reporting.workspace = true
 indexmap.workspace = true

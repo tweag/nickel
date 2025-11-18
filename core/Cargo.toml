@@ -21,7 +21,7 @@ bench = false
 
 [features]
 default = ["markdown", "repl", "doc", "format"]
-clap = ["dep:clap"]
+clap = ["dep:clap", "nickel-lang-parser/clap"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:anstyle"]
 repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr", "dep:serde-wasm-bindgen"]

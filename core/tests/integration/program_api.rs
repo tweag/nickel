@@ -1,4 +1,5 @@
 use nickel_lang_core::{
+    ast::InputFormat,
     error::Sink,
     eval::cache::lazy::CBNCache,
     program::{Input, Program},
@@ -10,8 +11,16 @@ fn multiple_inputs_non_paths() {
     let sink = Sink::default();
     let mut prog: Program<CBNCache> = Program::new_from_inputs(
         [
-            Input::Source("{}".to_owned().as_bytes(), &String::from("fst")),
-            Input::Source("{} & {}".to_owned().as_bytes(), &String::from("snd")),
+            Input::Source(
+                "{}".to_owned().as_bytes(),
+                &String::from("fst"),
+                InputFormat::Nickel,
+            ),
+            Input::Source(
+                "{} & {}".to_owned().as_bytes(),
+                &String::from("snd"),
+                InputFormat::Nickel,
+            ),
         ],
         std::io::stderr(),
         sink,

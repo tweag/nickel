@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
+use nickel_lang_core::{ast::InputFormat, eval::cache::lazy::CBNCache, program::Program};
 
 #[cfg(feature = "package-experimental")]
 use nickel_lang_package::{ManifestFile, config::Config as PackageConfig};
@@ -8,7 +8,7 @@ use nickel_lang_package::{ManifestFile, config::Config as PackageConfig};
 use crate::{customize::Customize, global::GlobalContext};
 
 #[derive(clap::Parser, Debug)]
-pub struct InputOptions<Customize: clap::Args> {
+pub struct InputOptions<Customize: clap::Args, InputFormatOptions: clap::Args> {
     /// Input files. Omit to read from stdin. If multiple files are provided, the corresponding
     /// Nickel expressions are merged (combined with `&`) to produce the result.
     pub files: Vec<PathBuf>,
@@ -22,6 +22,10 @@ pub struct InputOptions<Customize: clap::Args> {
     /// Skips the standard library import. For debugging only
     #[arg(long, global = true)]
     pub nostdlib: bool,
+
+    /// Options for setting the format of input from stdin
+    #[command(flatten)]
+    pub format_options: InputFormatOptions,
 
     /// Adds a directory to the list of paths to search for imports in.
     ///
@@ -75,10 +79,14 @@ pub trait Prepare {
     fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>>;
 }
 
-impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
+impl<C: clap::Args + Customize, F: clap::Args + InputFormatOptions> Prepare for InputOptions<C, F> {
     fn prepare(&self, ctx: &mut GlobalContext) -> PrepareResult<Program<CBNCache>> {
         let mut program = match self.files.as_slice() {
-            [] => Program::new_from_stdin(std::io::stderr(), ctx.reporter.clone()),
+            [] => Program::new_from_stdin(
+                self.format_options.stdin_format(),
+                std::io::stderr(),
+                ctx.reporter.clone(),
+            ),
             [p] => Program::new_from_file(p, std::io::stderr(), ctx.reporter.clone()),
             files => Program::new_from_files(files, std::io::stderr(), ctx.reporter.clone()),
         }?;
@@ -139,5 +147,39 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }
 
         self.customize_mode.customize(program)
+    }
+}
+
+/// Trait to set the format when input to the cli is passed
+/// in from stdin. This is to allow the --stdin-format flag to
+/// override the default Nickel format for certain subcommands while
+/// other commands can exclude it.
+trait InputFormatOptions {
+    fn stdin_format(&self) -> InputFormat;
+}
+
+/// Specifies that input from stdin should be treated as Nickel,
+/// and cannot be overridden. The command will not have the --stdin-format flag.
+#[derive(clap::Args, Debug)]
+pub struct NickelOnly;
+
+impl InputFormatOptions for NickelOnly {
+    fn stdin_format(&self) -> InputFormat {
+        InputFormat::Nickel
+    }
+}
+
+/// Adds the --stdin-format flag to the subcommand to allow the format
+/// of stdin to be specified.
+#[derive(clap::Args, Debug)]
+pub struct StdinFormat {
+    /// Specify the format of the input from stdin
+    #[arg(long, value_enum, default_value_t, conflicts_with = "files")]
+    pub stdin_format: InputFormat,
+}
+
+impl InputFormatOptions for StdinFormat {
+    fn stdin_format(&self) -> InputFormat {
+        self.stdin_format
     }
 }

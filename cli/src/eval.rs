@@ -1,9 +1,13 @@
-use crate::{customize::CustomizeMode, global::GlobalContext, input::InputOptions};
+use crate::{
+    customize::CustomizeMode,
+    global::GlobalContext,
+    input::{InputOptions, StdinFormat},
+};
 
 #[derive(clap::Parser, Debug)]
 pub struct EvalCommand {
     #[command(flatten)]
-    pub input: InputOptions<CustomizeMode>,
+    pub input: InputOptions<CustomizeMode, StdinFormat>,
 }
 
 impl EvalCommand {

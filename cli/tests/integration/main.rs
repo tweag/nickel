@@ -1,3 +1,4 @@
+mod stdin_format;
 use std::{
     io::Write,
     path::PathBuf,

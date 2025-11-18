@@ -1,6 +1,7 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
 use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
+use nickel_lang_parser::ast::InputFormat;
 use std::{ffi::OsString, io::Cursor, iter::ExactSizeIterator};
 
 use serde::de::{
@@ -134,14 +135,14 @@ pub fn from_str<'a, T>(s: &'a str) -> Result<T, EvalOrDeserError>
 where
     T: serde::Deserialize<'a>,
 {
-    from_input(Input::Source(Cursor::new(s), "string"))
+    from_input(Input::Source(Cursor::new(s), "string", InputFormat::Nickel))
 }
 
 pub fn from_slice<'a, T>(v: &'a [u8]) -> Result<T, EvalOrDeserError>
 where
     T: serde::Deserialize<'a>,
 {
-    from_input(Input::Source(Cursor::new(v), "slice"))
+    from_input(Input::Source(Cursor::new(v), "slice", InputFormat::Nickel))
 }
 
 pub fn from_path<T>(path: impl Into<OsString>) -> Result<T, EvalOrDeserError>
@@ -156,7 +157,7 @@ where
     R: std::io::Read,
     T: serde::de::DeserializeOwned,
 {
-    from_input(Input::Source(rdr, "reader"))
+    from_input(Input::Source(rdr, "reader", InputFormat::Nickel))
 }
 
 /// An error occurred during deserialization to Rust.
