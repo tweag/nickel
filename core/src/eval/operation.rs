@@ -598,7 +598,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Array");
                 };
 
-                let array_data = cont.to_owned().unwrap_or_alloc();
+                let Container::Alloc(array_data) = cont else {
+                    return Ok(value.into());
+                };
+
                 let f_as_var = f.value.closurize(&mut self.context.cache, f.env);
 
                 // Array elements are closurized to preserve laziness of data
@@ -606,7 +609,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // contain indices (that is, currently, variables).
                 let ts = array_data
                     .array
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .map(|t| {
                         let t_with_ctrs = RuntimeContract::apply_all(
                             t,
@@ -666,10 +670,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     })
                     .collect();
 
-                Ok(Closure {
-                    value: NickelValue::array(ts, Vec::new(), pos_op_inh),
-                    env: Environment::new(),
-                })
+                Ok(NickelValue::array(ts, Vec::new(), pos_op_inh).into())
             }
             UnaryOp::RecordMap => {
                 let (f, ..) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
@@ -2561,63 +2562,79 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Array", 2, value2);
                 };
 
+                // If one of the array is empty, we directly return the other.
+                let Container::Alloc(array_data1) = container1 else {
+                    return Ok(value2.into());
+                };
+
+                let Container::Alloc(array_data2) = container2 else {
+                    return Ok(value1.into());
+                };
+
                 // In all generality, we need to apply the pending contracts on both sides, as they
                 // can differ. Even if some are common, the order of contracts is meaningful, so
                 // deduplicating the common part is not trivial.
                 //
-                // Still, there's a simple common case that we can handle: if both arrays have only
-                // one pending contract, and it's the same, we can keep it lazy.
-                match (
-                    container1
-                        .into_opt()
-                        .map(|array| array.pending_contracts.as_slice())
-                        .unwrap_or_default(),
-                    container2
-                        .into_opt()
-                        .map(|array| array.pending_contracts.as_slice())
-                        .unwrap_or_default(),
-                ) {
-                    // We don't deduplicate polymorphic contracts, because
-                    // they're not idempotent.
-                    ([ctr1], [ctr2])
-                        if !ctr1.can_have_poly_ctrs()
-                            && contract_eq(&ctr1.contract, &env1, &ctr2.contract, &env2) =>
-                    {
-                        let result = container1
-                            .iter()
-                            .chain(container2.iter())
-                            .cloned()
-                            .collect();
+                // Still, we can handle the following case: if the pending contracts are the same
+                // size and are equal pairwise, we can keep them lazy. The typical case is when
+                // there's only one contract, but it's doesn't cost much to try them all.
 
-                        Ok(NickelValue::array(result, vec![ctr1.clone()], pos_op_inh).into())
-                    }
-                    _ => {
-                        // We need to collect in two phases, since the mapped closures capture
-                        // `&mut self.cache`, so chaining the iterators first wouldn't work.
-                        let mut result: Array = container1
-                            .iter()
-                            .cloned()
-                            .map(|elt| {
-                                RuntimeContract::apply_all(
-                                    elt,
-                                    container1.iter_pending_contracts().cloned(),
-                                    pos1,
-                                )
-                                .closurize(&mut self.context.cache, env1.clone())
-                            })
-                            .collect();
+                if array_data1.pending_contracts.len() == array_data2.pending_contracts.len()
+                    && array_data1
+                        .pending_contracts
+                        .iter()
+                        .zip(array_data2.pending_contracts.iter())
+                        .all(|(ctr1, ctr2)| {
+                            !ctr1.can_have_poly_ctrs()
+                                && contract_eq(&ctr1.contract, &env1, &ctr2.contract, &env2)
+                        })
+                {
+                    // Cloning a slice is cheap: it's better to clone the left hand side and extend
+                    // it rather that building a chained iterator.
+                    let mut result = array_data1.array.clone();
+                    result.extend(array_data2.array.iter().cloned());
 
-                        result.extend(container2.iter().cloned().map(|elt| {
+                    Ok(NickelValue::array(
+                        result,
+                        array_data1.pending_contracts.clone(),
+                        pos_op_inh,
+                    )
+                    .into())
+                } else {
+                    // We need to collect in two phases, since the mapped closures capture
+                    // `&mut self.cache`, so chaining the iterators first wouldn't work.
+
+                    // We need to collect in two phases, since the mapped closures capture
+                    // `&mut self.cache`, so chaining the iterators first wouldn't work.
+                    //
+                    // Technically, we could clone `array_data1` and ierate mutably over its
+                    // elements in hope of sharing some of the structure. However, since it's a
+                    // clone, the leaves will be shared, and mutable iteration over a shared
+                    // persistent vector won't have much advantage over collecting a new array from
+                    // an iterator.
+                    let mut result: Array = container1
+                        .iter()
+                        .cloned()
+                        .map(|elt| {
                             RuntimeContract::apply_all(
                                 elt,
-                                container2.iter_pending_contracts().cloned(),
-                                pos2,
+                                container1.iter_pending_contracts().cloned(),
+                                pos1,
                             )
-                            .closurize(&mut self.context.cache, env2.clone())
-                        }));
+                            .closurize(&mut self.context.cache, env1.clone())
+                        })
+                        .collect();
 
-                        Ok(NickelValue::array(result, Vec::new(), pos_op_inh).into())
-                    }
+                    result.extend(container2.iter().cloned().map(|elt| {
+                        RuntimeContract::apply_all(
+                            elt,
+                            container2.iter_pending_contracts().cloned(),
+                            pos2,
+                        )
+                        .closurize(&mut self.context.cache, env2.clone())
+                    }));
+
+                    Ok(NickelValue::array(result, Vec::new(), pos_op_inh).into())
                 }
             }
             BinaryOp::ArrayAt => {
