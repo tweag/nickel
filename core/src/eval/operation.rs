@@ -7,11 +7,11 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    Cache, Closure, Environment, ErrorKind, ImportResolver, VirtualMachine,
+    Cache, Closure, Environment, ErrorKind, ImportResolver, StrAccData, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
     merge::{self, MergeMode, split},
-    stack::StrAccData,
+    stack::{Op1ContItem, Op2FirstContItem, Op2SecondContItem, OpNContItem},
     subst,
     value::{
         Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
@@ -73,34 +73,6 @@ enum EqResult {
     Eqs(NickelValue, NickelValue, Vec<(Closure, Closure)>),
 }
 
-/// An operation continuation as stored on the stack.
-#[derive(PartialEq, Clone)]
-pub enum OperationCont {
-    Op1(
-        /* unary operation */ UnaryOp,
-        /* original position of the argument before evaluation */ PosIdx,
-    ),
-    // The last parameter saves the strictness mode before the evaluation of the operator
-    Op2First(
-        /* the binary operation */ BinaryOp,
-        /* second argument, to evaluate next */ Closure,
-        /* original position of the first argument */ PosIdx,
-    ),
-    Op2Second(
-        /* binary operation */ BinaryOp,
-        /* first argument, evaluated */ Closure,
-        /* original position of the first argument before evaluation */ PosIdx,
-        /* original position of the second argument before evaluation */ PosIdx,
-    ),
-    OpN {
-        op: NAryOp,                        /* the n-ary operation */
-        evaluated: Vec<(Closure, PosIdx)>, /* evaluated arguments and their original position */
-        current_pos_idx: PosIdx, /* original position of the argument being currently evaluated */
-        pending: Vec<Closure>,   /* a stack (meaning the order of arguments is to be reversed)
-                                 of arguments yet to be evaluated */
-    },
-}
-
 /// All the data required to evaluate a unary operation.
 struct Op1EvalData {
     /// The unary operation to apply.
@@ -146,81 +118,68 @@ struct OpNEvalData {
 /// operations. This is a Nickel enum of the supported serialization formats.
 static ENUM_FORMAT: &str = "[| 'Json, 'Yaml, 'Toml |]";
 
-impl std::fmt::Debug for OperationCont {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OperationCont::Op1(op, _) => write!(f, "Op1 {op:?}"),
-            OperationCont::Op2First(op, _, _) => write!(f, "Op2First {op:?}"),
-            OperationCont::Op2Second(op, _, _, _) => write!(f, "Op2Second {op:?}"),
-            OperationCont::OpN { op, .. } => write!(f, "OpN {op:?}"),
-        }
-    }
-}
-
 impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
-    /// Process to the next step of the evaluation of an operation.
+    /// Proceeds to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
     /// argument, starts the evaluation of the second argument, or finally proceed with the
     /// operation if both arguments are evaluated (for binary operators).
-    pub fn continuate_operation(&mut self, mut clos: Closure) -> Result<Closure, ErrorKind> {
-        let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
-        self.call_stack.truncate(cs_len);
-        match cont {
-            OperationCont::Op1(op, orig_pos_arg) => self.process_unary_operation(Op1EvalData {
-                op,
-                arg: clos,
-                orig_pos_arg,
-                pos_op: pos_idx,
-            }),
-            OperationCont::Op2First(b_op, mut snd_clos, fst_pos_idx) => {
-                std::mem::swap(&mut clos, &mut snd_clos);
-                self.stack.push_op_cont(
-                    OperationCont::Op2Second(b_op, snd_clos, fst_pos_idx, clos.value.pos_idx()),
-                    cs_len,
-                    pos_idx,
-                );
-                Ok(clos)
-            }
-            OperationCont::Op2Second(op, arg1, orig_pos_arg1, orig_pos_arg2) => self
-                .process_binary_operation(Op2EvalData {
-                    op,
-                    arg1,
-                    orig_pos_arg1,
-                    arg2: clos,
-                    orig_pos_arg2,
-                    pos_op: pos_idx,
-                }),
-            OperationCont::OpN {
-                op,
-                mut evaluated,
-                current_pos_idx,
-                mut pending,
-            } => {
-                evaluated.push((clos, current_pos_idx));
+    pub fn continue_op(&mut self, mut closure: Closure) -> Result<Closure, ErrorKind> {
+        // let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
+        // self.call_stack.truncate(cs_len);
 
-                if let Some(next) = pending.pop() {
-                    let current_pos = next.value.pos_idx();
-                    self.stack.push_op_cont(
-                        OperationCont::OpN {
-                            op,
-                            evaluated,
-                            current_pos_idx: current_pos,
-                            pending,
-                        },
-                        cs_len,
-                        pos_idx,
-                    );
+        if let Some(op1_cont) = self.stack.pop_op1_cont() {
+            self.call_stack
+                .truncate(op1_cont.app_info.call_stack_size as usize);
+            self.eval_op1(Op1EvalData {
+                op: op1_cont.op,
+                arg: closure,
+                orig_pos_arg: op1_cont.orig_pos_arg,
+                pos_op: op1_cont.app_info.pos_idx,
+            })
+        } else if let Some(op2_fst_cont) = self.stack.pop_op2_first_cont() {
+            self.call_stack
+                .truncate(op2_fst_cont.app_info.call_stack_size as usize);
+            self.stack.push_op2_second_cont(Op2SecondContItem {
+                op: op2_fst_cont.op,
+                app_info: op2_fst_cont.app_info,
+                arg1_evaled: closure,
+                orig_pos_arg1: op2_fst_cont.orig_pos_arg1,
+                orig_pos_arg2: op2_fst_cont.arg2.value.pos_idx(),
+            });
 
-                    Ok(next)
-                } else {
-                    self.process_nary_operation(OpNEvalData {
-                        op,
-                        args: evaluated,
-                        pos_op: pos_idx,
-                    })
-                }
+            Ok(op2_fst_cont.arg2)
+        } else if let Some(op2_snd_cont) = self.stack.pop_op2_second_cont() {
+            self.call_stack
+                .truncate(op2_snd_cont.app_info.call_stack_size as usize);
+            self.eval_op2(Op2EvalData {
+                op: op2_snd_cont.op,
+                arg1: op2_snd_cont.arg1_evaled,
+                arg2: closure,
+                orig_pos_arg1: op2_snd_cont.orig_pos_arg1,
+                orig_pos_arg2: op2_snd_cont.orig_pos_arg2,
+                pos_op: op2_snd_cont.app_info.pos_idx,
+            })
+        } else if let Some(mut opn_cont) = self.stack.pop_opn_cont() {
+            self.call_stack
+                .truncate(opn_cont.app_info.call_stack_size as usize);
+
+            opn_cont.evaluated.push((closure, opn_cont.current_pos_idx));
+
+            if let Some(next) = opn_cont.pending.pop() {
+                opn_cont.current_pos_idx = next.value.pos_idx();
+                self.stack.push_opn_cont(opn_cont);
+
+                Ok(next)
+            } else {
+                self.eval_opn(OpNEvalData {
+                    op: opn_cont.op,
+                    args: opn_cont.evaluated,
+                    pos_op: opn_cont.app_info.pos_idx,
+                })
             }
+        } else {
+            panic!("unexpected state of eval stack in continue_op()");
         }
     }
 
@@ -228,7 +187,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ///
     /// The argument is expected to be evaluated (in WHNF). `pos_op` corresponds to the whole
     /// operation position, that may be needed for error reporting.
-    fn process_unary_operation(&mut self, eval_data: Op1EvalData) -> Result<Closure, ErrorKind> {
+    fn eval_op1(&mut self, eval_data: Op1EvalData) -> Result<Closure, ErrorKind> {
         let Op1EvalData {
             orig_pos_arg,
             arg: Closure { value, env },
@@ -829,40 +788,32 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ChunksConcat => {
-                let StrAccData {
-                    mut acc,
-                    curr_indent: indent,
-                    env: env_chunks,
-                    curr_pos,
-                } = self.stack.pop_str_acc().unwrap();
+                let str_acc = &mut self.registers.str_acc;
 
                 if let Some(s) = value.to_nickel_string() {
-                    let s = if indent != 0 {
+                    let s = if str_acc.curr_indent != 0 {
                         let indent_str: String = std::iter::once('\n')
-                            .chain((0..indent).map(|_| ' '))
+                            .chain((0..str_acc.curr_indent).map(|_| ' '))
                             .collect();
                         s.as_str().replace('\n', &indent_str).into()
                     } else {
                         s.clone()
                     };
 
-                    acc.push_str(&s);
+                    str_acc.acc.push_str(&s);
 
                     let mut next_opt = self.stack.pop_str_chunk();
 
                     // Pop consecutive string literals to find the next expression to evaluate
                     while let Some(StrChunk::Literal(s)) = next_opt {
-                        acc.push_str(&s);
+                        str_acc.acc.push_str(&s);
                         next_opt = self.stack.pop_str_chunk();
                     }
 
                     if let Some(StrChunk::Expr(e, indent)) = next_opt {
-                        self.stack.push_str_acc(StrAccData {
-                            acc,
-                            curr_indent: indent,
-                            env: env_chunks.clone(),
-                            curr_pos: e.pos_idx(),
-                        });
+                        // unwrap(): we don't expect an indentation level bigger than `u32::MAX`
+                        str_acc.curr_indent = indent.try_into().unwrap();
+                        str_acc.curr_pos = e.pos_idx();
 
                         // TODO: we should set up the stack properly, and directly, for the
                         // continuation instead of allocating a new term here and returning it.
@@ -871,10 +822,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 Term::op1(UnaryOp::ChunksConcat, e),
                                 pos_op_inh,
                             ),
-                            env: env_chunks,
+                            env: str_acc.env.clone(),
                         })
                     } else {
-                        Ok(NickelValue::string(acc, pos_op_inh).into())
+                        // We don't need to clear the accumulator; it is reset at the beginning of
+                        // a new string chunk accumulation.
+                        Ok(
+                            NickelValue::string(std::mem::take(&mut str_acc.acc), pos_op_inh)
+                                .into(),
+                        )
                     }
                 } else {
                     // Since the error halts the evaluation, we don't bother cleaning the stack of
@@ -886,7 +842,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         message: String::from(
                             "interpolated values must be Stringable (string, number, boolean, enum tag or null)",
                         ),
-                        orig_pos: curr_pos,
+                        orig_pos: str_acc.curr_pos,
                         term: value,
                     }))
                 }
@@ -1538,7 +1494,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: Environment::new(),
                 })
             }
-            UnaryOp::NumberArcCos => self.unary_number_op(
+            UnaryOp::NumberArcCos => self.number_op1(
                 f64::acos,
                 Op1EvalData {
                     op,
@@ -1547,7 +1503,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            UnaryOp::NumberArcSin => self.unary_number_op(
+            UnaryOp::NumberArcSin => self.number_op1(
                 f64::asin,
                 Op1EvalData {
                     op,
@@ -1556,7 +1512,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            UnaryOp::NumberArcTan => self.unary_number_op(
+            UnaryOp::NumberArcTan => self.number_op1(
                 f64::atan,
                 Op1EvalData {
                     op,
@@ -1565,7 +1521,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            UnaryOp::NumberCos => self.unary_number_op(
+            UnaryOp::NumberCos => self.number_op1(
                 f64::cos,
                 Op1EvalData {
                     op,
@@ -1574,7 +1530,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            UnaryOp::NumberSin => self.unary_number_op(
+            UnaryOp::NumberSin => self.number_op1(
                 f64::sin,
                 Op1EvalData {
                     op,
@@ -1583,7 +1539,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            UnaryOp::NumberTan => self.unary_number_op(
+            UnaryOp::NumberTan => self.number_op1(
                 f64::tan,
                 Op1EvalData {
                     op,
@@ -1597,7 +1553,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
     }
 
-    fn unary_number_op<F>(&mut self, f: F, eval_data: Op1EvalData) -> Result<Closure, ErrorKind>
+    fn number_op1<F>(&mut self, f: F, eval_data: Op1EvalData) -> Result<Closure, ErrorKind>
     where
         F: Fn(f64) -> f64,
     {
@@ -1635,7 +1591,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Evaluate a binary operation.
     ///
     /// Both arguments are expected to be evaluated (in WHNF).
-    fn process_binary_operation(&mut self, eval_data: Op2EvalData) -> Result<Closure, ErrorKind> {
+    fn eval_op2(&mut self, eval_data: Op2EvalData) -> Result<Closure, ErrorKind> {
         let Op2EvalData {
             op,
             arg1: Closure {
@@ -1704,7 +1660,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 )
                 .into())
             }
-            BinaryOp::Plus => self.binary_number_op(
+            BinaryOp::Plus => self.number_op2(
                 |n1, n2| n1 + n2,
                 Op2EvalData {
                     op,
@@ -1721,7 +1677,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::Sub => self.binary_number_op(
+            BinaryOp::Sub => self.number_op2(
                 |n1, n2| n1 - n2,
                 Op2EvalData {
                     op,
@@ -1738,7 +1694,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::Mult => self.binary_number_op(
+            BinaryOp::Mult => self.number_op2(
                 |n1, n2| n1 * n2,
                 Op2EvalData {
                     op,
@@ -2224,7 +2180,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
             }
-            BinaryOp::LessThan => self.binary_number_cmp(
+            BinaryOp::LessThan => self.number_cmp2(
                 |n1, n2| n1 < n2,
                 Op2EvalData {
                     op,
@@ -2241,7 +2197,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::LessOrEq => self.binary_number_cmp(
+            BinaryOp::LessOrEq => self.number_cmp2(
                 |n1, n2| n1 <= n2,
                 Op2EvalData {
                     op,
@@ -2258,7 +2214,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::GreaterThan => self.binary_number_cmp(
+            BinaryOp::GreaterThan => self.number_cmp2(
                 |n1, n2| n1 > n2,
                 Op2EvalData {
                     op,
@@ -2275,7 +2231,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::GreaterOrEq => self.binary_number_cmp(
+            BinaryOp::GreaterOrEq => self.number_cmp2(
                 |n1, n2| n1 >= n2,
                 Op2EvalData {
                     op,
@@ -2831,7 +2787,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 Ok(deser.with_pos_idx(pos_op_inh).into())
             }
-            BinaryOp::StringSplit => self.binary_string_fn(
+            BinaryOp::StringSplit => self.string_fn2(
                 |input, sep| NickelValue::array(input.split(sep), Vec::new(), pos_op_inh),
                 Op2EvalData {
                     op,
@@ -2848,7 +2804,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     pos_op,
                 },
             ),
-            BinaryOp::StringContains => self.binary_string_fn(
+            BinaryOp::StringContains => self.string_fn2(
                 |s1, s2| NickelValue::bool_value(s1.contains(s2.as_str()), pos_op_inh),
                 Op2EvalData {
                     op,
@@ -2868,7 +2824,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             BinaryOp::StringCompare => {
                 let as_term_pos = self.context.pos_table.get(pos_op_inh);
 
-                self.binary_string_fn(
+                self.string_fn2(
                     |s1, s2| {
                         use std::cmp::Ordering;
 
@@ -3239,31 +3195,31 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         }
     }
 
-    fn binary_number_cmp<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
+    fn number_cmp2<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
     where
         F: Fn(&Number, &Number) -> bool,
     {
         let pos_op_inh = eval_data.pos_op.to_inherited();
 
-        self.binary_number_fn(
+        self.number_fn2(
             |n1, n2| NickelValue::bool_value(f(n1, n2), pos_op_inh),
             eval_data,
         )
     }
 
-    fn binary_number_op<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
+    fn number_op2<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
     where
         F: Fn(&Number, &Number) -> Number,
     {
         let pos_op_inh = eval_data.pos_op.to_inherited();
 
-        self.binary_number_fn(
+        self.number_fn2(
             |n1, n2| NickelValue::number(f(n1, n2), pos_op_inh),
             eval_data,
         )
     }
 
-    fn binary_number_fn<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
+    fn number_fn2<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
     where
         F: Fn(&Number, &Number) -> NickelValue,
     {
@@ -3307,7 +3263,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         Ok(f(n1, n2).into())
     }
 
-    fn binary_string_fn<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
+    fn string_fn2<F>(&mut self, f: F, eval_data: Op2EvalData) -> Result<Closure, ErrorKind>
     where
         F: Fn(&NickelString, &NickelString) -> NickelValue,
     {
@@ -3354,7 +3310,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// Evaluate a n-ary operation.
     ///
     /// Arguments are expected to be evaluated (in WHNF).
-    fn process_nary_operation(&mut self, eval_data: OpNEvalData) -> Result<Closure, ErrorKind> {
+    fn eval_opn(&mut self, eval_data: OpNEvalData) -> Result<Closure, ErrorKind> {
         let OpNEvalData { op, args, pos_op } = eval_data;
         increment!(format!("primop:{op}"));
         let pos_op_inh = pos_op.to_inherited();
@@ -4165,7 +4121,7 @@ mod tests {
             vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                vm.continuate_operation(NickelValue::bool_true().into()),
+                vm.continue_op(NickelValue::bool_true().into()),
                 Ok(mk_term::integer(46).into())
             );
             assert_eq!(0, vm.stack.count_args());
@@ -4187,7 +4143,7 @@ mod tests {
             vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                vm.continuate_operation(mk_term::integer(7).into()),
+                vm.continue_op(mk_term::integer(7).into()),
                 Ok(mk_term::integer(6).into())
             );
             assert_eq!(1, vm.stack.count_conts());
@@ -4223,7 +4179,7 @@ mod tests {
             vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
 
             assert_eq!(
-                vm.continuate_operation(mk_term::integer(6).into()),
+                vm.continue_op(mk_term::integer(6).into()),
                 Ok(Closure {
                     value: mk_term::integer(13),
                     env: Environment::new()
