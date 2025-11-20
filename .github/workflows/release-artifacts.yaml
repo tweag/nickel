@@ -171,6 +171,5 @@ jobs:
           gh release upload --clobber $Env:RELEASE_TAG nickel-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG nickel-pkg-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG nls-x86_64-windows.exe
-          gh release upload --clobber $Env:RELEASE_TAG nls-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG libnickel_lang-x86_64-windows-mingw.a
           gh release upload --clobber $Env:RELEASE_TAG libnickel_lang-x86_64-windows-mingw.dll
