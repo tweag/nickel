@@ -1,5 +1,7 @@
 //! Error handling for the CLI.
 
+use std::path::PathBuf;
+
 use nickel_lang_core::{
     error::{
         Diagnostic, IntoDiagnostics, ParseError,
@@ -29,6 +31,8 @@ pub enum CliUsageError {
     AssignmentParseError { error: ParseError },
     /// A parse error occurred when trying to parse a field path.
     FieldPathParseError { error: ParseError },
+    /// Couldn't determine the format of an input.
+    CantDetectFormat { path: PathBuf },
 }
 
 pub enum Error {
@@ -151,6 +155,12 @@ impl IntoDiagnostics for CliUsageError {
                         ]),
                 );
                 diags
+            }
+            CliUsageError::CantDetectFormat { path } => {
+                vec![Diagnostic::error().with_message(format!(
+                    "could not determine format of input file `{}`",
+                    path.display()
+                ))]
             }
         }
     }
