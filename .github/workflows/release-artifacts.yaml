@@ -41,7 +41,14 @@ jobs:
           cp ./result/bin/nls nls-${{ matrix.os.architecture }}-linux
           nix build --log-format raw-with-logs .#nickel-pkg-static
           cp ./result/bin/nickel nickel-pkg-${{ matrix.os.architecture }}-linux
-      - name: "Upload static binary as release asset"
+      - name: "Build static library"
+        run: |
+          nix build --log-format raw-with-logs .#nickel-lang-c
+          cp ./result/lib/libnickel_lang.a libnickel_lang-${{ matrix.os.architecture }}-linux.a
+          cp ./result/lib/libnickel_lang.so libnickel_lang-${{ matrix.os.architecture }}-linux.so
+          # The header file shouldn't depend on the architecture.
+          cp ./result/include/nickel_lang.h nickel_lang.h
+      - name: "Upload binaries/libraries as release assets"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
@@ -49,6 +56,9 @@ jobs:
           gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
           gh release upload --clobber $RELEASE_TAG nickel-pkg-${{ matrix.os.architecture }}-linux
           gh release upload --clobber $RELEASE_TAG nls-${{ matrix.os.architecture }}-linux
+          gh release upload --clobber $RELEASE_TAG libnickel_lang-${{ matrix.os.architecture }}-linux.a
+          gh release upload --clobber $RELEASE_TAG libnickel_lang-${{ matrix.os.architecture }}-linux.so
+          gh release upload --clobber $RELEASE_TAG nickel_lang.h
       - id: build-image
         name: "Build docker image"
         run: |
@@ -103,13 +113,20 @@ jobs:
           cp ./result/bin/nls nls-arm64-macos
           nix build --log-format raw-with-logs .#nickel-lang-pkg
           cp ./result/bin/nickel nickel-pkg-arm64-macos
-      - name: "Upload binaries as release assets"
+      - name: "Build static library"
+        run: |
+          nix build --log-format raw-with-logs .#nickel-lang-c
+          cp ./result/lib/libnickel_lang.a libnickel_lang-arm64-macos.a
+          cp ./result/lib/libnickel_lang.dylib libnickel_lang-arm64-macos.dylib
+      - name: "Upload binaries/libraries as release assets"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
           gh release upload --clobber $RELEASE_TAG nickel-arm64-macos
           gh release upload --clobber $RELEASE_TAG nls-arm64-macos
+          gh release upload --clobber $RELEASE_TAG libnickel_lang-arm64-macos.a
+          gh release upload --clobber $RELEASE_TAG libnickel_lang-arm64-macos.dylib
 
   release-artifacts-windows:
     name: "Build Windows Nickel binaries"
@@ -118,6 +135,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+      - name: Install LLVM tools
+        run: |
+          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz -o llvm.tar.xz
+          mkdir llvm
+          tar xJvf llvm.tar.xz --strip-components=1 -C llvm
+      - name: Install MinGW target
+        run: rustup target add x86_64-pc-windows-gnu
       - name: Build binaries
         run: |
           cargo build --release --package nickel-lang-cli
@@ -126,6 +150,17 @@ jobs:
           cp ./target/release/nickel.exe nickel-pkg-x86_64-windows.exe
           cargo build --release --package nickel-lang-lsp
           cp ./target/release/nls.exe nls-x86_64-windows.exe
+      - name: Build libraries
+        shell: bash
+        run: |
+          # We build the libraries with the MinGW toolchain instead of rust's default of MSVC,
+          # mainly because our primary downstream user is the go binding and cgo uses MinGW.
+          # In the future, maybe we should build both.
+          cargo build --package nickel-lang --features=capi --release --target x86_64-pc-windows-gnu
+          export PATH="$PWD/llvm/bin:$PATH"
+          bash ./scripts/shrink_archive.sh -o libnickel_lang-x86_64-windows-mingw.a \
+              ./target/x86_64-pc-windows-gnu/release/libnickel_lang.a
+          cp ./target/x86_64-pc-windows-gnu/release/nickel_lang.dll libnickel_lang-x86_64-windows-mingw.dll
       - name: "Upload binaries as release assets"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,3 +171,5 @@ jobs:
           gh release upload --clobber $Env:RELEASE_TAG nickel-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG nickel-pkg-x86_64-windows.exe
           gh release upload --clobber $Env:RELEASE_TAG nls-x86_64-windows.exe
+          gh release upload --clobber $Env:RELEASE_TAG libnickel_lang-x86_64-windows-mingw.a
+          gh release upload --clobber $Env:RELEASE_TAG libnickel_lang-x86_64-windows-mingw.dll
