@@ -33,6 +33,8 @@ pub enum CliUsageError {
     FieldPathParseError { error: ParseError },
     /// Couldn't determine the format of an input.
     CantDetectFormat { path: PathBuf },
+    #[cfg(feature = "nix-experimental")]
+    NoNixConversion { path: PathBuf },
 }
 
 pub enum Error {
@@ -159,6 +161,13 @@ impl IntoDiagnostics for CliUsageError {
             CliUsageError::CantDetectFormat { path } => {
                 vec![Diagnostic::error().with_message(format!(
                     "could not determine format of input file `{}`",
+                    path.display()
+                ))]
+            }
+            #[cfg(feature = "nix-experimental")]
+            CliUsageError::NoNixConversion { path } => {
+                vec![Diagnostic::error().with_message(format!(
+                    "file {} is in nix format, but nix-to-nickel conversion is unsupported",
                     path.display()
                 ))]
             }

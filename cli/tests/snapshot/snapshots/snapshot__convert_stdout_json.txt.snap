@@ -1,0 +1,5 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+"{\n  \"foo\": [1, 2],\n  \"bar\": {}\n}\n"

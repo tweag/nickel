@@ -1,12 +1,12 @@
 use std::{
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use clap::ArgGroup;
 use nickel_lang_core::{
     ast::{AstAlloc, InputFormat, Node},
-    error::Reporter as _,
+    error::{ParseError, Reporter as _},
     files::Files,
     parser::{self, ErrorTolerantParser, lexer::Lexer},
 };
@@ -42,27 +42,41 @@ impl ConvertCommand {
     }
 
     fn convert(self) -> CliResult<()> {
-        let (format, data) = match (&self.file, self.stdin_format) {
+        let (format, name) = match (&self.file, self.stdin_format) {
             (None, None) | (Some(_), Some(_)) => {
                 unreachable!("clap shouldn't allow this")
             }
-            (None, Some(stdin_format)) => {
-                let mut buf = String::new();
-                std::io::stdin().read_to_string(&mut buf)?;
-                (stdin_format, buf)
-            }
+            (None, Some(stdin_format)) => (stdin_format, Path::new("<stdin>")),
             (Some(path), None) => {
                 let format = InputFormat::from_path(path).ok_or_else(|| Error::CliUsage {
                     files: Files::empty(),
                     error: CliUsageError::CantDetectFormat { path: path.clone() },
                 })?;
-                let data = std::fs::read_to_string(path)?;
-                (format, data)
+                (format, path.as_path())
             }
         };
 
+        #[cfg(feature = "nix-experimental")]
+        if format == InputFormat::Nix {
+            return Err(Error::CliUsage {
+                files: Files::empty(),
+                error: CliUsageError::NoNixConversion {
+                    path: name.to_owned(),
+                },
+            });
+        }
+
+        let data = match &self.file {
+            None => {
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                buf
+            }
+            Some(path) => std::fs::read_to_string(path)?,
+        };
+
         let mut files = Files::empty();
-        let file_id = files.add("todo", data.as_str());
+        let file_id = files.add(name, data.as_str());
         let alloc = AstAlloc::new();
         let ast = match format {
             // In principle, we could just pass Nickel input straight through without parsing it,
@@ -79,9 +93,8 @@ impl ConvertCommand {
                     .map_err(|e| e.into())
             }
             InputFormat::Toml => {
-                // Currently, our TOML deserialization goes straight to NickelValue, but we want an
-                // Ast...
-                todo!()
+                nickel_lang_core::serialize::toml_deser::ast_from_str(&alloc, &data, file_id)
+                    .map_err(|e| ParseError::from_toml(e, file_id).into())
             }
             InputFormat::Text => {
                 // We convert text to Nickel by wrapping it in a string.
@@ -89,20 +102,8 @@ impl ConvertCommand {
             }
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
-                use nickel_lang_core::{error::ParseError, nix_ffi};
-
-                let parent_dir = self.file.as_ref().and_then(|p| p.parent());
-                let parent_dir = parent_dir
-                    .map(PathBuf::from)
-                    .or_else(|| std::env::current_dir().ok())
-                    .unwrap_or_default();
-                let json = nix_ffi::eval_to_json(&data, &parent_dir).map_err(|e| {
-                    ParseError::ExternalFormatError(String::from("nix"), e.to_string(), None).into()
-                });
-                json.and_then(|json| {
-                    nickel_lang_core::serialize::yaml::load_json(&alloc, &json, Some(file_id))
-                        .map_err(|e| e.into())
-                })
+                // We already errored for InputFormat::Nix
+                unreachable!()
             }
         };
 
