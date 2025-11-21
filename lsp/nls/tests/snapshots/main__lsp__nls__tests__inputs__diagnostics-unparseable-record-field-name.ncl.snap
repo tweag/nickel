@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[4:8-4:9: "unexpected token"]
