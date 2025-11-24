@@ -389,3 +389,19 @@ For example, the following tests will succeed:
     = 1,
 }
 ````
+
+## `nickel convert`: convert data to Nickel format
+
+The `nickel convert` command allows you to convert plain data (JSON, YAML,
+TOML, or text) into Nickel format. For example, if the file `data.json` contains
+`{ "foo": 1 }` then `nickel convert data.json` will output `{ foo = 1 }`.
+Text files will be converted to Nickel strings: if `data.txt` contains the
+string `Hello, "world"` then `nickel convert data.txt` will output
+`"Hello, \"world\""`.
+
+The input type will be auto-detected based on the file extension. If you want to
+force the input type, supply the input on stdin and use the `--stdin-format` flag,
+like `cat data | nickel convert --stdin-format json`.
+
+Although `nickel convert` can be useful when migrating to Nickel, you can also
+[import](./syntax.md#imports) data formats in Nickel without converting them.
