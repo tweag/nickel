@@ -1,0 +1,5 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: could not determine format of input file `[INPUTS_PATH]/convert/json.foo`

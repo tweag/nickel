@@ -1,0 +1,5 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{ foo = { bar = [ 1, 2 ] }, baz = [ { hi = "bye" } ] }

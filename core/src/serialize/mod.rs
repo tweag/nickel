@@ -617,6 +617,10 @@ pub mod toml_deser {
     };
     use codespan::ByteIndex;
     use malachite::{base::num::conversion::traits::ExactFrom as _, rational::Rational};
+    use nickel_lang_parser::ast::{
+        Ast, AstAlloc, Node,
+        record::{FieldDef, FieldMetadata, FieldPathElem},
+    };
     use std::ops::Range;
     use toml_edit::Value;
 
@@ -722,6 +726,86 @@ pub mod toml_deser {
         Ok(doc
             .as_item()
             .to_value_with_pos(pos_table, doc.span(), file_id))
+    }
+
+    trait ToAst {
+        fn to_ast<'ast>(&self, alloc: &'ast AstAlloc, file_id: FileId) -> Ast<'ast>;
+    }
+
+    fn to_record<'a, 'ast, T: ToAst + 'a, I: Iterator<Item = (&'a str, &'a T)>>(
+        alloc: &'ast AstAlloc,
+        file_id: FileId,
+        iter: I,
+    ) -> Node<'ast> {
+        Node::Record(
+            alloc.record_data(
+                [],
+                iter.map(|(key, val)| FieldDef {
+                    path: FieldPathElem::single_ident_path(alloc, LocIdent::new(key)),
+                    metadata: FieldMetadata::default(),
+                    value: Some(val.to_ast(alloc, file_id)),
+                    pos: TermPos::default(),
+                })
+                .collect::<Vec<_>>(),
+                false,
+            ),
+        )
+    }
+
+    impl ToAst for toml_edit::Table {
+        fn to_ast<'ast>(&self, alloc: &'ast AstAlloc, file_id: FileId) -> Ast<'ast> {
+            Ast::from(to_record(alloc, file_id, self.iter()))
+                .with_pos(range_pos(self.span(), file_id))
+        }
+    }
+
+    impl ToAst for toml_edit::Item {
+        fn to_ast<'ast>(&self, alloc: &'ast AstAlloc, file_id: FileId) -> Ast<'ast> {
+            let pos = range_pos(self.span(), file_id);
+            match self {
+                toml_edit::Item::None => Ast::from(Node::Null).with_pos(pos),
+                toml_edit::Item::Value(val) => val.to_ast(alloc, file_id),
+                toml_edit::Item::Table(t) => t.to_ast(alloc, file_id),
+                toml_edit::Item::ArrayOfTables(ts) => Ast::from(
+                    alloc.array(
+                        ts.iter()
+                            .map(|t| t.to_ast(alloc, file_id))
+                            .collect::<Vec<_>>(),
+                    ),
+                )
+                .with_pos(pos),
+            }
+        }
+    }
+
+    impl ToAst for toml_edit::Value {
+        fn to_ast<'ast>(&self, alloc: &'ast AstAlloc, file_id: FileId) -> Ast<'ast> {
+            let pos = range_pos(self.span(), file_id);
+            let node = match self {
+                Value::String(s) => alloc.string(s.value()),
+                Value::Integer(i) => alloc.number((*i.value()).into()),
+                Value::Float(f) => alloc.number(Rational::exact_from(*f.value())),
+                Value::Boolean(b) => Node::Bool(*b.value()),
+                Value::Datetime(dt) => alloc.string(&dt.to_string()),
+                Value::Array(array) => alloc.array(
+                    array
+                        .iter()
+                        .map(|v| v.to_ast(alloc, file_id))
+                        .collect::<Vec<_>>(),
+                ),
+                Value::InlineTable(t) => to_record(alloc, file_id, t.iter()),
+            };
+            Ast::from(node).with_pos(pos)
+        }
+    }
+
+    pub fn ast_from_str<'ast>(
+        alloc: &'ast AstAlloc,
+        s: &str,
+        file_id: FileId,
+    ) -> Result<Ast<'ast>, toml_edit::TomlError> {
+        let doc: toml_edit::Document<_> = s.parse()?;
+        Ok(doc.as_item().to_ast(alloc, file_id))
     }
 }
 

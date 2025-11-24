@@ -18,7 +18,10 @@ macro_rules! assert_snapshot_filtered {
             // differing across machines.
             // Replace filepath backslashes with forward slashes for Windows.
             (r"(?:(?:.:)?(?:/|\\).+(?:/|\\)tests(?:/|\\)snapshot(?:/|\\)inputs(?:/|\\))([0-9A-Za-z_-]+)(?:/|\\)(.+)", "[INPUTS_PATH]/${1}/${2}"),
-            (r"(?:(?:.:)?(?:/|\\).+(?:/|\\)tests(?:/|\\)snapshot(?:/|\\)imports(?:/|\\))(.+)", "[IMPORTS_PATH]/${1}")
+            (r"(?:(?:.:)?(?:/|\\).+(?:/|\\)tests(?:/|\\)snapshot(?:/|\\)imports(?:/|\\))(.+)", "[IMPORTS_PATH]/${1}"),
+            // Some of the test files are converted to text, and git on Windows
+            // may fiddle with their newlines.
+            (r"\\r\\n", r"\n")
         ]},
         {
             insta::assert_snapshot!($name, $snapshot);
@@ -89,6 +92,16 @@ fn check_snapshots(path: &str) {
             );
         }
     }
+}
+
+#[test_resources("cli/tests/snapshot/inputs/**/convert/*")]
+fn check_conversion_snapshots(path: &str) {
+    let file = TestFile::from_project_path(path);
+    let invocation = NickelInvocation::new().file(&file).args(["convert"]);
+
+    let (out, err) = invocation.snapshot();
+    assert_snapshot_filtered!(file.prefixed_test_name("convert_stdout"), out);
+    assert_snapshot_filtered!(file.prefixed_test_name("convert_stderr"), err);
 }
 
 struct TestFile {

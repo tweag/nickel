@@ -3,8 +3,9 @@
 use git_version::git_version;
 
 use crate::{
-    completions::GenCompletionsCommand, eval::EvalCommand, export::ExportCommand,
-    pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
+    completions::GenCompletionsCommand, convert::ConvertCommand, eval::EvalCommand,
+    export::ExportCommand, pprint_ast::PprintAstCommand, query::QueryCommand,
+    typecheck::TypecheckCommand,
 };
 
 use nickel_lang_core::error::report::ErrorFormat;
@@ -77,6 +78,8 @@ pub enum Command {
     Query(QueryCommand),
     /// Typechecks the program but does not run it
     Typecheck(TypecheckCommand),
+    /// Converts from a plain-data format to Nickel.
+    Convert(ConvertCommand),
     /// Performs packaging and dependency-resolution operations
     #[cfg(feature = "package-experimental")]
     Package(PackageCommand),

@@ -21,6 +21,7 @@ mod repl;
 
 mod cli;
 mod completions;
+mod convert;
 mod customize;
 mod error;
 mod eval;
@@ -60,6 +61,7 @@ fn main() -> ExitCode {
         Command::Query(query) => query.run(&mut ctxt),
         Command::Typecheck(typecheck) => typecheck.run(&mut ctxt),
         Command::GenCompletions(completions) => completions.run(&mut ctxt),
+        Command::Convert(convert) => convert.run(&mut ctxt),
 
         #[cfg(feature = "package-experimental")]
         Command::Package(package) => package.run(&mut ctxt),

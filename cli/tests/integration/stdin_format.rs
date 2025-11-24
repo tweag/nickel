@@ -117,3 +117,20 @@ fn query_supports_stdin_format_flag() {
         "\n\u{1b}[4mAvailable fields\u{1b}[0m\n\u{1b}[38;5;240m•\u{1b}[39m a\n\u{1b}[38;5;240m•\u{1b}[39m b\n"
     );
 }
+
+#[test]
+fn converts_json_from_stdin() {
+    let output = run_input_from_stdin(
+        vec!["convert", "--stdin-format", "json"],
+        "{ \"foo\": \"hello\", \"bar\": 123 }",
+    );
+    assert_eq!(output.stderr, "");
+    assert_eq!(output.stdout, "{ foo = \"hello\", bar = 123 }");
+}
+
+#[test]
+fn convert_fails_if_no_format_specified() {
+    let output = run_input_from_stdin(vec!["convert"], "{ \"foo\": \"hello\", \"bar\": 123 }");
+    assert!(!output.stderr.is_empty());
+    assert_eq!(output.stdout, "");
+}

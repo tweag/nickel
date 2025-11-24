@@ -109,7 +109,7 @@ impl GlobalContext {
 
 impl CliReporter {
     // This is just an alias for the trait method, but having an inherent impl
-    // makes type inference better because rust defaults to the inherit impl and
+    // makes type inference better because rust defaults to the inherent impl and
     // doesn't get confused between `Warning` and `Error`.
     pub fn report_result<T, E: Into<Error>>(&mut self, result: Result<T, E>) {
         <Self as Reporter<Error>>::report_result(self, result)
