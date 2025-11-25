@@ -2,7 +2,7 @@
 //!
 //! See [eval](../eval/index.html).
 use super::{
-    Closure,
+    Closure, StrAccData,
     cache::{Cache, CacheIndex},
     value::NickelValue,
 };
@@ -56,6 +56,13 @@ pub enum Marker {
     ///
     /// The shared environment is stored in the `str_acc` special register of the VM.
     StrChunk,
+    /// A string accumulator.
+    ///
+    /// When evaluating a sequence of chunks, the `str_acc` register of the VM stores the chunks
+    /// evaluated and concatenated into one string up to this point. If interpolated strings are
+    /// nested, we need to save this accumulator on the stack, as a new string chunk evaluation can
+    /// happen in the middle of the outer accumulation.
+    StrAcc,
 }
 
 impl Marker {
@@ -72,6 +79,7 @@ impl Marker {
             Marker::Op2SecondCont => mem::size_of::<Op2SecondContItem>(),
             Marker::OpNCont => mem::size_of::<OpNContItem>(),
             Marker::StrChunk => mem::size_of::<StrChunkItem>(),
+            Marker::StrAcc => mem::size_of::<StrAccItem>(),
         }
     }
 }
@@ -168,6 +176,8 @@ pub struct StrChunkItem {
     chunk: StrChunk<NickelValue>,
 }
 
+pub type StrAccItem = StrAccData;
+
 impl StackItem for EqItem {
     fn marker() -> Marker {
         Marker::Eq
@@ -219,6 +229,12 @@ impl StackItem for OpNContItem {
 impl StackItem for StrChunkItem {
     fn marker() -> Marker {
         Marker::StrChunk
+    }
+}
+
+impl StackItem for StrAccItem {
+    fn marker() -> Marker {
+        Marker::StrAcc
     }
 }
 
@@ -484,6 +500,9 @@ impl<C: Cache> Stack<C> {
                 Marker::StrChunk => {
                     self.pop_unchecked::<StrChunkItem>();
                 }
+                Marker::StrAcc => {
+                    self.pop_unchecked::<StrAccItem>();
+                }
             }
         }
     }
@@ -558,6 +577,11 @@ impl<C: Cache> Stack<C> {
         for chunk in it {
             self.push(StrChunkItem { chunk });
         }
+    }
+
+    /// Push a string accumulator on the stack.
+    pub fn push_str_acc(&mut self, str_acc: StrAccData) {
+        self.push(str_acc);
     }
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
@@ -679,6 +703,12 @@ impl<C: Cache> Stack<C> {
     pub fn pop_str_chunk(&mut self) -> Option<StrChunk<NickelValue>> {
         self.pop::<StrChunkItem>()
             .map(|StrChunkItem { chunk }| chunk)
+    }
+
+    /// Try to pop a string accumulator from the top of the stack. If `None` is returned, the top
+    /// element was not a string chunk and the stack is left unchanged.
+    pub fn pop_str_acc(&mut self) -> Option<StrAccItem> {
+        self.pop()
     }
 
     /// Check if the top element is a [CacheIndex].
