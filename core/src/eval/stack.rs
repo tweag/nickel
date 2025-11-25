@@ -393,9 +393,9 @@ impl<C: Cache> Stack<C> {
     unsafe fn pop_unchecked<T: StackItem>(&mut self) -> T {
         // Safety: safety pre-conditions of this function
         let item: T = unsafe { mem::ManuallyDrop::into_inner(self.read_unchecked()) };
-        // underflow: read_unchecked computes `marker_offset - item_size` which  is `len -
-        // marker_size - item_size` with checked operations, so we know this computation can't
-        // underflow at this point
+        // underflow: read_unchecked computes `marker_offset - item_size` which is `len -
+        // marker_size - item_size` with checked operations (and panics upon failure), so we know
+        // this computation can't underflow at this point
         self.data
             .truncate(self.data.len() - mem::size_of::<Marker>() - mem::size_of::<T>());
 
@@ -433,7 +433,7 @@ impl<C: Cache> Stack<C> {
             // Safety:
             // - self.data.as_ptr() is valid for read (backing allocation of a Vec)
             // - `item_slot` is valid for write (uninitialized slot on the stack)
-            // - they can't alias (stack slot vs mutably heap-allocated, mutably borrowed vector
+            // - they can't alias (stack slot vs heap-allocated, mutably borrowed vector
             //   allocation)
             ptr::copy_nonoverlapping(
                 self.data.as_ptr().add(data_offset),
@@ -442,8 +442,7 @@ impl<C: Cache> Stack<C> {
             );
 
             // Safety: we've written back a `T` value in `item_slot`, as it was originally pushed
-            // onto the stack, so `item_slot` is initialized and should be in a valid state for
-            // `T`.
+            // onto the stack, so `item_slot` is initialized and is a valid state for `T`.
             mem::ManuallyDrop::new(item_slot.assume_init())
         }
     }
