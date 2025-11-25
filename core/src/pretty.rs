@@ -289,7 +289,11 @@ impl Allocator {
     ) -> DocBuilder<'a, Self> {
         let size_per_child =
             self.size_constraint() / (record_data.fields.len() + dyn_fields.len()).max(1);
-        if record_data.fields.is_empty() && dyn_fields.is_empty() && !record_data.attrs.open {
+        if record_data.fields.is_empty()
+            && dyn_fields.is_empty()
+            && includes.is_empty()
+            && !record_data.attrs.open
+        {
             self.text("{}")
         } else if size_per_child == 0 || self.depth_constraint() == 0 {
             "{…}".pretty(self)

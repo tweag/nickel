@@ -7,9 +7,11 @@ use crate::{
     error::EvalErrorKind,
     eval::value::{NickelValue, ValueContent, lens::TermContent},
     identifier::LocIdent,
+    mk_app,
     position::PosTable,
     term::{
-        BinaryOp, BindingType, FunPatternData, LetAttrs, LetPatternData, Term, make, pattern::*,
+        BindingType, FunPatternData, LetAttrs, LetPatternData, Term, UnaryOp, make, pattern::*,
+        record::Include,
     },
 };
 
@@ -77,18 +79,16 @@ pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term
 /// let
 ///   %b1 = <bound1>,
 ///   %b2 = <bound2>,
-///   %empty_record = {},
 /// in
 /// let
-///   %r1 = <pat1.compile_part(%b1, %empty_record)>,
-///   %r2 = <pat2.compile_part(%b2, %empty_record)>,
+///   %r1 = <pat1.compile_part(%b1, { include foo }, <error>)>,
+///   %r2 = <pat2.compile_part(%b2, { include baz }, <error>)>,
 /// in
 /// let
 ///   foo = %r1.foo,
 ///   ...
 ///   baz = %r2.baz,
-/// in
-///   if %r1 == null then <error1> else if %r2 == null then <error2> else body
+/// in (%seq% %r1) (%seq% %r2) body
 /// ```
 /// where `foo` and `baz` are names bound in `<pat1>` and `<pat2>`.
 ///
@@ -113,21 +113,11 @@ pub fn desugar_let(
     let mut mid_bindings = SmallVec::new();
     // Inner bindings are the ones that bind the actual variables defined in the patterns.
     let mut inner_bindings = SmallVec::new();
-    let mut error_tests = Vec::new();
+    // TODO: for forcing
+    let mut mid_ids = Vec::new();
 
-    let empty_record_id = LocIdent::fresh();
-    outer_bindings.push((empty_record_id, NickelValue::empty_record()));
     for (pat, rhs) in bindings {
         let pos = pos_table.get(pat.pos).fuse(pos_table.get(rhs.pos_idx()));
-        let outer_id = LocIdent::fresh();
-        outer_bindings.push((outer_id, rhs.clone()));
-
-        let mid_id = LocIdent::fresh();
-        mid_bindings.push((
-            mid_id,
-            pat.compile_part(pos_table, outer_id, empty_record_id),
-        ));
-
         let error_case = NickelValue::term(
             Term::RuntimeError(Box::new(EvalErrorKind::FailedDestructuring {
                 value: rhs.clone(),
@@ -136,23 +126,42 @@ pub fn desugar_let(
             pos_table.push(pos),
         );
 
-        let is_record_null = make::op2(BinaryOp::Eq, Term::Var(mid_id), NickelValue::null());
-        error_tests.push((is_record_null, error_case));
+        let outer_id = LocIdent::fresh();
+        outer_bindings.push((outer_id, rhs.clone()));
 
+        let mid_id = LocIdent::fresh();
+
+        let mut includes = Vec::new();
         for (_path, id, _field) in pat.bindings() {
             inner_bindings.push((
                 id,
                 make::static_access(Term::Var(mid_id), std::iter::once(id)),
             ));
+            includes.push(Include {
+                ident: id,
+                metadata: Default::default(),
+            });
         }
+
+        let bindings_record = NickelValue::term_posless(Term::rec_record(
+            Default::default(),
+            includes,
+            Vec::new(),
+            None,
+            false,
+        ));
+
+        mid_bindings.push((
+            mid_id,
+            pat.compile_part(pos_table, outer_id, bindings_record, error_case),
+        ));
+
+        mid_ids.push(mid_id);
     }
 
-    let checked_body = error_tests
-        .into_iter()
-        .rev()
-        .fold(body, |acc, (check, error)| {
-            make::if_then_else(check, error, acc)
-        });
+    let checked_body = mid_ids.into_iter().rev().fold(body, |acc, id| {
+        mk_app!(make::op1(UnaryOp::Seq, Term::Var(id)), acc)
+    });
 
     let attrs = LetAttrs {
         binding_type: BindingType::Normal,

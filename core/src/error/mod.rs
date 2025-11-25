@@ -134,10 +134,19 @@ impl Error {
 /// Runtime errors might need additional context to be properly reported. The most important one is
 /// the position table, which is need to map position indices stored inside a [NickelValue] back to
 /// a [TermPos]. Additional data is useful, such as the callstack.
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone)]
 pub struct EvalCtxt {
     pub pos_table: PosTable,
     pub call_stack: CallStack,
+}
+
+// Skip the pos table, because it's likely to be huge and uninformative.
+impl std::fmt::Debug for EvalCtxt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EvalCtxt")
+            .field("call_stack", &self.call_stack)
+            .finish()
+    }
 }
 
 /// An error occurring during evaluation with additional [context][EvalCtxt].
