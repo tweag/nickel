@@ -261,17 +261,6 @@ impl PrimOpType for PrimOp {
             // Note that is_variant breaks parametricity, so it can't get a polymorphic type.
             // Dyn -> Bool
             PrimOp::EnumIsVariant => (vec![mk_uniftype::dynamic()], mk_uniftype::bool()),
-            // // [crate::term::PrimOp::PatternBranch] shouldn't appear anywhere in actual code, because its
-            // // second argument can't be properly typechecked: it has unbound variables. However, it's
-            // // not hard to come up with a vague working type for it, so we do.
-            // // forall a. {_ : a} -> Dyn -> Dyn
-            // PrimOp::PatternBranch => {
-            //     let ty_elt = state.table.fresh_type_uvar(var_level);
-            //     (
-            //         mk_uniftype::dict(ty_elt),
-            //         mk_buty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
-            //     )
-            // }
             // <custom_contract_type()> -> Dyn
             PrimOp::ContractCustom => (
                 vec![custom_contract_type(state.ast_alloc)],

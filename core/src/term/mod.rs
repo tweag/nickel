@@ -1214,20 +1214,6 @@ pub enum UnaryOp {
     /// Extract the tag from an enum tag or an enum variant.
     EnumGetTag,
 
-    /// Take a record representing bindings to be added to the local environment and proceed to
-    /// evaluate a pattern branch given as a second argument (which isn't a proper primop argument
-    /// but is stored on the stack) in its environment augmented with the bindings.
-    ///
-    /// [Self::PatternBranch] isn't specific to pattern branches: what it does is to take a set of
-    /// extra bindings and a term, and run the term in the augmented environment. While it could
-    /// useful to implement other operations, it would be fragile as a generic `with_env` operator,
-    /// because the term to be run must not be burried into a closure, or the environment
-    /// augmentation would be shallow and have no effect on the actual content of the term (we have
-    /// the same kind of constraints when updating record fields with the recursive environment of
-    /// a record, for example). This is why the name tries to make it clear that it shouldn't be
-    /// used blindly for something else.
-    PatternBranch,
-
     /// Wrap a contract implementation as a custom contract. You can think of this primop as a
     /// type constructor for custom contracts.
     ContractCustom,
@@ -1320,7 +1306,6 @@ impl fmt::Display for UnaryOp {
             EnumIsVariant => write!(f, "enum/is_variant"),
             EnumGetTag => write!(f, "enum/get_tag"),
 
-            PatternBranch => write!(f, "pattern_branch"),
             ContractCustom => write!(f, "contract/custom"),
             ContractPostprocessResult => write!(f, "contract/postprocess_result"),
             ContractAttachDefaultLabel => write!(f, "contract/attach_default_label"),

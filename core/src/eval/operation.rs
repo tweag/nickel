@@ -1408,52 +1408,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 pos_op_inh,
             )
             .into()),
-            UnaryOp::PatternBranch => {
-                // The continuation, that we must evaluate in the augmented environment.
-                let (mut cont, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {
-                    Box::new(EvalErrorKind::NotEnoughArgs(
-                        2,
-                        String::from("with_env"),
-                        pos_op,
-                    ))
-                })?;
-
-                let Some(container) = value.as_record() else {
-                    return mk_type_error!("Record");
-                };
-
-                for (id, field) in container
-                    .into_opt()
-                    .into_iter()
-                    .flat_map(|record| record.fields.iter())
-                {
-                    debug_assert!(field.metadata.is_empty());
-
-                    if let Some(value) = &field.value {
-                        if let Some(idx) = value.as_thunk() {
-                            cont.env.insert(id.ident(), idx.clone());
-                        } else {
-                            cont.env.insert(
-                                id.ident(),
-                                self.context.cache.add(
-                                    Closure {
-                                        value: value.clone(),
-                                        env: env.clone(),
-                                    },
-                                    BindingType::Normal,
-                                ),
-                            );
-                        }
-                    } else {
-                        // This should not really happen, as `with_env` is intended to be
-                        // used with very simple records: no metadata, no recursive fields,
-                        // no field without definition, etc.
-                        debug_assert!(false);
-                    }
-                }
-
-                Ok(cont)
-            }
             UnaryOp::ContractCustom => {
                 let contract = if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
                     value.closurize(&mut self.context.cache, env)
