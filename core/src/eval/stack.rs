@@ -91,104 +91,105 @@ trait StackItem {
 
 /// The payload of a [ItemKind::Eq] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EqItem {
-    pub arg1: Closure,
-    pub arg2: Closure,
+pub(crate) struct EqItem {
+    pub(crate) arg1: Closure,
+    pub(crate) arg2: Closure,
 }
 
 /// The payload of a [ItemKind::Arg] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ArgItem {
-    arg: Closure,
+pub(crate) struct ArgItem {
+    pub(crate) arg: Closure,
     /// The original position of the argument, before it's been evaluated.
-    orig_arg_pos: PosIdx,
+    pub(crate) orig_arg_pos: PosIdx,
 }
 
 /// The payload of a [ItemKind::TrackedArg] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct TrackedArgItem {
-    idx: CacheIndex,
+pub(crate)struct TrackedArgItem {
+    pub(crate) idx: CacheIndex,
     /// The original position of the argument, before it's been evaluated.
-    orig_arg_pos: PosIdx,
+    pub(crate) orig_arg_pos: PosIdx,
 }
 
 /// The payload of a [ItemKind::UpdateIndex] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct UpdateIndexItem<C: Cache>(C::UpdateIndex);
+pub(crate) struct UpdateIndexItem<C: Cache>(C::UpdateIndex);
 
 /// Auxiliary data for operator continuation items.
 #[derive(Clone, Debug, Copy, PartialEq)]
-pub struct PrimopAppInfo {
+pub(crate) struct PrimopAppInfo {
     /// The callstack size at the point just before the operator evaluation started. Used to
     /// truncate the callstack after the evaluation is done.
-    pub call_stack_size: u32,
-    pub pos_idx: PosIdx,
+    pub(crate) call_stack_size: u32,
+    /// The position of the primitive operation application.
+    pub(crate) pos_idx: PosIdx,
 }
 
 /// The payload of a [ItemKind::Op1Cont] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Op1ContItem {
-    pub op: UnaryOp,
-    pub app_info: PrimopAppInfo,
+pub(crate) struct Op1ContItem {
+    pub(crate) op: UnaryOp,
+    pub(crate) app_info: PrimopAppInfo,
     /// The original position of the argument, before it's been evaluated.
-    pub orig_pos_arg: PosIdx,
+    pub(crate) orig_pos_arg: PosIdx,
 }
 
 /// The payload of a [ItemKind::Op2FirstCont] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Op2FirstContItem {
-    pub op: BinaryOp,
-    pub app_info: PrimopAppInfo,
-    pub arg2: Closure,
+pub(crate) struct Op2FirstContItem {
+    pub(crate) op: BinaryOp,
+    pub(crate) app_info: PrimopAppInfo,
+    pub(crate) arg2: Closure,
     /// The original position of the first argument, before it's been evaluated.
-    pub orig_pos_arg1: PosIdx,
+    pub(crate) orig_pos_arg1: PosIdx,
 }
 
 /// The payload of a [ItemKind::Op2SecondCont] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Op2SecondContItem {
-    pub op: BinaryOp,
-    pub app_info: PrimopAppInfo,
-    pub arg1_evaled: Closure,
+pub(crate) struct Op2SecondContItem {
+    pub(crate) op: BinaryOp,
+    pub(crate) app_info: PrimopAppInfo,
+    pub(crate) arg1_evaled: Closure,
     /// The original position of the first argument, before it's been evaluated.
-    pub orig_pos_arg1: PosIdx,
+    pub(crate) orig_pos_arg1: PosIdx,
     /// The original position of the second argument, before it's been evaluated.
-    pub orig_pos_arg2: PosIdx,
+    pub(crate) orig_pos_arg2: PosIdx,
 }
 
 /// The payload of a [ItemKind::OpNCont] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct OpNContItem {
-    pub op: NAryOp,
-    pub app_info: PrimopAppInfo,
+pub(crate) struct OpNContItem {
+    pub(crate) op: NAryOp,
+    pub(crate) app_info: PrimopAppInfo,
     /// Arguments that have already been evaluated, together with their original position.
-    pub evaluated: Vec<(Closure, PosIdx)>,
+    pub(crate) evaluated: Vec<(Closure, PosIdx)>,
     /// The stack (thus reversed) of arguments yet to be evaluated.
-    pub pending: Vec<Closure>,
+    pub(crate) pending: Vec<Closure>,
     /// The original position of the argument being currently evaluated by the VM (note that this
     /// argument is neither in [Self::evaluated] nor in [Self::pending], but only in the VM state).
-    pub current_pos_idx: PosIdx,
+    pub(crate) current_pos_idx: PosIdx,
 }
 
 /// The payload of a [ItemKind::StrChunk] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct StrChunkItem {
-    chunk: StrChunk<NickelValue>,
+pub(crate) struct StrChunkItem {
+    pub(crate) chunk: StrChunk<NickelValue>,
 }
 
 /// A string accumulator which maintains state while the virtual machine is evaluating a sequence
 /// of string chunks to a single string.
 #[derive(Default, PartialEq)]
-pub struct StrAccItem {
+pub(crate) struct StrAccItem {
     /// The current result.
-    pub acc: String,
+    pub(crate) acc: String,
     /// The common environment of chunks.
-    pub env: super::Environment,
+    pub(crate) env: super::Environment,
     /// The indentation level of the chunk currently being evaluated.
-    pub curr_indent: u32,
+    pub(crate) curr_indent: u32,
     /// The position of the original (unevaluated) expression of the chunk currently being
     /// evaluated.
-    pub curr_pos: PosIdx,
+    pub(crate) curr_pos: PosIdx,
 }
 
 impl StackItem for EqItem {
@@ -278,7 +279,7 @@ impl Marker {
 
 /// A possible continuation of interest when a sealed term is currently being evaluated.
 /// See [Stack::peek_sealed_cont].
-pub enum SealedCont {
+pub(crate) enum SealedCont {
     /// The next operation is an [Op2SecondContItem] where the operator is
     /// [BinaryOp::Unseal].
     Unseal,
@@ -317,7 +318,7 @@ pub enum SealedCont {
 /// For the Rust compiler, [Self::data] is just a stream of bytes. Whenever we need to pop, read or
 /// write data, we always first re-materialize a stack item on the native stack (that is, in a
 /// local variable), which is properly aligned.
-pub struct Stack<C: Cache> {
+pub(crate) struct Stack<C: Cache> {
     data: Vec<u8>,
     phantom: std::marker::PhantomData<C>,
 }
@@ -333,18 +334,18 @@ impl<C: Cache> Default for Stack<C> {
 
 impl<C: Cache> Stack<C> {
     /// The default capacity of the eval stack. Currently one page (4KB).
-    pub const DEFAULT_CAPACITY: usize = 4 * 1024;
+    pub(crate) const DEFAULT_CAPACITY: usize = 4 * 1024;
 
     /// Creates a stack with a default capacity of [Self::DEFAULT_CAPACITY]. Use
     /// [Self::with_capacity] for a different value, or [Default::default] for a stack with the
     /// same default capacity as [Vec].
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::with_capacity(Self::DEFAULT_CAPACITY)
     }
 
     /// Creates a stack with the specified capacity in bytes. Uses [Vec::with_capacity] to build
     /// the underlying vector.
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
         Stack {
             data: Vec::with_capacity(capacity),
             phantom: std::marker::PhantomData,
@@ -409,7 +410,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Peeks the top marker of the stack, or returns `None` if the stack is empty.
-    pub fn top_marker(&self) -> Option<Marker> {
+    pub(crate) fn top_marker(&self) -> Option<Marker> {
         self.data
             .last()
             .map(|marker_untyped| unsafe { mem::transmute::<u8, Marker>(*marker_untyped) })
@@ -424,6 +425,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Counts the number of consecutive markers satisfying `pred` from the top of the stack.
+    #[cfg(test)]
     fn count(&self, mut pred: impl FnMut(Marker) -> bool) -> usize {
         self.markers().take_while(|marker| pred(*marker)).count()
     }
@@ -536,7 +538,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Pops (and drops) all items in the stack and resets the state of the [Cache] elements it encounters.
-    pub fn unwind(&mut self, cache: &mut C) {
+    pub(crate) fn unwind(&mut self, cache: &mut C) {
         while self.data.len() > 0 {
             if let Some(Marker::UpdateIndex) = self.top_marker() {
                 // Safety: we checked in the outer if that the top marker is `UpdateIndex`.
@@ -549,40 +551,41 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Count the number of arguments at the top of the stack.
-    pub fn count_args(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn count_args(&self) -> usize {
         self.count(Marker::is_arg)
     }
 
-    pub fn push_arg(&mut self, arg: Closure, orig_arg_pos: PosIdx) {
+    pub(crate) fn push_arg(&mut self, arg: Closure, orig_arg_pos: PosIdx) {
         self.push(ArgItem { arg, orig_arg_pos })
     }
 
-    pub fn push_tracked_arg(&mut self, idx: CacheIndex, orig_arg_pos: PosIdx) {
+    pub(crate) fn push_tracked_arg(&mut self, idx: CacheIndex, orig_arg_pos: PosIdx) {
         self.push(TrackedArgItem { idx, orig_arg_pos })
     }
 
-    pub fn push_update_index(&mut self, uidx: C::UpdateIndex) {
+    pub(crate) fn push_update_index(&mut self, uidx: C::UpdateIndex) {
         self.push(UpdateIndexItem::<C>(uidx))
     }
 
-    pub fn push_op1_cont(&mut self, op_cont: Op1ContItem) {
+    pub(crate) fn push_op1_cont(&mut self, op_cont: Op1ContItem) {
         self.push(op_cont);
     }
 
-    pub fn push_op2_first_cont(&mut self, op_cont: Op2FirstContItem) {
+    pub(crate) fn push_op2_first_cont(&mut self, op_cont: Op2FirstContItem) {
         self.push(op_cont);
     }
 
-    pub fn push_op2_second_cont(&mut self, op_cont: Op2SecondContItem) {
+    pub(crate) fn push_op2_second_cont(&mut self, op_cont: Op2SecondContItem) {
         self.push(op_cont);
     }
 
-    pub fn push_opn_cont(&mut self, op_cont: OpNContItem) {
+    pub(crate) fn push_opn_cont(&mut self, op_cont: OpNContItem) {
         self.push(op_cont);
     }
 
     /// Push a sequence of equalities on the stack.
-    pub fn push_eqs<I>(&mut self, it: I)
+    pub(crate) fn push_eqs<I>(&mut self, it: I)
     where
         I: Iterator<Item = (Closure, Closure)>,
     {
@@ -595,7 +598,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Push a sequence of string chunks on the stack.
-    pub fn push_str_chunks<I>(&mut self, it: I)
+    pub(crate) fn push_str_chunks<I>(&mut self, it: I)
     where
         I: Iterator<Item = StrChunk<NickelValue>>,
     {
@@ -608,7 +611,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Push a string accumulator on the stack.
-    pub fn push_str_acc(&mut self, str_acc: StrAccItem) {
+    pub(crate) fn push_str_acc(&mut self, str_acc: StrAccItem) {
         self.push(str_acc);
     }
 
@@ -616,7 +619,7 @@ impl<C: Cache> Stack<C> {
     /// was not an argument and the stack is left unchanged.
     ///
     /// If the argument is tracked, it is automatically converted into an owned closure.
-    pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure, PosIdx)> {
+    pub(crate) fn pop_arg(&mut self, cache: &C) -> Option<(Closure, PosIdx)> {
         let Some(marker) = self.top_marker() else {
             return None;
         };
@@ -638,7 +641,7 @@ impl<C: Cache> Stack<C> {
     /// returned, the top element was not an argument and the stack is left unchanged.
     ///
     /// If the argument is not tracked, it is directly returned.
-    pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, PosIdx)> {
+    pub(crate) fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, PosIdx)> {
         let Some(marker) = self.top_marker() else {
             return None;
         };
@@ -659,32 +662,32 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop an index from the top of the stack. If `None` is returned, the top element was
     /// not an index and the stack is left unchanged.
-    pub fn pop_update_index(&mut self) -> Option<C::UpdateIndex> {
+    pub(crate) fn pop_update_index(&mut self) -> Option<C::UpdateIndex> {
         self.pop::<UpdateIndexItem<C>>()
             .map(|UpdateIndexItem(uidx)| uidx)
     }
 
     /// Try to pop a unary operator continuation from the top of the stack. If `None` is returned, the
     /// top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op1_cont(&mut self) -> Option<Op1ContItem> {
+    pub(crate) fn pop_op1_cont(&mut self) -> Option<Op1ContItem> {
         self.pop()
     }
 
     /// Try to pop a binary operator first continuation from the top of the stack. If `None` is
     /// returned, the top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op2_first_cont(&mut self) -> Option<Op2FirstContItem> {
+    pub(crate) fn pop_op2_first_cont(&mut self) -> Option<Op2FirstContItem> {
         self.pop()
     }
 
     /// Try to pop a binary operator second continuation from the top of the stack. If `None` is
     /// returned, the top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_op2_second_cont(&mut self) -> Option<Op2SecondContItem> {
+    pub(crate) fn pop_op2_second_cont(&mut self) -> Option<Op2SecondContItem> {
         self.pop()
     }
 
     /// Try to pop a n-ary operator continuation from the top of the stack. If `None` is returned,
     /// the top element was not an operator continuation and the stack is left unchanged.
-    pub fn pop_opn_cont(&mut self) -> Option<OpNContItem> {
+    pub(crate) fn pop_opn_cont(&mut self) -> Option<OpNContItem> {
         self.pop()
     }
 
@@ -694,7 +697,7 @@ impl<C: Cache> Stack<C> {
     /// implementation. Instead, we moved this check inside stack.
     ///
     /// This method look at the first element of the stack and return a corresponding [SealedCont].
-    pub fn peek_sealed_cont(&self) -> SealedCont {
+    pub(crate) fn peek_sealed_cont(&self) -> SealedCont {
         match self.top_marker() {
             Some(Marker::Op1Cont) => {
                 // Safety: we checked that the marker corresponds to what we read
@@ -722,61 +725,37 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop an equality from the top of the stack. If `None` is returned, the top element
     /// was not an equality and the stack is left unchanged.
-    pub fn pop_eq(&mut self) -> Option<EqItem> {
+    pub(crate) fn pop_eq(&mut self) -> Option<EqItem> {
         self.pop()
     }
 
     /// Try to pop a string chunk from the top of the stack. If `None` is returned, the top element
     /// was not a string chunk and the stack is left unchanged.
-    pub fn pop_str_chunk(&mut self) -> Option<StrChunk<NickelValue>> {
+    pub(crate) fn pop_str_chunk(&mut self) -> Option<StrChunk<NickelValue>> {
         self.pop::<StrChunkItem>()
             .map(|StrChunkItem { chunk }| chunk)
     }
 
     /// Try to pop a string accumulator from the top of the stack. If `None` is returned, the top
     /// element was not a string chunk and the stack is left unchanged.
-    pub fn pop_str_acc(&mut self) -> Option<StrAccItem> {
+    pub(crate) fn pop_str_acc(&mut self) -> Option<StrAccItem> {
         self.pop()
     }
 
     /// Check if the top element is a [CacheIndex].
-    pub fn is_top_idx(&self) -> bool {
+    pub(crate) fn is_top_idx(&self) -> bool {
         self.top_marker().is_some_and(Marker::is_idx)
     }
 
     /// Check if the top element is an operation continuation.
-    pub fn is_top_cont(&self) -> bool {
+    pub(crate) fn is_top_cont(&self) -> bool {
         self.top_marker().is_some_and(Marker::is_cont)
     }
 
     /// Discard all the consecutive equality from the top of the stack. This drops the continuation
     /// of the equality being currently evaluated.
-    pub fn clear_eqs(&mut self) {
+    pub(crate) fn clear_eqs(&mut self) {
         while self.pop_eq().is_some() {}
-    }
-
-    /// Turns the top element of the stack into a tracked arg if it was not already. Returns the
-    /// corresponding index, or `None` if the top element wasn't an argument.
-    pub fn track_arg(&mut self, cache: &mut C) -> Option<CacheIndex> {
-        let Some(marker) = self.top_marker() else {
-            return None;
-        };
-
-        match marker {
-            Marker::Arg => {
-                // Safety: we checked that the top-marker is `Arg`
-                let arg_item: ArgItem = unsafe { self.pop_unchecked() };
-                let idx = cache.add(arg_item.arg.clone(), BindingType::Normal);
-                self.push_tracked_arg(idx.clone(), arg_item.orig_arg_pos);
-
-                Some(idx)
-            }
-            Marker::TrackedArg => {
-                let TrackedArgItem { idx, .. } = unsafe { &*self.read_unchecked() };
-                Some(idx.clone())
-            }
-            _ => None,
-        }
     }
 }
 
