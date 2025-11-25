@@ -790,25 +790,23 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let mut str_acc = self.stack.pop_str_acc().expect("invalid stack state: missing string accumulator on the top while evaluating string chunks");
 
                 if let Some(s) = value.to_nickel_string() {
-                    let s = if str_acc.curr_indent != 0 {
+                    if str_acc.curr_indent != 0 {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..str_acc.curr_indent).map(|_| ' '))
                             .collect();
-                        s.as_str().replace('\n', &indent_str).into()
+                        str_acc.acc.push_str(&s.as_str().replace('\n', &indent_str))
                     } else {
-                        s.clone()
-                    };
-
-                    str_acc.acc.push_str(&s);
-
-                    let mut next_opt = self.stack.pop_str_chunk();
-                    // Pop consecutive string literals to find the next expression to evaluate
-                    while let Some(StrChunk::Literal(s)) = self.stack.pop_str_chunk() {
-                        str_acc.acc.push_str(&s);
-                        next_opt = self.stack.pop_str_chunk();
+                        str_acc.acc.push_str(s.as_str())
                     }
 
-                    if let Some(StrChunk::Expr(e, indent)) = next_opt {
+                    let mut next_chunk = self.stack.pop_str_chunk();
+                    // Pop consecutive string literals to find the next expression to evaluate
+                    while let Some(StrChunk::Literal(s)) = next_chunk {
+                        str_acc.acc.push_str(&s);
+                        next_chunk = self.stack.pop_str_chunk();
+                    }
+
+                    if let Some(StrChunk::Expr(e, indent)) = next_chunk {
                         self.stack.push_str_acc(StrAccItem {
                             acc: str_acc.acc,
                             // unwrap(): we don't expect an indentation level bigger than `u32::MAX`
@@ -830,8 +828,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env: str_acc.env.clone(),
                         })
                     } else {
-                        // We don't need to clear the accumulator; it is reset at the beginning of
-                        // a new string chunk accumulation.
                         Ok(
                             NickelValue::string(std::mem::take(&mut str_acc.acc), pos_op_inh)
                                 .into(),
