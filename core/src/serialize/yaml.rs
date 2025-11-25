@@ -6,9 +6,15 @@
 //! without passing through `saphyr`'s in-memory `Yaml` structure.
 //! (Also, this lets us support recursive aliases.)
 
-use std::{borrow::Cow, collections::BTreeMap, convert::Infallible, num::NonZeroUsize};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap, HashSet},
+    convert::Infallible,
+    num::NonZeroUsize,
+};
 
 use codespan::ByteIndex;
+use nickel_lang_parser::traverse::{TraverseAlloc, TraverseControl};
 use saphyr_parser::{BufferedInput, Parser, ScalarStyle, SpannedEventReceiver, Tag};
 
 use crate::{
@@ -114,7 +120,7 @@ impl<'ast> Node<'ast> {
 /// into
 ///
 /// ```nickel
-/// let rec %0 = [ 1, 2 ] in { bar = %0, baz = %0, }
+/// let rec _anchor0 = [ 1, 2 ] in { bar = _anchor0, baz = _anchor0, }
 /// ```
 ///
 /// Note that we generate the reference even if it's never
@@ -122,7 +128,7 @@ impl<'ast> Node<'ast> {
 /// missing, we'd generate
 ///
 /// ```nickel
-/// let rec %0 = [ 1, 2 ] in { bar = %0, }
+/// let rec _anchor0 = [ 1, 2 ] in { bar = _anchor0, }
 /// ```
 ///
 /// This could be changed in the future, but the current behavior is nice
@@ -574,6 +580,44 @@ pub fn load_json<'ast>(
     }))
 }
 
+/// Collects everything in `ast` that could possibly get put into an environment.
+///
+/// That is, everything not put in `idents` is guaranteed not to collide with
+/// anything. This is specialized to JSON/YAML, so names can only appear in
+/// records (and not in let bindings or functions).
+fn collect_idents(ast: &Ast<'_>, idents: &mut HashSet<Ident>) {
+    ast.traverse_ref(
+        &mut |node: &Ast<'_>, &()| {
+            if let ast::Node::Record(data) = &node.node {
+                idents.extend(
+                    data.field_defs
+                        .iter()
+                        .flat_map(|def| def.path)
+                        .filter_map(|elem| elem.try_as_ident().map(|id| id.ident())),
+                );
+            }
+            TraverseControl::<(), ()>::Continue
+        },
+        &(),
+    );
+}
+
+/// Generates a name like `_anchor0`, but one that's guaranteed not to collide
+/// with any other used identifier.
+///
+/// `counter` tells us which number to start searching at, and will be
+/// incremented to the chosen value (so if we return `_anchor7` then `counter`
+/// will be set to `7`).
+fn unused_ident(all_idents: &mut HashSet<Ident>, counter: &mut u64) -> Ident {
+    loop {
+        let id = Ident::new(format!("_anchor{counter}"));
+        if all_idents.insert(id) {
+            return id;
+        }
+        *counter += 1;
+    }
+}
+
 fn load<'ast>(
     alloc: &'ast AstAlloc,
     s: &str,
@@ -616,15 +660,64 @@ fn load<'ast>(
     if loader.anchor_map.map.is_empty() {
         Ok(main_term)
     } else {
-        let bindings = loader
+        // We generated an AST using fresh identifiers. Here we convert the
+        // fresh identifiers into normal identifiers so that the resulting
+        // AST will be syntactically valid when pretty-printed.
+        //
+        // It would be nice if we could avoid generating fresh identifiers
+        // and then replacing them later. But at the time we generate the
+        // identifiers, we don't yet know which identifier names are available
+        // (i.e. guaranteed not to collide with anything else).
+        let mut all_idents = HashSet::new();
+        collect_idents(&main_term, &mut all_idents);
+        for (_, value) in loader.anchor_map.map.values() {
+            collect_idents(value, &mut all_idents);
+        }
+
+        let mut counter = 0;
+        let renamed_bindings: HashMap<Ident, (Ident, Ast<'_>)> = loader
             .anchor_map
             .map
             .into_values()
+            .map(|(id, value)| {
+                let new_id = unused_ident(&mut all_idents, &mut counter);
+                counter += 1;
+                (id, (new_id, value))
+            })
+            .collect();
+
+        fn rename_vars<'ast>(
+            alloc: &'ast AstAlloc,
+            ast: Ast<'ast>,
+            renamed_bindings: &HashMap<Ident, (Ident, Ast<'ast>)>,
+        ) -> Ast<'ast> {
+            ast.traverse::<_, Infallible>(
+                alloc,
+                &mut |ast: Ast<'_>| match &ast.node {
+                    ast::Node::Var(id) => {
+                        if let Some((new_id, _)) = renamed_bindings.get(&id.ident()) {
+                            Ok(ast::Node::Var((*new_id).into()).into())
+                        } else {
+                            Ok(ast)
+                        }
+                    }
+                    _ => Ok(ast),
+                },
+                nickel_lang_parser::traverse::TraverseOrder::BottomUp,
+            )
+            // unwrap: the error was Infallible
+            .unwrap()
+        }
+
+        let main_term = rename_vars(alloc, main_term, &renamed_bindings);
+        let bindings = renamed_bindings
+            .values()
             .map(|(id, value)| ast::LetBinding {
-                pattern: ast::pattern::Pattern::any(id.into()),
+                pattern: ast::pattern::Pattern::any((*id).into()),
                 metadata: Default::default(),
-                value,
+                value: rename_vars(alloc, value.clone(), &renamed_bindings),
             });
+        // unwrap: the error was Infallible
         Ok(alloc.let_block(bindings, main_term, true).into())
     }
 }
@@ -677,8 +770,6 @@ pub fn load_yaml_value(
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use super::*;
 
     // Turn a YAML string into a Nickel string, by converting to Ast
@@ -705,13 +796,6 @@ mod tests {
 
     #[test]
     fn yaml_refs() {
-        let fresh_re = Regex::new("%[0-9]+").unwrap();
-
-        // We can't predict what the generated fresh identifiers will be,
-        // so replace them all with "%gen".
-        let yaml_to_censored_ncl =
-            |s: &str| -> String { fresh_re.replace_all(&yaml_to_ncl(s), "%gen").into_owned() };
-
         let basic_ref = r#"
 bar: &ref
     - 1
@@ -719,8 +803,8 @@ bar: &ref
 baz: *ref
 "#;
         assert_eq!(
-            &yaml_to_censored_ncl(basic_ref),
-            "let rec %gen = [ 1, 2 ] in { bar = %gen, baz = %gen }"
+            &yaml_to_ncl(basic_ref),
+            "let rec _anchor0 = [ 1, 2 ] in { bar = _anchor0, baz = _anchor0 }"
         );
 
         let recursive_ref = r#"
@@ -729,8 +813,18 @@ foo: &ref
     - bar: *ref
 "#;
         assert_eq!(
-            &yaml_to_censored_ncl(recursive_ref),
-            "let rec %gen = [ 1, { bar = %gen } ] in { foo = %gen }"
+            &yaml_to_ncl(recursive_ref),
+            "let rec _anchor0 = [ 1, { bar = _anchor0 } ] in { foo = _anchor0 }"
+        );
+
+        let recursive_ref_with_name_collision = r#"
+foo: &ref
+    - 1
+    - _anchor0: *ref
+"#;
+        assert_eq!(
+            &yaml_to_ncl(recursive_ref_with_name_collision),
+            "let rec _anchor1 = [ 1, { _anchor0 = _anchor1 } ] in { foo = _anchor1 }"
         );
     }
 }
