@@ -325,15 +325,26 @@ pub struct Stack<C: Cache> {
 impl<C: Cache> Default for Stack<C> {
     fn default() -> Self {
         Stack {
-            data: Vec::new(),
+            data: Vec::default(),
             phantom: std::marker::PhantomData,
         }
     }
 }
 
 impl<C: Cache> Stack<C> {
+    /// Creates a stack with a default capacity of 512KB. Use [Self::with_capacity] for a different
+    /// value, or [Default::default] for a stack with the same default capacity as [Vec].
     pub fn new() -> Self {
-        Self::default()
+        Self::with_capacity(512 * 1024)
+    }
+
+    /// Creates a stack with the specified capacity in bytes. Uses [Vec::with_capacity] to build
+    /// the underlying vector.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Stack {
+            data: Vec::with_capacity(capacity),
+            phantom: std::marker::PhantomData,
+        }
     }
 
     /// Pushes an item of the stack. Reserve sufficient space in the backing storage, write `value`
@@ -863,7 +874,7 @@ mod tests {
 
     #[test]
     fn pushing_and_popping_args() {
-        let mut s = Stack::new();
+        let mut s = Stack::default();
         assert_eq!(0, s.count_args());
 
         s.push_arg(some_closure(), PosIdx::NONE);
@@ -878,7 +889,7 @@ mod tests {
 
     #[test]
     fn pushing_and_popping_thunks() {
-        let mut s = Stack::new();
+        let mut s = Stack::default();
         assert_eq!(0, s.count_thunks());
 
         let mut eval_cache = CacheImpl::new();
@@ -906,7 +917,7 @@ mod tests {
 
     #[test]
     fn pushing_and_popping_conts() {
-        let mut s = Stack::new();
+        let mut s = Stack::default();
         assert_eq!(0, s.count_conts());
 
         s.push_op1_cont(Op1ContItem {
