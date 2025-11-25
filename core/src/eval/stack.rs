@@ -309,10 +309,11 @@ impl<C: Cache> Stack<C> {
 
     /// Pushes an item of the stack. Reserve sufficient space in the backing storage, write `value`
     /// as a sequence of bytes, and finally write the corresponding marker.
-    fn push<T: StackItem>(&mut self, value: T) {
+    fn push<T: StackItem>(&mut self, item: T) {
         let size_value = mem::size_of::<T>();
         let kind = T::marker();
 
+        let prev_len = self.data.len();
         self.data.reserve(size_value + mem::size_of::<Marker>());
 
         let storage = self.data.as_mut_ptr();
@@ -328,17 +329,23 @@ impl<C: Cache> Stack<C> {
             //    borrowed Vec)
             // - `&value` is valid for read (as a local variable)
             // - `data_slot` and `value` can't overlap, as `Vec` guarantees unique ownership of its
-            //   allocation, while `value` is on the stack
-            ptr::copy_nonoverlapping(&value as *const T as *const u8, data_slot, size_value);
+            //   allocation in the heap, while `value` is on the stack
+            ptr::copy_nonoverlapping(&item as *const T as *const u8, data_slot, size_value);
             // Safety: `marker_slot` is valid for write (located in the backing allocation of a
             // mutably borrowed Vec)
             ptr::write(marker_slot, kind as u8);
+
+            // Safety: we've reserved enough capacity with `reserve()` above, and we wrote
+            // initialized data in the new slots with `ptr::write`, so we can force a new length.
+            self.data
+                .set_len(prev_len + size_value + mem::size_of::<Marker>());
         }
 
-        // Since we've copied the value into the stack, we will materialize it again at pop time:
-        // we mustn't run any clean up code now. In some sense, we've moved the value into the
-        // stack, albeit as a bunch of untyped bytes instead of a `T`.
-        let _ = mem::ManuallyDrop::new(value);
+        // Since we've copied the value onto the eval stack, we will materialize it again at pop
+        // time: we mustn't run any clean up code now. In some sense, we've moved the value from
+        // the Rust stack into the eval stack, albeit as a bunch of untyped bytes instead of a
+        // proper `T` value.
+        let _ = mem::ManuallyDrop::new(item);
     }
 
     /// Tries to pop an element as `T`, or returns `None` if the stack is empty or if the top
