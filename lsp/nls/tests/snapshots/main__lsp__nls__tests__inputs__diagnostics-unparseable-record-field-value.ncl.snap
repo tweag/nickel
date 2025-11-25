@@ -1,0 +1,5 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[0:0-6:1: "type error: extra row `z`\nExpected an expression of type `{ x : Number, y : Number }`, which does not contain the field `z`\nFound an expression of type `{ x : Number, z : _a, y : Number }`, which contains the extra field `z`", 0:0-6:1: "this expression", 4:6-4:7: "unexpected token"]

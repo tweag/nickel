@@ -75,12 +75,34 @@ pub(super) struct ShallowRecord<'ast> {
     /// The static fields of the record.
     pub stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
     /// The dynamic fields of the record.
-    pub dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
+    ///
+    /// This should not include any fields where the field name is a parser error, as those
+    /// fields should be ignored for typechecking purposes. Instances created through the
+    /// [ShallowRecord::new] constructor will filter out such fields.
+    dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
     /// The position of the resolved record.
     pub pos: TermPos,
 }
 
 impl<'ast> ShallowRecord<'ast> {
+    /// Creates an instance of [ShallowRecord].
+    ///
+    /// This constructor will exclude fields where the field name is a parser error, so that
+    /// those fields will be ignored for typechecking purposes.
+    pub fn new(
+        stat_fields: IndexMap<LocIdent, ResolvedField<'ast>>,
+        dyn_fields: Vec<(&'ast Ast<'ast>, ResolvedField<'ast>)>,
+        pos: TermPos,
+    ) -> Self {
+        ShallowRecord {
+            stat_fields,
+            dyn_fields: dyn_fields
+                .into_iter()
+                .filter(|(key, _)| !matches!(key.node, Node::ParseError(_)))
+                .collect(),
+            pos,
+        }
+    }
     pub fn empty() -> Self {
         Self::default()
     }
@@ -623,11 +645,7 @@ impl<'ast> Combine for ShallowRecord<'ast> {
             _ => TermPos::None,
         };
 
-        ShallowRecord {
-            stat_fields,
-            dyn_fields,
-            pos,
-        }
+        ShallowRecord::new(stat_fields, dyn_fields, pos)
     }
 }
 
@@ -643,11 +661,7 @@ impl<'ast> PoslessResolvedRecord<'ast> {
     ) -> Self {
         PoslessResolvedRecord(ResolvedRecord {
             includes,
-            content: ShallowRecord {
-                stat_fields,
-                dyn_fields,
-                pos: TermPos::None,
-            },
+            content: ShallowRecord::new(stat_fields, dyn_fields, TermPos::None),
         })
     }
 
@@ -882,11 +896,11 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
                 if let Some(id) = path_elem.try_as_ident() {
                     let pos_acc = acc.pos();
 
-                    ResolvedField::from(ShallowRecord {
-                        stat_fields: iter::once((id, acc)).collect(),
-                        dyn_fields: Vec::new(),
-                        pos: id.pos.fuse(pos_acc),
-                    })
+                    ResolvedField::from(ShallowRecord::new(
+                        iter::once((id, acc)).collect(),
+                        Vec::new(),
+                        id.pos.fuse(pos_acc),
+                    ))
                 } else {
                     // unreachable!(): `try_as_ident` returns `None` only if the path element is a
                     // `Expr`
@@ -896,11 +910,11 @@ impl<'ast> Resolve<'ast> for FieldDef<'ast> {
 
                     let pos_acc = acc.pos();
 
-                    ResolvedField::from(ShallowRecord {
-                        stat_fields: IndexMap::new(),
-                        dyn_fields: vec![(expr, acc)],
-                        pos: expr.pos.fuse(pos_acc),
-                    })
+                    ResolvedField::from(ShallowRecord::new(
+                        IndexMap::new(),
+                        vec![(expr, acc)],
+                        expr.pos.fuse(pos_acc),
+                    ))
                 }
             })
     }
