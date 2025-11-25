@@ -800,11 +800,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         op: data.op.clone(),
                         orig_pos_arg: data.arg.pos_idx(),
                         app_info: PrimopAppInfo {
-                            call_stack_size: self
-                                .call_stack
-                                .len()
-                                .try_into()
-                                .expect("unexpected call stack bigger than u32::MAX"),
+                            call_stack_size: self.call_stack.len(),
                             pos_idx,
                         },
                     });

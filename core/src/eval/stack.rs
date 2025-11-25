@@ -24,11 +24,10 @@ use std::{mem, ptr};
 // see why we would need more than 255 different types of stack items. Any additional metadata for
 // an item can and should be encoded in the item itself, not in the marker.
 #[repr(u8)]
-pub enum Marker {
+pub(crate) enum Marker {
     /// A pair of expressions to be checked for equality.
     Eq,
-    /// An argument of an application. It is not stored as [Self::Value] because an argument additionally
-    /// stores the original position of the application.
+    /// An argument of an application.
     Arg,
     /// A tracked argument. Behaves the same as a standard argument, but is given directly as a
     /// cache index (thunk), such that it can be shared with other part of the program.
@@ -106,7 +105,7 @@ pub(crate) struct ArgItem {
 
 /// The payload of a [ItemKind::TrackedArg] stack item.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate)struct TrackedArgItem {
+pub(crate) struct TrackedArgItem {
     pub(crate) idx: CacheIndex,
     /// The original position of the argument, before it's been evaluated.
     pub(crate) orig_arg_pos: PosIdx,
@@ -253,27 +252,20 @@ impl StackItem for StrAccItem {
 }
 
 impl Marker {
-    pub fn is_arg(self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn is_arg(self) -> bool {
         matches!(self, Marker::Arg | Marker::TrackedArg)
     }
 
-    pub fn is_idx(self) -> bool {
+    pub(crate) fn is_idx(self) -> bool {
         matches!(self, Marker::UpdateIndex)
     }
 
-    pub fn is_cont(self) -> bool {
+    pub(crate) fn is_cont(self) -> bool {
         matches!(
             self,
             Marker::Op1Cont | Marker::Op2FirstCont | Marker::Op2SecondCont | Marker::OpNCont
         )
-    }
-
-    pub fn is_eq(self) -> bool {
-        matches!(self, Marker::Eq)
-    }
-
-    pub fn is_str_chunk(self) -> bool {
-        matches!(self, Marker::StrChunk)
     }
 }
 
@@ -396,9 +388,7 @@ impl<C: Cache> Stack<C> {
     /// Tries to pop an element as `T`, or returns `None` if the stack is empty or if the top
     /// marker isn't equal to `T::marker()`.
     fn pop<T: StackItem>(&mut self) -> Option<T> {
-        let Some(marker) = self.top_marker() else {
-            return None;
-        };
+        let marker = self.top_marker()?;
 
         if marker != T::marker() {
             return None;
@@ -539,7 +529,7 @@ impl<C: Cache> Stack<C> {
 
     /// Pops (and drops) all items in the stack and resets the state of the [Cache] elements it encounters.
     pub(crate) fn unwind(&mut self, cache: &mut C) {
-        while self.data.len() > 0 {
+        while !self.data.is_empty() {
             if let Some(Marker::UpdateIndex) = self.top_marker() {
                 // Safety: we checked in the outer if that the top marker is `UpdateIndex`.
                 let UpdateIndexItem::<C>(mut uidx) = unsafe { self.pop_unchecked() };
@@ -620,9 +610,7 @@ impl<C: Cache> Stack<C> {
     ///
     /// If the argument is tracked, it is automatically converted into an owned closure.
     pub(crate) fn pop_arg(&mut self, cache: &C) -> Option<(Closure, PosIdx)> {
-        let Some(marker) = self.top_marker() else {
-            return None;
-        };
+        let marker = self.top_marker()?;
 
         match marker {
             Marker::Arg => {
@@ -642,9 +630,7 @@ impl<C: Cache> Stack<C> {
     ///
     /// If the argument is not tracked, it is directly returned.
     pub(crate) fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, PosIdx)> {
-        let Some(marker) = self.top_marker() else {
-            return None;
-        };
+        let marker = self.top_marker()?;
 
         match marker {
             Marker::Arg => {
@@ -768,7 +754,7 @@ impl<C: Cache> Drop for Stack<C> {
 }
 
 /// An iterator over the markers in the stack.
-pub struct StackMarkerIter<'a, C: Cache> {
+pub(crate) struct StackMarkerIter<'a, C: Cache> {
     stack: &'a Stack<C>,
     /// The cursor, pointing to one index past the current marker (that is, it's `stack.len()` at
     /// the beginning of iteration and `0` at the end).
