@@ -332,10 +332,14 @@ impl<C: Cache> Default for Stack<C> {
 }
 
 impl<C: Cache> Stack<C> {
-    /// Creates a stack with a default capacity of 512KB. Use [Self::with_capacity] for a different
-    /// value, or [Default::default] for a stack with the same default capacity as [Vec].
+    /// The default capacity of the eval stack. Currently one page (4KB).
+    pub const DEFAULT_CAPACITY: usize = 4 * 1024;
+
+    /// Creates a stack with a default capacity of [Self::DEFAULT_CAPACITY]. Use
+    /// [Self::with_capacity] for a different value, or [Default::default] for a stack with the
+    /// same default capacity as [Vec].
     pub fn new() -> Self {
-        Self::with_capacity(512 * 1024)
+        Self::with_capacity(Self::DEFAULT_CAPACITY)
     }
 
     /// Creates a stack with the specified capacity in bytes. Uses [Vec::with_capacity] to build
