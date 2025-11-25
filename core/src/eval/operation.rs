@@ -7,11 +7,11 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    Cache, Closure, Environment, ErrorKind, ImportResolver, StrAccData, VirtualMachine,
+    Cache, Closure, Environment, ErrorKind, ImportResolver, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
     merge::{self, MergeMode, split},
-    stack::{Op1ContItem, Op2FirstContItem, Op2SecondContItem, OpNContItem},
+    stack::{EqItem, Op1ContItem, Op2FirstContItem, Op2SecondContItem, PrimopAppInfo},
     subst,
     value::{
         Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
@@ -119,18 +119,15 @@ struct OpNEvalData {
 static ENUM_FORMAT: &str = "[| 'Json, 'Yaml, 'Toml |]";
 
 impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
-    /// Proceeds to the next step of the evaluation of an operation.
+    /// Proceeds to the next step of the evaluation of a primitive operation.
     ///
-    /// Depending on the content of the stack, it either starts the evaluation of the first
-    /// argument, starts the evaluation of the second argument, or finally proceed with the
-    /// operation if both arguments are evaluated (for binary operators).
-    pub fn continue_op(&mut self, mut closure: Closure) -> Result<Closure, ErrorKind> {
-        // let (cont, cs_len, pos_idx) = self.stack.pop_op_cont().expect("Condition already checked");
-        // self.call_stack.truncate(cs_len);
-
+    /// Depending on the content of the stack, it either starts the evaluation of the next argument
+    /// or finally proceed with the operation if all arguments are evaluated.
+    pub fn continue_op(&mut self, closure: Closure) -> Result<Closure, ErrorKind> {
         if let Some(op1_cont) = self.stack.pop_op1_cont() {
             self.call_stack
                 .truncate(op1_cont.app_info.call_stack_size as usize);
+
             self.eval_op1(Op1EvalData {
                 op: op1_cont.op,
                 arg: closure,
@@ -140,6 +137,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         } else if let Some(op2_fst_cont) = self.stack.pop_op2_first_cont() {
             self.call_stack
                 .truncate(op2_fst_cont.app_info.call_stack_size as usize);
+
             self.stack.push_op2_second_cont(Op2SecondContItem {
                 op: op2_fst_cont.op,
                 app_info: op2_fst_cont.app_info,
@@ -152,6 +150,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         } else if let Some(op2_snd_cont) = self.stack.pop_op2_second_cont() {
             self.call_stack
                 .truncate(op2_snd_cont.app_info.call_stack_size as usize);
+
             self.eval_op2(Op2EvalData {
                 op: op2_snd_cont.op,
                 arg1: op2_snd_cont.arg1_evaled,
@@ -1438,6 +1437,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         env,
                     }),
                     ("Error", err_data) => {
+                        let app_info = PrimopAppInfo {
+                            call_stack_size: self.call_stack.len(),
+                            pos_idx: pos_op_inh,
+                        };
                         // In the error case, we first need to force the error data so that
                         // primitive values (strings) can be extracted from it, attach the
                         // corresponding data to the label, and then blame.
@@ -1445,30 +1448,24 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         // To do so, we setup the stack to represent the evaluation context
                         // `%contract/blame% (%label/with_error_data% (%force% [.]) label)` and
                         // then continue with `err_data`.
-                        self.stack.push_op_cont(
-                            OperationCont::Op1(UnaryOp::Blame, orig_pos_arg),
-                            self.call_stack.len(),
-                            pos_op_inh,
-                        );
-                        self.stack.push_op_cont(
-                            OperationCont::Op2First(
-                                BinaryOp::LabelWithErrorData,
-                                label_closure,
-                                pos_label,
-                            ),
-                            self.call_stack.len(),
-                            pos_op_inh,
-                        );
-                        self.stack.push_op_cont(
-                            OperationCont::Op1(
-                                UnaryOp::Force {
-                                    ignore_not_exported: false,
-                                },
-                                orig_pos_arg,
-                            ),
-                            self.call_stack.len(),
-                            pos_op_inh,
-                        );
+                        self.stack.push_op1_cont(Op1ContItem {
+                            op: UnaryOp::Blame,
+                            app_info,
+                            orig_pos_arg,
+                        });
+                        self.stack.push_op2_first_cont(Op2FirstContItem {
+                            op: BinaryOp::LabelWithErrorData,
+                            app_info,
+                            arg2: label_closure,
+                            orig_pos_arg1: pos_label,
+                        });
+                        self.stack.push_op1_cont(Op1ContItem {
+                            op: UnaryOp::Force {
+                                ignore_not_exported: false,
+                            },
+                            app_info,
+                            orig_pos_arg,
+                        });
 
                         Ok(Closure {
                             value: err_data.clone(),
@@ -1862,6 +1859,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 Ok(NickelValue::string(format!("{s1}{s2}"), pos_op_inh).into())
             }
             BinaryOp::ContractApply | BinaryOp::ContractCheck => {
+                let app_info = PrimopAppInfo {
+                    call_stack_size: self.call_stack.len(),
+                    pos_idx: pos_op_inh,
+                };
+
                 // Performing only one match `if let Term::Type` and putting the call to
                 // `increment!` there looks sensible at first, but it's annoying to explain to
                 // rustc and clippy that we match on `typ` but use it only if the `metrics` feature
@@ -1884,18 +1886,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                     // We set the stack to represent the evaluation context `<b_op> [.] label` and
                     // proceed to evaluate `<typ.contract()>`
-                    self.stack.push_op_cont(
-                        OperationCont::Op2First(
-                            op,
-                            Closure {
-                                value: value2,
-                                env: env2,
-                            },
-                            orig_pos_arg1,
-                        ),
-                        self.call_stack.len(),
-                        pos_op_inh,
-                    );
+                    self.stack.push_op2_first_cont(Op2FirstContItem {
+                        op,
+                        app_info,
+                        arg2: Closure {
+                            value: value2,
+                            env: env2,
+                        },
+                        orig_pos_arg1,
+                    });
 
                     return Ok(Closure {
                         value: contract.clone(),
@@ -1962,11 +1961,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 {
                     self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
-                    self.stack.push_op_cont(
-                        OperationCont::Op1(UnaryOp::ContractPostprocessResult, pos1.to_inherited()),
-                        self.call_stack.len(),
-                        pos_op_inh,
-                    );
+                    self.stack.push_op1_cont(Op1ContItem {
+                        op: UnaryOp::ContractPostprocessResult,
+                        app_info,
+                        orig_pos_arg: pos1.to_inherited(),
+                    });
                 }
 
                 // Contract checks are allowed to specify a blame location, but they don't
@@ -1978,14 +1977,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 if let BinaryOp::ContractCheck = &op {
                     self.stack.push_arg(new_label.clone().into(), pos_op_inh);
 
-                    self.stack.push_op_cont(
-                        OperationCont::Op1(
-                            UnaryOp::ContractAttachDefaultLabel,
-                            pos1.to_inherited(),
-                        ),
-                        self.call_stack.len(),
-                        pos_op_inh,
-                    );
+                    self.stack.push_op1_cont(Op1ContItem {
+                        op: UnaryOp::ContractAttachDefaultLabel,
+                        app_info,
+                        orig_pos_arg: pos1.to_inherited(),
+                    });
                 }
 
                 // Now that we've updated the label, we push the checked value and the new
@@ -2164,9 +2160,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             Ok(NickelValue::bool_value(false, pos_op_inh).into())
                         }
                         (true, None) => Ok(NickelValue::bool_value(true, pos_op_inh).into()),
-                        (true, Some((c1, c2))) => {
-                            let v1 = c1.value.closurize(&mut self.context.cache, c1.env);
-                            let v2 = c2.value.closurize(&mut self.context.cache, c2.env);
+                        (true, Some(EqItem { arg1, arg2 })) => {
+                            let v1 = arg1.value.closurize(&mut self.context.cache, arg1.env);
+                            let v2 = arg2.value.closurize(&mut self.context.cache, arg2.env);
 
                             // TODO: avoid term allocation in evaluation
                             Ok(NickelValue::term(Term::op2(BinaryOp::Eq, v1, v2), pos_op).into())
@@ -4103,6 +4099,11 @@ mod tests {
         eval::{Environment, VmContext, cache::CacheImpl},
     };
 
+    const NO_APP_INFO: PrimopAppInfo = PrimopAppInfo {
+        call_stack_size: 0,
+        pos_idx: PosIdx::NONE,
+    };
+
     // Initialize a VM with a default context
     fn with_vm(test: impl FnOnce(VirtualMachine<'_, DummyResolver, CacheImpl>)) {
         let mut vm_ctxt = VmContext::new(DummyResolver {}, std::io::sink(), NullReporter {});
@@ -4113,12 +4114,13 @@ mod tests {
     #[test]
     fn ite_operation() {
         with_vm(|mut vm| {
-            let cont: OperationCont = OperationCont::Op1(UnaryOp::IfThenElse, PosIdx::NONE);
-
             vm.stack.push_arg(mk_term::integer(5).into(), PosIdx::NONE);
             vm.stack.push_arg(mk_term::integer(46).into(), PosIdx::NONE);
-
-            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
+            vm.stack.push_op1_cont(Op1ContItem {
+                op: UnaryOp::IfThenElse,
+                orig_pos_arg: PosIdx::NONE,
+                app_info: NO_APP_INFO,
+            });
 
             assert_eq!(
                 vm.continue_op(NickelValue::bool_true().into()),
@@ -4131,16 +4133,15 @@ mod tests {
     #[test]
     fn plus_first_term_operation() {
         with_vm(|mut vm| {
-            let cont = OperationCont::Op2First(
-                BinaryOp::Plus,
-                Closure {
+            vm.stack.push_op2_first_cont(Op2FirstContItem {
+                op: BinaryOp::Plus,
+                app_info: NO_APP_INFO,
+                arg2: Closure {
                     value: mk_term::integer(6),
                     env: Environment::new(),
                 },
-                PosIdx::NONE,
-            );
-
-            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
+                orig_pos_arg1: PosIdx::NONE,
+            });
 
             assert_eq!(
                 vm.continue_op(mk_term::integer(7).into()),
@@ -4148,17 +4149,16 @@ mod tests {
             );
             assert_eq!(1, vm.stack.count_conts());
             assert_eq!(
-                (
-                    OperationCont::Op2Second(
-                        BinaryOp::Plus,
-                        mk_term::integer(7).into(),
-                        PosIdx::NONE,
-                        PosIdx::NONE,
-                    ),
-                    0,
-                    PosIdx::NONE
-                ),
-                vm.stack.pop_op_cont().expect("Condition already checked.")
+                (Op2SecondContItem {
+                    op: BinaryOp::Plus,
+                    app_info: NO_APP_INFO,
+                    arg1_evaled: mk_term::integer(7).into(),
+                    orig_pos_arg1: PosIdx::NONE,
+                    orig_pos_arg2: PosIdx::NONE,
+                }),
+                vm.stack
+                    .pop_op2_second_cont()
+                    .expect("Condition already checked.")
             );
         });
     }
@@ -4166,17 +4166,13 @@ mod tests {
     #[test]
     fn plus_second_term_operation() {
         with_vm(|mut vm| {
-            let cont: OperationCont = OperationCont::Op2Second(
-                BinaryOp::Plus,
-                Closure {
-                    value: mk_term::integer(7),
-                    env: Environment::new(),
-                },
-                PosIdx::NONE,
-                PosIdx::NONE,
-            );
-
-            vm.stack.push_op_cont(cont, 0, PosIdx::NONE);
+            vm.stack.push_op2_second_cont(Op2SecondContItem {
+                op: BinaryOp::Plus,
+                app_info: NO_APP_INFO,
+                arg1_evaled: mk_term::integer(7).into(),
+                orig_pos_arg1: PosIdx::NONE,
+                orig_pos_arg2: PosIdx::NONE,
+            });
 
             assert_eq!(
                 vm.continue_op(mk_term::integer(6).into()),

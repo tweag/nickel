@@ -82,14 +82,14 @@ trait StackItem {
 }
 
 /// The payload of a [ItemKind::Eq] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EqItem {
-    arg1: Closure,
-    arg2: Closure,
+    pub arg1: Closure,
+    pub arg2: Closure,
 }
 
 /// The payload of a [ItemKind::Arg] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArgItem {
     arg: Closure,
     /// The original position of the argument, before it's been evaluated.
@@ -97,7 +97,7 @@ pub struct ArgItem {
 }
 
 /// The payload of a [ItemKind::TrackedArg] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TrackedArgItem {
     idx: CacheIndex,
     /// The original position of the argument, before it's been evaluated.
@@ -105,11 +105,11 @@ pub struct TrackedArgItem {
 }
 
 /// The payload of a [ItemKind::UpdateIndex] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UpdateIndexItem<C: Cache>(C::UpdateIndex);
 
 /// Auxiliary data for operator continuation items.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub struct PrimopAppInfo {
     /// The callstack size at the point just before the operator evaluation started. Used to
     /// truncate the callstack after the evaluation is done.
@@ -118,7 +118,7 @@ pub struct PrimopAppInfo {
 }
 
 /// The payload of a [ItemKind::Op1Cont] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Op1ContItem {
     pub op: UnaryOp,
     pub app_info: PrimopAppInfo,
@@ -127,7 +127,7 @@ pub struct Op1ContItem {
 }
 
 /// The payload of a [ItemKind::Op2FirstCont] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Op2FirstContItem {
     pub op: BinaryOp,
     pub app_info: PrimopAppInfo,
@@ -137,7 +137,7 @@ pub struct Op2FirstContItem {
 }
 
 /// The payload of a [ItemKind::Op2SecondCont] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Op2SecondContItem {
     pub op: BinaryOp,
     pub app_info: PrimopAppInfo,
@@ -149,7 +149,7 @@ pub struct Op2SecondContItem {
 }
 
 /// The payload of a [ItemKind::OpNCont] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OpNContItem {
     pub op: NAryOp,
     pub app_info: PrimopAppInfo,
@@ -163,7 +163,7 @@ pub struct OpNContItem {
 }
 
 /// The payload of a [ItemKind::StrChunk] stack item.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StrChunkItem {
     chunk: StrChunk<NickelValue>,
 }
@@ -794,30 +794,22 @@ mod tests {
         NickelValue::bool_true().into()
     }
 
-    fn some_cont() -> OperationCont {
-        OperationCont::Op1(UnaryOp::Typeof, PosIdx::NONE)
-    }
-
-    fn some_arg_marker() -> Marker<CacheImpl> {
-        Marker::Arg(some_closure(), PosIdx::NONE)
-    }
-
-    fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
-        let mut idx = eval_cache.add(some_closure(), BindingType::Normal);
-        let uidx = eval_cache.make_update_index(&mut idx).unwrap();
-        Marker::UpdateIndex(uidx)
-    }
-
-    fn some_cont_marker() -> Marker<CacheImpl> {
-        Marker::Cont(some_cont(), 42, PosIdx::NONE)
+    fn some_cont_item() -> Op1ContItem {
+        Op1ContItem {
+            op: UnaryOp::Typeof,
+            app_info: PrimopAppInfo {
+                call_stack_size: 0,
+                pos_idx: PosIdx::NONE,
+            },
+            orig_pos_arg: PosIdx::NONE,
+        }
     }
 
     #[test]
     fn marker_differentiates() {
-        let mut eval_cache = CacheImpl::new();
-        assert!(some_arg_marker().is_arg());
-        assert!(some_thunk_marker(&mut eval_cache).is_idx());
-        assert!(some_cont_marker().is_cont());
+        assert!(ArgItem::marker().is_arg());
+        assert!(UpdateIndexItem::<CacheImpl>::marker().is_idx());
+        assert!(Op1ContItem::marker().is_cont());
     }
 
     #[test]
@@ -868,12 +860,31 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_conts());
 
-        s.push_op_cont(some_cont(), 3, PosIdx::NONE);
-        s.push_op_cont(some_cont(), 4, PosIdx::NONE);
+        s.push_op1_cont(Op1ContItem {
+            app_info: PrimopAppInfo {
+                call_stack_size: 3,
+                pos_idx: PosIdx::NONE,
+            },
+            ..some_cont_item()
+        });
+        s.push_op1_cont(Op1ContItem {
+            app_info: PrimopAppInfo {
+                call_stack_size: 4,
+                pos_idx: PosIdx::NONE,
+            },
+            ..some_cont_item()
+        });
+
         assert_eq!(2, s.count_conts());
         assert_eq!(
-            (some_cont(), 4, PosIdx::NONE),
-            s.pop_op_cont().expect("Already checked")
+            Some(Op1ContItem {
+                app_info: PrimopAppInfo {
+                    call_stack_size: 4,
+                    pos_idx: PosIdx::NONE
+                },
+                ..some_cont_item()
+            }),
+            s.pop_op1_cont()
         );
         assert_eq!(1, s.count_conts());
     }
