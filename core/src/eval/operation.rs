@@ -11,7 +11,7 @@ use super::{
     cache::lazy::Thunk,
     contract_eq::contract_eq,
     merge::{self, MergeMode, split},
-    stack::{EqItem, Op1ContItem, Op2FirstContItem, Op2SecondContItem, PrimopAppInfo},
+    stack::{EqItem, Op1ContItem, Op2FirstContItem, Op2SecondContItem, PrimopAppInfo, StrAccItem},
     subst,
     value::{
         Array, ArrayData, Container, EnumVariantData, NickelValue, TypeData, ValueContentRef,
@@ -787,7 +787,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
             }
             UnaryOp::ChunksConcat => {
-                let str_acc = &mut self.registers.str_acc;
+                let mut str_acc = self.stack.pop_str_acc().expect("invalid stack state: missing string accumulator on the top while evaluating string chunks");
 
                 if let Some(s) = value.to_nickel_string() {
                     let s = if str_acc.curr_indent != 0 {
@@ -802,15 +802,21 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     str_acc.acc.push_str(&s);
 
                     let mut next_opt = self.stack.pop_str_chunk();
-
                     // Pop consecutive string literals to find the next expression to evaluate
-                    while let Some(StrChunk::Literal(s)) = next_opt {
+                    while let Some(StrChunk::Literal(s)) = self.stack.pop_str_chunk() {
                         str_acc.acc.push_str(&s);
                         next_opt = self.stack.pop_str_chunk();
                     }
 
                     if let Some(StrChunk::Expr(e, indent)) = next_opt {
-                        // unwrap(): we don't expect an indentation level bigger than `u32::MAX`
+                        self.stack.push_str_acc(StrAccItem {
+                            acc: str_acc.acc,
+                            // unwrap(): we don't expect an indentation level bigger than `u32::MAX`
+                            curr_indent: indent.try_into().unwrap(),
+                            env: str_acc.env.clone(),
+                            curr_pos: e.pos_idx(),
+                        });
+
                         str_acc.curr_indent = indent.try_into().unwrap();
                         str_acc.curr_pos = e.pos_idx();
 

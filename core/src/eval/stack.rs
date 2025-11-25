@@ -2,7 +2,7 @@
 //!
 //! See [eval](../eval/index.html).
 use super::{
-    Closure, StrAccData,
+    Closure,
     cache::{Cache, CacheIndex},
     value::NickelValue,
 };
@@ -176,7 +176,20 @@ pub struct StrChunkItem {
     chunk: StrChunk<NickelValue>,
 }
 
-pub type StrAccItem = StrAccData;
+/// A string accumulator which maintains state while the virtual machine is evaluating a sequence
+/// of string chunks to a single string.
+#[derive(Default, PartialEq)]
+pub struct StrAccItem {
+    /// The current result.
+    pub acc: String,
+    /// The common environment of chunks.
+    pub env: super::Environment,
+    /// The indentation level of the chunk currently being evaluated.
+    pub curr_indent: u32,
+    /// The position of the original (unevaluated) expression of the chunk currently being
+    /// evaluated.
+    pub curr_pos: PosIdx,
+}
 
 impl StackItem for EqItem {
     fn marker() -> Marker {
@@ -580,7 +593,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Push a string accumulator on the stack.
-    pub fn push_str_acc(&mut self, str_acc: StrAccData) {
+    pub fn push_str_acc(&mut self, str_acc: StrAccItem) {
         self.push(str_acc);
     }
 

@@ -113,7 +113,9 @@ pub mod stack;
 pub mod value;
 
 use callstack::*;
-use stack::{Op1ContItem, Op2FirstContItem, OpNContItem, PrimopAppInfo, Stack, SealedCont};
+use stack::{
+    Op1ContItem, Op2FirstContItem, OpNContItem, PrimopAppInfo, SealedCont, Stack, StrAccItem,
+};
 use value::{
     Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef, ValueContentRefMut,
 };
@@ -231,34 +233,6 @@ impl<C: Cache> VmContext<ImportCaches, C> {
     }
 }
 
-/// A string accumulator which maintains state while the virtual machine is evaluating a sequence
-/// of string chunks to a single string.
-#[derive(Default)]
-pub struct StrAccData {
-    /// The current result.
-    pub acc: String,
-    /// The common environment of chunks.
-    pub env: Environment,
-    /// The indentation level of the chunk currently being evaluated.
-    pub curr_indent: u32,
-    /// The position of the original (unevaluated) expression of the chunk currently being
-    /// evaluated.
-    pub curr_pos: PosIdx,
-}
-
-/// The registers of the Nickel virtual machine.
-#[derive(Default)]
-struct Registers {
-    /// Register used to accumulate strings when evaluating a sequence of string chunks.
-    str_acc: StrAccData,
-}
-
-impl Registers {
-    fn new() -> Self {
-        Self::default()
-    }
-}
-
 /// The Nickel virtual machine.
 ///
 /// # Drop
@@ -266,7 +240,7 @@ impl Registers {
 /// The virtual machine implements [Drop]. The stack is unwinded by default upon dropping, which
 /// amounts to calling [VirtualMachine::reset()], and avoids leaving thunks in the blackholed state
 /// on abort. If you don't need unwinding and don't want to pay for it (though it doesn't cost
-/// anything for successful executions), see  [NoUnwindVirtualMachine].
+/// anything for successful executions), see [NoUnwindVirtualMachine].
 pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     context: &'ctxt mut VmContext<R, C>,
     /// The main stack, storing arguments, cache indices and pending computations.
@@ -275,8 +249,6 @@ pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     call_stack: CallStack,
     /// The initial environment containing stdlib and builtin functions accessible from anywhere
     initial_env: Environment,
-    /// Registers (specialized pieces of storage used during evaluation).
-    registers: Registers,
 }
 
 impl<'ctxt, R: ImportResolver, C: Cache> Drop for VirtualMachine<'ctxt, R, C> {
@@ -294,7 +266,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             initial_env: Environment::new(),
-            registers: Registers::new(),
         }
     }
 
@@ -756,9 +727,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     //   corresponding polymorphic contract has been violated: a function tried to
                     //   use a polymorphic sealed value.
                     match self.stack.peek_sealed_cont() {
-                        SealedCont::Unseal => {
-                            self.continue_op(closure)?
-                        }
+                        SealedCont::Unseal => self.continue_op(closure)?,
                         SealedCont::Seq => {
                             // evaluate / `Seq` the inner value.
                             Closure {
@@ -907,13 +876,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             };
 
                             self.stack.push_str_chunks(chunks_iter);
-                            self.registers.str_acc = StrAccData {
+                            self.stack.push_str_acc(StrAccItem {
                                 acc: String::new(),
                                 env: env.clone(),
                                 // unwrap(): we don't expect an indentation of `u32::MAX` lines...
                                 curr_indent: indent.try_into().unwrap(),
                                 curr_pos: arg.pos_idx(),
-                            };
+                            });
 
                             // TODO: we should set up the stack properly, instead of allocating an
                             // `op1` term here.
@@ -1333,7 +1302,6 @@ impl<'ctxt, C: Cache> VirtualMachine<'ctxt, ImportCaches, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             initial_env,
-            registers: Registers::new(),
         }
     }
 }
