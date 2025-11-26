@@ -171,10 +171,10 @@ pub trait CompilePart {
     ///
     /// `match_cont` and `fail_cont` are continuations: `match_cont` is the
     /// one to use if this pattern matches, while `fail_cont` is the one to
-    /// use if this pattern fails to match. Both `match_cont` and `fail_cont`
-    /// are allowed to contain -- as free variables -- identifiers bound by
+    /// use if this pattern fails to match. Both `match_cont` is allowed
+    /// to contain -- as free variables -- identifiers bound by
     /// this match expression. That is, `compile_part` is responsible for
-    /// putting `match_cont` and `fail_cont` into environments containing these
+    /// putting `match_cont` into an environment containing these
     /// identifiers.
     ///
     /// Because of the free variables involved, pattern compilation *must not*
@@ -182,13 +182,13 @@ pub trait CompilePart {
     /// Since a sub-pattern compilation might contain a `fail_cont`, this means
     /// you must avoid generating code like:
     ///
-    /// ```ignore
+    /// ```nickel
     /// let pattern_var = ... in <sub_pattern.compile_part(match_cont, fail_cont)>
     /// ```
     ///
     /// Instead, put the bindings on the inside:
     ///
-    /// ```ignore
+    /// ```nickel
     /// <sub_pattern.compile_part(let pattern_var = ... in match_cont, fail_cont)>
     /// ```
     ///
@@ -426,7 +426,7 @@ impl CompilePart for RecordPattern {
                 make::op1(
                     UnaryOp::ArrayLength,
                     make::op1(
-                        UnaryOp::RecordFields(RecordOpKind::ConsiderAllFields),
+                        UnaryOp::RecordFields(RecordOpKind::IgnoreEmptyOpt),
                         Term::Var(local_value_id),
                     ),
                 ),

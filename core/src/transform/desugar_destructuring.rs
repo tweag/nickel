@@ -73,7 +73,7 @@ pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term
 /// in body
 /// ```
 ///
-/// is desugared to
+/// in which `<pat1>` binds `foo` and `<pat2>` binds `bar` is desugared to
 ///
 /// ```text
 /// let
