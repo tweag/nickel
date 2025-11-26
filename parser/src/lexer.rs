@@ -366,6 +366,10 @@ pub enum NormalToken<'input> {
     StringLength,
     #[token("%string/substr%")]
     StringSubstr,
+    #[token("%string/base64_encode%")]
+    StringBase64Encode,
+    #[token("%string/base64_decode%")]
+    StringBase64Decode,
     #[token("%to_string%")]
     ToString,
     #[token("%number/from_string%")]

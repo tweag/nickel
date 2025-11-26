@@ -252,6 +252,14 @@ pub enum EvalErrorKind {
         /// Position of the call to deserialize.
         pos: PosIdx,
     },
+    /// An error occurred while calling builtin `string/base64_decode`.
+    ///
+    /// This may be because the input was not valid base64 encoded data, or because
+    /// the decoded value is not a utf-8 string.
+    Base64DecodingError(
+        String, /* error message */
+        PosIdx, /* position of the call to string/base64_decode */
+    ),
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
@@ -1327,6 +1335,19 @@ impl IntoDiagnostics for EvalErrorData {
                     diag.notes.push(format!("while parsing {format}"));
                 }
                 diags
+            }
+            EvalErrorKind::Base64DecodingError(msg, span_opt) => {
+                let labels = pos_table
+                    .get(span_opt)
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("here")])
+                    .unwrap_or_default();
+
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("Base64 decoding failed: {msg}"))
+                        .with_labels(labels),
+                ]
             }
             EvalErrorKind::IncomparableValues {
                 eq_pos,

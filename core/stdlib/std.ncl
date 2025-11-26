@@ -4713,6 +4713,69 @@
       "%
       = fun start end s => %string/substr% s start end,
 
+    base64_encode
+      : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
+      | doc m%"
+        `base64_encode variant str` base64 encodes the value of a string using the given variant
+         of the encoding.
+
+         The encoding options are:
+         - 'Standard: Use the standard base64 alphabet and include padding.
+         - 'UrlSafe: Use the url-safe variant of the base64 alphabet, with padding.
+         - 'NoPad: Use the standard alphabet with no padding.
+         - 'UrlSafeNoPad: Use the url-safe alphabet without padding.
+
+        # Examples
+
+        ```nickel multiline
+        std.string.base64_encode 'Standard "Hello, world!"
+        # => "SGVsbG8sIHdvcmxkIQ=="
+
+        std.string.base64_encode 'NoPad "Hello, world!"
+        # => "SGVsbG8sIHdvcmxkIQ"
+
+        std.string.base64_encode 'UrlSafe "😎"
+        # => "8J-Yjg=="
+
+        std.string.base64_encode 'UrlSafeNoPad "😎"
+        # => "8J-Yjg"
+        ```
+      "%
+      = fun encoding s => %string/base64_encode% encoding s,
+
+    base64_decode
+      : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
+      | doc m%"
+        `base64_decode variant str` decodes the value of the string using the given variant of
+         base64 encoding.
+
+         The encoding options are:
+         - 'Standard: Use the standard base64 alphabet and include padding.
+         - 'UrlSafe: Use the url-safe variant of the base64 alphabet, with padding.
+         - 'NoPad: Use the standard alphabet with no padding.
+         - 'UrlSafeNoPad: Use the url-safe alphabet without padding.
+
+        This may fail if the input string is not valid base64 encoded data. It may also fail if
+        the decoding succeeds, but the decoded value is not a valid utf-8 string.
+
+        # Examples
+
+        ```nickel multiline
+        std.string.base64_decode 'Standard "SGVsbG8sIHdvcmxkIQ=="
+        # => "Hello, world!"
+
+        std.string.base64_decode 'NoPad "SGVsbG8sIHdvcmxkIQ"
+        # => "Hello, world!"
+
+        std.string.base64_decode 'UrlSafe "8J-Yjg=="
+        # => "😎"
+
+        std.string.base64_decode 'UrlSafeNoPad "8J-Yjg"
+        # => "😎"
+        ```
+      "%
+      = fun encoding s => %string/base64_decode% encoding s,
+
     from
       | Stringable -> String
       | doc m%"

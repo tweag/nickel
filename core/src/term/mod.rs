@@ -1561,6 +1561,12 @@ pub enum BinaryOp {
     /// Compare two strings lexicographically.
     StringCompare,
 
+    /// Base64 encode a string.
+    StringBase64Encode,
+
+    /// Decode a base64 encoded string.
+    StringBase64Decode,
+
     /// Seal a term with a sealing key (see [`Term::Sealed`]).
     Seal,
 
@@ -1652,6 +1658,8 @@ impl fmt::Display for BinaryOp {
             StringSplit => write!(f, "string/split"),
             StringContains => write!(f, "string/contains"),
             StringCompare => write!(f, "string/compare"),
+            StringBase64Encode => write!(f, "string/base64_encode"),
+            StringBase64Decode => write!(f, "string/base64_decode"),
             Seal => write!(f, "seal"),
             ContractArrayLazyApp => write!(f, "contract/array_lazy_apply"),
             ContractRecordLazyApp => write!(f, "contract/record_lazy_apply"),
