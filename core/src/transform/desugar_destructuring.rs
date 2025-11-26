@@ -113,8 +113,6 @@ pub fn desugar_let(
     let mut mid_bindings = SmallVec::new();
     // Inner bindings are the ones that bind the actual variables defined in the patterns.
     let mut inner_bindings = SmallVec::new();
-    // TODO: for forcing
-    let mut mid_ids = Vec::new();
 
     for (pat, rhs) in bindings {
         let pos = pos_table.get(pat.pos).fuse(pos_table.get(rhs.pos_idx()));
@@ -155,12 +153,12 @@ pub fn desugar_let(
             mid_id,
             pat.compile_part(pos_table, outer_id, bindings_record, error_case),
         ));
-
-        mid_ids.push(mid_id);
     }
 
-    let checked_body = mid_ids.into_iter().rev().fold(body, |acc, id| {
-        mk_app!(make::op1(UnaryOp::Seq, Term::Var(id)), acc)
+    // Force all the "mid" ids, to make pattern failures more eager.
+    // Without this, `let 'Foo = 'Bar in 1` wouldn't fail.
+    let checked_body = mid_bindings.iter().rev().fold(body, |acc, (id, _)| {
+        mk_app!(make::op1(UnaryOp::Seq, Term::Var(*id)), acc)
     });
 
     let attrs = LetAttrs {
