@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: yaml-documents export requires an array
+   ┌─ [INPUTS_PATH]/export/yaml_documents_not_array.ncl:4:1
+   │  
+ 4 │ ╭ {
+ 5 │ │   a_record = {
+ 6 │ │     even = {
+ 7 │ │       more = {
+   · │
+11 │ │   }
+12 │ │ }
+   │ ╰─^

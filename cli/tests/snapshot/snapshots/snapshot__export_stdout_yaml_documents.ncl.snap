@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+---
+a_record:
+  even:
+    more:
+      nested: record
+---
+1
+---
+another_record: hi
