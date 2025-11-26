@@ -1761,7 +1761,6 @@ extern {
         "enum/make_variant" => Token::Normal(NormalToken::EnumMakeVariant),
         "enum/is_variant" => Token::Normal(NormalToken::EnumIsVariant),
         "enum/get_tag" => Token::Normal(NormalToken::EnumGetTag),
-        "pattern_branch" => Token::Normal(NormalToken::PatternBranch),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

@@ -22,6 +22,8 @@
 //! the compilation strategy in the future and is more efficient in the current setting (combining
 //! building blocks from the standard library would require much more function applications, while
 //! we can generate inlined versions on-the-fly here).
+use indexmap::IndexMap;
+
 use super::*;
 use crate::{
     error::EvalErrorKind,
@@ -44,33 +46,6 @@ fn record_insert() -> BinaryOp {
         // We don't really care for optional fields here and we don't need to filter them out
         op_kind: RecordOpKind::ConsiderAllFields,
     }
-}
-
-/// Generate a Nickel expression which inserts a new binding in the working dictionary.
-///
-/// `%record/insert% "<id>" bindings_id value_id`
-fn insert_binding(id: LocIdent, value_id: LocIdent, bindings_id: LocIdent) -> NickelValue {
-    mk_app!(
-        make::op2(
-            record_insert(),
-            NickelValue::string_posless(id.label()),
-            Term::Var(bindings_id)
-        ),
-        Term::Var(value_id)
-    )
-}
-
-/// Generate a Nickel expression which removes `field` from `rest`.
-///
-/// ```nickel
-/// %record/remove% "<field>" <rest>
-/// ```
-fn remove_from_rest(rest: NickelValue, field: LocIdent) -> NickelValue {
-    make::op2(
-        BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
-        NickelValue::string_posless(field.label()),
-        rest,
-    )
 }
 
 /// Generate a Nickel expression which checks if a field is defined in a record provided as a
@@ -141,16 +116,25 @@ fn update_with_merge(
     id: LocIdent,
     field: Field,
 ) -> NickelValue {
-    use crate::{ast::MergeKind, label::MergeLabel, term::IndexMap};
+    use crate::{ast::MergeKind, label::MergeLabel};
 
-    let annot = field.metadata.annotation.clone();
-    let pos_value = field
+    let annot_spans = field
+        .metadata
+        .annotation
+        .iter()
+        .filter_map(|labeled_ty| labeled_ty.label.span);
+    let value_spans = field
         .value
         .as_ref()
-        .and_then(|value| pos_table.get(value.pos_idx()).into_opt());
+        .and_then(|v| pos_table.get(v.pos_idx()).into_opt());
+    let span = annot_spans
+        .chain(value_spans)
+        // We fuse all the definite spans together.
+        // unwrap(): all span should come from the same file
+        .reduce(|span1, span2| span1.fuse(span2).unwrap());
 
     let singleton = NickelValue::record_posless(RecordData {
-        fields: IndexMap::from([(id, field)]),
+        fields: IndexMap::from_iter([(id, field)]),
         ..Default::default()
     });
     // Right now, patterns are compiled on-the-fly during evaluation. We thus need to
@@ -167,14 +151,6 @@ fn update_with_merge(
     // enforce it's properly closurized.
     let singleton = NickelValue::term_posless(Term::Closurize(singleton));
 
-    let span = annot
-        .iter()
-        .filter_map(|labeled_ty| labeled_ty.label.span)
-        .chain(pos_value)
-        // We fuse all the definite spans together.
-        // unwrap(): all span should come from the same file
-        .reduce(|span1, span2| span1.fuse(span2).unwrap());
-
     let merge_label = MergeLabel {
         span,
         kind: MergeKind::Standard,
@@ -188,62 +164,78 @@ fn update_with_merge(
 }
 
 pub trait CompilePart {
-    /// Compile part of a broader pattern to a Nickel expression with two free variables (which
-    /// is equivalent to a function of two arguments):
+    /// Compile part of a broader pattern to a Nickel expression.
     ///
-    /// 1. The value being matched on (`value_id`)
-    /// 2. A dictionary of the current assignment of pattern variables to sub-expressions of the
-    ///    matched expression (`bindings_id`)
+    /// `value_id` is the value being matched on. The caller of `compile_part`
+    /// is in charge of putting it into the environment.
     ///
-    /// The compiled expression must return either `null` if the pattern doesn't match, or a
-    /// dictionary mapping pattern variables to the corresponding sub-expressions of the
-    /// matched value if the pattern matched with success.
+    /// `match_cont` and `fail_cont` are continuations: `match_cont` is the
+    /// one to use if this pattern matches, while `fail_cont` is the one to
+    /// use if this pattern fails to match. Both `match_cont` is allowed
+    /// to contain -- as free variables -- identifiers bound by
+    /// this match expression. That is, `compile_part` is responsible for
+    /// putting `match_cont` into an environment containing these
+    /// identifiers.
     ///
-    /// Although the `value` and `bindings` could be passed as [crate::term::NickelValue] in all
-    /// generality, forcing them to be variable makes it less likely that the compilation
-    /// duplicates sub-expressions: because the value and the bindings must always be passed in
-    /// a variable, they are free to share without risk of duplicating work.
+    /// Because of the free variables involved, pattern compilation *must not*
+    /// put `fail_cont` into any let block that binds a non-fresh variable.
+    /// Since a sub-pattern compilation might contain a `fail_cont`, this means
+    /// you must avoid generating code like:
+    ///
+    /// ```nickel
+    /// let pattern_var = ... in <sub_pattern.compile_part(match_cont, fail_cont)>
+    /// ```
+    ///
+    /// Instead, put the bindings on the inside:
+    ///
+    /// ```nickel
+    /// <sub_pattern.compile_part(let pattern_var = ... in match_cont, fail_cont)>
+    /// ```
+    ///
+    /// As a motivating example, consider a match block like
+    ///
+    /// ```nickel
+    /// let foo = 1 in
+    /// [2, 'Blah] |> match {
+    ///   [foo, 'Bar] => foo,
+    ///   [_, 'Blah] => foo,
+    /// }
+    /// ```
+    ///
+    /// This gets compiled by calling `compile_part` on the first match arm,
+    /// with a `fail_cont` continuation that falls through to the second match
+    /// arm. If the first match arm's pattern were to bind `foo` to `2` and
+    /// then fail to match `'Bar`, the second match arm would see the wrong
+    /// binding for `foo`.
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue;
 }
 
 impl CompilePart for Pattern {
-    // Compilation of the top-level pattern wrapper (code between < and > is Rust code, think
-    // a template of some sort):
+    // Compilation of the top-level pattern wrapper. If there's an alias,
+    // compiles to
     //
-    // < if let Some(alias) = alias { >
-    //   let bindings = %record/insert% <alias> bindings arg in
-    // < } >
-    // <pattern_data.compile()> arg bindings
+    // pattern_data.compile(value_id, let <alias> = value_id in <match_cont>, <fail_cont>)
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
-        // The last instruction
-        // <pattern_data.compile()>
-        let continuation = self.data.compile_part(pos_table, value_id, bindings_id);
-
-        // Either
-        //
-        // let bindings = %record/insert% <alias> bindings arg in
-        // continuation
-        //
-        // if `alias` is set, or just `continuation` otherwise.
-        if let Some(alias) = self.alias {
-            make::let_one_in(
-                bindings_id,
-                insert_binding(alias, value_id, bindings_id),
-                continuation,
-            )
+        let match_cont = if let Some(alias) = self.alias {
+            make::let_one_in(alias, Term::Var(value_id), match_cont)
         } else {
-            continuation
-        }
+            match_cont
+        };
+
+        self.data
+            .compile_part(pos_table, value_id, match_cont, fail_cont)
     }
 }
 
@@ -252,19 +244,21 @@ impl CompilePart for PatternData {
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
         match self {
-            PatternData::Wildcard => Term::Var(bindings_id).into(),
-            PatternData::Any(id) => {
-                // %record/insert% "<id>" bindings_id value_id
-                insert_binding(*id, value_id, bindings_id)
+            PatternData::Wildcard => match_cont,
+            PatternData::Any(id) => make::let_one_in(*id, Term::Var(value_id), match_cont),
+            PatternData::Record(pat) => {
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont)
             }
-            PatternData::Record(pat) => pat.compile_part(pos_table, value_id, bindings_id),
-            PatternData::Array(pat) => pat.compile_part(pos_table, value_id, bindings_id),
-            PatternData::Enum(pat) => pat.compile_part(pos_table, value_id, bindings_id),
-            PatternData::Constant(pat) => pat.compile_part(pos_table, value_id, bindings_id),
-            PatternData::Or(pat) => pat.compile_part(pos_table, value_id, bindings_id),
+            PatternData::Array(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
+            PatternData::Enum(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
+            PatternData::Constant(pat) => {
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont)
+            }
+            PatternData::Or(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
         }
     }
 }
@@ -274,9 +268,11 @@ impl CompilePart for ConstantPattern {
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
-        self.data.compile_part(pos_table, value_id, bindings_id)
+        self.data
+            .compile_part(pos_table, value_id, match_cont, fail_cont)
     }
 }
 
@@ -285,13 +281,14 @@ impl CompilePart for ConstantPatternData {
         &self,
         _: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
         let compile_constant = |nickel_type: &str, value: NickelValue| {
             // if %typeof% value_id == '<nickel_type> && value_id == <value> then
-            //   bindings_id
+            //   match_cont
             // else
-            //   null
+            //   fail_cont
 
             // %typeof% value_id == '<nickel_type>
             let type_matches = make::op2(
@@ -306,7 +303,7 @@ impl CompilePart for ConstantPatternData {
             // <type_matches> && <value_matches>
             let if_condition = mk_app!(make::op1(UnaryOp::BoolAnd, type_matches), value_matches);
 
-            make::if_then_else(if_condition, Term::Var(bindings_id), NickelValue::null())
+            make::if_then_else(if_condition, match_cont, fail_cont)
         };
 
         match self {
@@ -327,262 +324,207 @@ impl CompilePart for ConstantPatternData {
 impl CompilePart for OrPattern {
     // Compilation of or patterns.
     //
-    //  <fold pattern in patterns
-    //   - cont is the accumulator
-    //   - initial accumulator is `null`
-    //  >
+    // We fold over the patterns in reverse order. In the fold, the accumulator is
+    // `fail_cont`, because if an element in the or pattern fails to match then it
+    // falls through to the next case (which is what's in the accumulator because
+    // we're folding in reverse).
     //
-    //  let prev_bindings = cont in
-    //
-    //  # if one of the previous patterns already matched, we just stop here and return the
-    //  # resulting updated bindings. Otherwise, we try the current one
-    //  if prev_bindings != null then
-    //    prev_bindings
-    //  else
-    //    <pattern.compile(value_id, bindings_id)>
-    //  <end fold>
+    // We clone `match_cont` for each alternative. This looks wasteful
+    // when pretty-printing, but `NickelValue` is cheaply clonable so it's
+    // probably fine. Another option would be to add an indirection through
+    // a `Term::Var`.
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
-        self.patterns
-            .iter()
-            .fold(NickelValue::null(), |cont, pattern| {
-                let prev_bindings = LocIdent::fresh();
-
-                let is_prev_not_null = make::op1(
-                    UnaryOp::BoolNot,
-                    make::op2(BinaryOp::Eq, Term::Var(prev_bindings), NickelValue::null()),
-                );
-
-                let if_block = make::if_then_else(
-                    is_prev_not_null,
-                    Term::Var(prev_bindings),
-                    pattern.compile_part(pos_table, value_id, bindings_id),
-                );
-
-                make::let_one_in(prev_bindings, cont, if_block)
-            })
+        self.patterns.iter().rev().fold(fail_cont, |cont, pattern| {
+            pattern.compile_part(pos_table, value_id, match_cont.clone(), cont)
+        })
     }
 }
 
 impl CompilePart for RecordPattern {
     // Compilation of the top-level record pattern wrapper.
     //
-    // To check that the value doesn't contain extra fields, or to capture the rest of the
-    // record when using the `..rest` construct, we need to remove matched fields from the
-    // original value at each stage and thread this working value in addition to the bindings.
+    // We check the match shallowly before extracting bindings, ensuring that
+    // all non-defaulted fields are present. If the record isn't open, we also
+    // check that there are no extra fields. We do this just by checking the
+    // record length, because typechecking has already ensured that there are no
+    // duplicate bindings.
     //
-    // We don't have tuples, so we thread through the bindings-in-progress and
-    // the rest-in-progress as an array of two elements: `[bindings, rest]`.
-    // If a match fails, either the array itself or `bindings` is null.
+    // The very first thing the generated code does is to insert default values:
+    // if there are any default values in the pattern, redefine `value_id` to
+    // include them. This is the last part of this function (because we're in a
+    // sort of continuation-passing style), but just keep in mind that the eager
+    // tests are working on a record that already has default values.
     //
     // if %typeof% value_id == 'Record
-    //   let final_bindings_and_rest_id = <fold block (see below)> in
-    //   let
-    //     final_bindings_id = %array/at% final_bindings_and_rest_id 0,
-    //     final_rest_id = %array/at% final_bindings_and_rest_id 1,
-    //   if (final_bindings_and_rest_id == null) || (final_bindings_id == null) then
-    //     null
+    //   <if self.patterns has any default value>
+    //     let value_id = <with_default_value(with_default_value(value_id, field0, default0), field1, default1) ...> in
+    //   <end if>
+    //
+    //   <let length_check = if self.is_open { true } else { (%record/fields_with_opts% value_id |> %array/length%) == <self.patterns.len()> }>
+    //
+    //   if (%record/has_field_with_opts% field0 value_id) && (%record/has_field_with_opts% field1 value_id) && ... && <length_check> then
+    //     <fold block (see below)>
     //   else
-    //     <if self.tail is empty>
-    //       # if tail is empty, check that the value doesn't contain extra fields
-    //       if final_rest_id != {} then
-    //         null
-    //       else
-    //         final_bindings_id
-    //     <else if self.tail is capture(rest)>
-    //         (%record/insert% <rest>
-    //           final_bindings_id
-    //           final_rest_id
-    //         )
-    //     <else if self.tail is open>
-    //       final_bindings_id
-    //     <end if>
+    //     <fail_cont>
     // else
-    //   null
+    //   <fail_cont>
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
-        // <id> == null
-        fn id_eq_null(id: LocIdent) -> NickelValue {
-            make::op2(BinaryOp::Eq, Term::Var(id), NickelValue::null())
+        // <a> && <b>
+        // (with a small optimization if one is `true`)
+        fn and(a: NickelValue, b: NickelValue) -> NickelValue {
+            if a.is_bool_true() {
+                b
+            } else if b.is_bool_true() {
+                a
+            } else {
+                mk_app!(make::op1(UnaryOp::BoolAnd, a), b)
+            }
         }
 
-        // (<id1> == null) || (<id2> == null)
-        fn id1_or_id2_eq_null(id1: LocIdent, id2: LocIdent) -> NickelValue {
-            mk_app!(make::op1(UnaryOp::BoolOr, id_eq_null(id1)), id_eq_null(id2))
-        }
+        let local_value_id = LocIdent::fresh();
 
-        // %array/at% <array_id> <idx>
-        fn array_at(array_id: LocIdent, idx: usize) -> NickelValue {
+        // (%record/has_field_with_opts% field0 local_value_id) && (%record/has_field_with_opts% field1 local_value_id) && ...
+        //
+        // Where field0, field1, etc. are all the non-defaulted fields.
+        let has_fields =
+            self.patterns
+                .iter()
+                .fold(NickelValue::bool_true(), |has_other_fields, field_pat| {
+                    if field_pat.default.is_some() {
+                        has_other_fields
+                    } else {
+                        let has_field = make::op2(
+                            BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
+                            NickelValue::string_posless(field_pat.matched_id.label()),
+                            Term::Var(local_value_id),
+                        );
+
+                        and(has_field, has_other_fields)
+                    }
+                });
+
+        // If this pattern is non-open, this is
+        //
+        // (%record/fields_with_opts% local_value_id |> %array/length%) == <self.patterns.len()>
+        let has_right_length = if self.is_open() {
+            NickelValue::bool_true()
+        } else {
             make::op2(
-                BinaryOp::ArrayAt,
-                NickelValue::term_posless(Term::Var(array_id)),
-                NickelValue::number_posless(idx),
+                BinaryOp::Eq,
+                make::op1(
+                    UnaryOp::ArrayLength,
+                    make::op1(
+                        UnaryOp::RecordFields(RecordOpKind::IgnoreEmptyOpt),
+                        Term::Var(local_value_id),
+                    ),
+                ),
+                NickelValue::number_posless(self.patterns.len()),
             )
-        }
+        };
 
-        // [<first>, <second>]
-        //
-        // (specialized for the case that <second> is a Var)
-        fn array2(first: NickelValue, second: LocIdent) -> NickelValue {
-            NickelValue::array_posless(
-                [first, NickelValue::term_posless(Term::Var(second))]
-                    .into_iter()
-                    .collect(),
-                vec![],
-            )
-        }
+        let matches_shallow = and(has_fields, has_right_length);
 
-        let init_bindings = NickelValue::term_posless(Term::Var(bindings_id));
-        let init = array2(init_bindings, value_id);
+        let match_cont = if let TailPattern::Capture(tail) = self.tail {
+            // let
+            //   <tail> = (%record/remove_with_opts% field0 (%record/remove_with_opts% field1 local_value_id) ... )
+            // in <match_cont>
+            //
+            // where field0, field1, ... are all the fields matched in the pattern.
+            let tail_value = self.patterns.iter().fold(
+                NickelValue::term_posless(Term::Var(local_value_id)),
+                |tail, field_pat| {
+                    make::op2(
+                        BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
+                        NickelValue::string_posless(field_pat.matched_id.label()),
+                        tail,
+                    )
+                },
+            );
+            make::let_one_in(tail, tail_value, match_cont)
+        } else {
+            match_cont
+        };
 
-        // The fold block:
+        // The main fold block where we extract all of the bound variables.
+        // Because there's an eager check before we enter this block, we
+        // can't fail to extract any of the variables. However, there could be
+        // sub-patterns that fail to match.
         //
-        // <fold (field, value) in fields
-        //  - cont is the accumulator
-        //  - initial accumulator is [bindings_id, value_id]
-        // >
+        // Our accumulator is `match_cont`, the continuation to take when
+        // the match succeeds.
         //
-        // # If there is a default value, we must set it before the %record/field_is_defined% check below,
-        // # because the default acts like if the original matched value always have this field
-        // # defined
-        // <if field.default.is_some()>
-        //   let value_id = <with_default_value value_id field default> in
-        // <end if>
+        // There are two cases in the match block, depending on whether the
+        // field in the pattern has an annotation. If it doesn't, we yield
         //
-        // if %record/field_is_defined% field value_id then
-        //   # If the field is present, we apply the potential contracts coming from user-provided
-        //   # annotations before anything else. We just offload the actual work to `&`
-        //   <if !field_pat.annotation.is_empty() >
-        //     let value_id = value_id & { "<field>" | <field_pat.annotation> } in
-        //   <end if>
+        // let <field> = %static_access(<field>)% local_value_id in
+        // <field_pat.pattern.compile_part(field, match_cont, fail_cont)>
         //
-        //   let cont_and_rest_id = cont in
-        //   let
-        //     local_bindings_id = %array/at% cont_and_rest_id 0,
-        //     local_rest_id = %array/at% cont_and_rest_id 1,
-        //   in
-        //   if (cont_and_rest_id == null) || (local_bindings_id == null) then
-        //     null
-        //   else
-        //     let local_value_id = %static_access(field)% local_rest_id in
-        //     let next_rest_id = <remove_from_rest(field, local_rest_id)> in
-        //     <field.compile_part(local_value_id, local_bindings_id)>
-        let fold_block_and_rest: NickelValue =
-            self.patterns.iter().fold(init, |cont_and_rest, field_pat| {
+        // If there is an annotation, we yield
+        //
+        // let value_id = <update_with_merge value_id field annotation> in
+        // let <field> = %static_access(<field>)% local_value_id in
+        // <field_pat.pattern.compile_part(field, match_cont, fail_cont)>
+        let fold_block = self
+            .patterns
+            .iter()
+            .fold(match_cont, |match_cont, field_pat| {
+                let local_field_id = LocIdent::fresh();
                 let field = field_pat.matched_id;
-                let local_bindings_id = LocIdent::fresh();
-                let local_value_id = LocIdent::fresh();
-                let local_rest_id = LocIdent::fresh();
-                let next_rest_id = LocIdent::fresh();
-                let cont_and_rest_id = LocIdent::fresh();
 
-                let rest = NickelValue::term_posless(Term::Var(local_rest_id));
-
-                // let next_rest_id = <remove_from_rest(field, cont_rest_id)> in
-                // [<field.compile_part(local_value_id, local_bindings_id)>, next_rest_id]
-                let updated_bindings_let = make::let_one_in(
-                    next_rest_id,
-                    remove_from_rest(rest.clone(), field),
-                    array2(
-                        field_pat.pattern.compile_part(
-                            pos_table,
-                            local_value_id,
-                            local_bindings_id,
-                        ),
-                        next_rest_id,
-                    ),
+                let match_cont = field_pat.pattern.compile_part(
+                    pos_table,
+                    local_field_id,
+                    // <field> isn't a generated name, so we must only bind it
+                    // in the innermost wrapper around the match continuation
+                    make::let_one_in(field, Term::Var(local_field_id), match_cont),
+                    fail_cont.clone(),
                 );
 
-                // %static_access(field)% init_rest_id
-                let extracted_value = make::op1(UnaryOp::RecordAccess(field), rest);
+                // %static_access(field)% value_id
+                let extracted_value =
+                    make::op1(UnaryOp::RecordAccess(field), Term::Var(local_value_id));
 
-                // let local_value_id = <extracted_value> in <updated_bindings_let>
-                let inner_else_block =
-                    make::let_one_in(local_value_id, extracted_value, updated_bindings_let);
-
-                // The innermost if:
-                //
-                // if (cont_and_rest_id == null) || (local_bindings_id == null) then
-                //   null
-                // else
-                //  <inner_else_block>
-                let inner_if = make::if_then_else(
-                    id1_or_id2_eq_null(cont_and_rest_id, local_bindings_id),
-                    NickelValue::null(),
-                    inner_else_block,
-                );
-
-                // let cont_and_rest_id = cont_and_rest in
-                // let
-                //   local_bindings_id = %array/at% cont_and_rest_id 0,
-                //   local_rest_id = %array/at% cont_and_rest_id 1,
-                // in <value_let>
-                let binding_cont_let = make::let_one_in(
-                    cont_and_rest_id,
-                    cont_and_rest,
-                    make::let_in(
-                        false,
-                        [
-                            (local_bindings_id, array_at(cont_and_rest_id, 0)),
-                            (local_rest_id, array_at(cont_and_rest_id, 1)),
-                        ],
-                        inner_if,
-                    ),
-                );
+                // let <local_field_id> = <extracted_value> in <match_cont>
+                let match_cont = make::let_one_in(local_field_id, extracted_value, match_cont);
 
                 // <if !field.annotation.is_empty()>
-                //   let value_id = <update_with_merge...> in <binding_cont_let>
+                //   let value_id = <update_with_merge...> in <match_cont>
+                // <else>
+                //   <match_cont>
                 // <end if>
-                let optional_merge = if !field_pat.annotation.is_empty() {
+                if !field_pat.annotation.is_empty() {
                     make::let_one_in(
-                        value_id,
+                        local_value_id,
                         update_with_merge(
                             pos_table,
-                            value_id,
+                            local_value_id,
                             field,
                             Field::from(FieldMetadata {
                                 annotation: field_pat.annotation.clone(),
                                 ..Default::default()
                             }),
                         ),
-                        binding_cont_let,
+                        match_cont,
                     )
                 } else {
-                    binding_cont_let
-                };
-
-                // %record/field_is_defined% field value_id
-                let has_field = make::op2(
-                    BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
-                    NickelValue::string_posless(field.label()),
-                    Term::Var(value_id),
-                );
-
-                // if <has_field> then <optional_merge> else null
-                let enclosing_if =
-                    make::if_then_else(has_field, optional_merge, NickelValue::null());
-
-                // <if field_pat.default.is_some()>
-                //   let value_id = <with_default_value value_id field default> in
-                // <end if>
-                if let Some(default) = field_pat.default.as_ref() {
-                    make::let_one_in(
-                        value_id,
-                        with_default_value(pos_table, value_id, field, default.clone()),
-                        enclosing_if,
-                    )
-                } else {
-                    enclosing_if
+                    match_cont
                 }
             });
+
+        // if <matches_shallow> then <fold_block> else <fail_cont>
+        let inner_if = make::if_then_else(matches_shallow, fold_block, fail_cont.clone());
 
         // %typeof% value_id == 'Record
         let is_record: NickelValue = make::op2(
@@ -591,76 +533,36 @@ impl CompilePart for RecordPattern {
             NickelValue::enum_tag_posless("Record"),
         );
 
-        let final_bindings_and_rest_id = LocIdent::fresh();
-
-        let final_bindings_id = LocIdent::fresh();
-        let final_rest_id = LocIdent::fresh();
-        let rest = NickelValue::term_posless(Term::Var(final_rest_id));
-        let final_bindings = NickelValue::term_posless(Term::Var(final_bindings_id));
-
-        // the else block which depends on the tail of the record pattern
-        let tail_block = match self.tail {
-            // if rest_id != {} then
-            //   null
-            // else
-            //   final_bindings_id
-            TailPattern::Empty => make::if_then_else(
-                make::op1(
-                    UnaryOp::BoolNot,
-                    make::op2(BinaryOp::Eq, rest, NickelValue::empty_record()),
-                ),
-                NickelValue::null(),
-                final_bindings.clone(),
-            ),
-            // (%record/insert% rest_id
-            //   final_bindings_id
-            //   rest
-            // )
-            TailPattern::Capture(rest_id) => mk_app!(
-                make::op2(
-                    record_insert(),
-                    NickelValue::string_posless(rest_id.label()),
-                    Term::Var(final_bindings_id),
-                ),
-                rest
-            ),
-            TailPattern::Open => final_bindings.clone(),
-        };
-
-        // the last guard for checking if the match succeeded
+        // <if any default values {>
+        //   let local_value_id = <with_default_value(with_default_value(value_id, field0, default0), field1, default1) ...> in match_cont
+        // <} else {>
+        //   match_cont
+        // <}>
         //
-        // if (final_bindings_and_rest_id == null) || (final_bindings_id == null) then
-        //   null
-        // else
-        //   <tail_block>
-        let guard_tail_block = make::if_then_else(
-            id1_or_id2_eq_null(final_bindings_and_rest_id, final_bindings_id),
-            NickelValue::null(),
-            tail_block,
-        );
+        // where field0, default0, etc. range over the fields and their default values.
+        let with_defaults = self.patterns.iter().fold(inner_if, |cont, field_pat| {
+            if let Some(default) = field_pat.default.as_ref() {
+                make::let_one_in(
+                    local_value_id,
+                    with_default_value(
+                        pos_table,
+                        local_value_id,
+                        field_pat.matched_id,
+                        default.clone(),
+                    ),
+                    cont,
+                )
+            } else {
+                cont
+            }
+        });
 
-        // The let enclosing the fold block and the final block:
-        // let final_bindings_and_rest_id = <fold_block> in
-        // let
-        //   final_bindings_id = %array/at% final_bindings_and_rest_id 0,
-        //   rest_id = %array/at% final_bindings_and_rest_id 1,
-        // in
-        //   <tail_block>
-        let outer_let = make::let_one_in(
-            final_bindings_and_rest_id,
-            fold_block_and_rest,
-            make::let_in(
-                false,
-                [
-                    (final_bindings_id, array_at(final_bindings_and_rest_id, 0)),
-                    (final_rest_id, array_at(final_bindings_and_rest_id, 1)),
-                ],
-                guard_tail_block,
-            ),
-        );
-
-        // if <is_record> then <outer_let> else null
-        make::if_then_else(is_record, outer_let, NickelValue::null())
+        // if <is_record> then let local_value_id = value_id in <with_defaults> else <fail_cont>
+        make::if_then_else(
+            is_record,
+            make::let_one_in(local_value_id, Term::Var(value_id), with_defaults),
+            fail_cont,
+        )
     }
 }
 
@@ -674,67 +576,50 @@ impl CompilePart for ArrayPattern {
     // <else>
     // if %typeof% value_id == 'Array && value_len == <self.patterns.len()>
     // <end if>
-    //
-    //   let final_bindings_id =
-    //     <fold (idx, elem_pat) in 0..self.patterns.len()
-    //      - cont is the accumulator
-    //      - initial accumulator is `bindings_id`
-    //      >
-    //
-    //       let local_bindings_id = cont in
-    //       if local_bindings_id == null then
-    //         null
-    //       else
-    //         let local_value_id = %array/at% <idx> value_id in
-    //         <elem_pat.compile_part(local_value_id, local_bindings_id)>
-    //
-    //     <end fold>
-    //   in
-    //
-    //   if final_bindings_id == null then
-    //     null
-    //   else
-    //     <if self.tail is capture(rest)>
-    //       %record/insert%
-    //         <rest>
-    //         final_bindings_id
-    //         (%array/slice% <self.patterns.len()> value_len value_id)
-    //     <else>
-    //       final_bindings_id
-    //     <end if>
+    //   <fold block (see below)>
     // else
-    //   null
+    //   <fail_cont>
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
         let value_len_id = LocIdent::fresh();
         let pats_len = NickelValue::number_posless(self.patterns.len());
 
+        let match_cont = if let TailPattern::Capture(rest) = self.tail {
+            // let <rest> = %array/slice% <self.patterns.len()> value_len value_id in <match_cont>
+            make::let_one_in(
+                rest,
+                make::opn(
+                    NAryOp::ArraySlice,
+                    vec![
+                        pats_len.clone(),
+                        Term::Var(value_len_id).into(),
+                        Term::Var(value_id).into(),
+                    ],
+                ),
+                match_cont,
+            )
+        } else {
+            match_cont
+        };
+
         // <fold (idx) in 0..self.patterns.len()
-        //  - cont is the accumulator
-        //  - initial accumulator is `bindings_id`
+        //  - match_cont is the accumulator
+        //  - initial accumulator is `match_cont`, which includes the tail bindings if necessary
         //  >
         //
-        //   let local_bindings_id = cont in
-        //   if local_bindings_id == null then
-        //     null
-        //   else
-        //     let local_value_id = %array/at% <idx> value_id in
-        //     <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
+        //   let local_value_id = %array/at% <idx> value_id in
+        //   <self.patterns[idx].compile_part(local_value_id, match_cont, fail_cont)>
         //
         // <end fold>
-        let fold_block: NickelValue = self.patterns.iter().enumerate().fold(
-            Term::Var(bindings_id).into(),
-            |cont, (idx, elem_pat)| {
-                let local_bindings_id = LocIdent::fresh();
+        let fold_block: NickelValue = self.patterns.iter().enumerate().rev().fold(
+            match_cont,
+            |match_cont, (idx, elem_pat)| {
                 let local_value_id = LocIdent::fresh();
-
-                // <self.patterns[idx].compile_part(local_value_id, local_bindings_id)>
-                let updated_bindings_let =
-                    elem_pat.compile_part(pos_table, local_value_id, local_bindings_id);
 
                 // %array/at% idx value_id
                 let extracted_value = make::op2(
@@ -743,28 +628,11 @@ impl CompilePart for ArrayPattern {
                     NickelValue::number_posless(idx),
                 );
 
-                // let local_value_id = <extracted_value> in <updated_bindings_let>
-                let inner_else_block =
-                    make::let_one_in(local_value_id, extracted_value, updated_bindings_let);
-
-                // The innermost if:
-                //
-                // if local_bindings_id == null then
-                //   null
-                // else
-                //  <inner_else_block>
-                let inner_if = make::if_then_else(
-                    make::op2(
-                        BinaryOp::Eq,
-                        Term::Var(local_bindings_id),
-                        NickelValue::null(),
-                    ),
-                    NickelValue::null(),
-                    inner_else_block,
-                );
-
-                // let local_bindings_id = cont in <inner_if>
-                make::let_one_in(local_bindings_id, cont, inner_if)
+                make::let_one_in(
+                    local_value_id,
+                    extracted_value,
+                    elem_pat.compile_part(pos_table, local_value_id, match_cont, fail_cont.clone()),
+                )
             },
         );
 
@@ -784,60 +652,13 @@ impl CompilePart for ArrayPattern {
         // <is_array> && value_len <comp_op> <self.patterns.len()>
         let outer_check = mk_app!(
             make::op1(UnaryOp::BoolAnd, is_array),
-            make::op2(comp_op, Term::Var(value_len_id), pats_len.clone(),)
+            make::op2(comp_op, Term::Var(value_len_id), pats_len)
         );
 
-        let final_bindings_id = LocIdent::fresh();
+        // if <outer_check> then <fold_block> else <fail_cont>
+        let outer_if = make::if_then_else(outer_check, fold_block, fail_cont);
 
-        // the else block which depends on the tail of the record pattern
-        let tail_block = match self.tail {
-            // final_bindings_id
-            TailPattern::Empty | TailPattern::Open => make::var(final_bindings_id),
-            // %record/insert%
-            //    <rest>
-            //    final_bindings_id
-            //    (%array/slice% <self.patterns.len()> value_len value_id)
-            TailPattern::Capture(rest) => mk_app!(
-                make::op2(
-                    record_insert(),
-                    NickelValue::string_posless(rest.label()),
-                    Term::Var(final_bindings_id),
-                ),
-                make::opn(
-                    NAryOp::ArraySlice,
-                    vec![
-                        pats_len,
-                        Term::Var(value_len_id).into(),
-                        Term::Var(value_id).into()
-                    ]
-                )
-            ),
-        };
-
-        // the last `final_bindings_id != null` guard:
-        //
-        // if final_bindings_id == null then
-        //   null
-        // else
-        //   <tail_block>
-        let guard_tail_block = make::if_then_else(
-            make::op2(
-                BinaryOp::Eq,
-                Term::Var(final_bindings_id),
-                NickelValue::null(),
-            ),
-            NickelValue::null(),
-            tail_block,
-        );
-
-        // The let enclosing the fold block and the let binding `final_bindings_id`:
-        // let final_bindings_id = <fold_block> in <tail_block>
-        let outer_let = make::let_one_in(final_bindings_id, fold_block, guard_tail_block);
-
-        // if <outer_check> then <outer_let> else null
-        let outer_if = make::if_then_else(outer_check, outer_let, NickelValue::null());
-
-        // finally, we need to bind `value_len_id` to the length of the array
+        // let <value_len_id> = %array/length% <value_id> in <outer_if>
         make::let_one_in(
             value_len_id,
             make::op1(UnaryOp::ArrayLength, Term::Var(value_id)),
@@ -851,7 +672,8 @@ impl CompilePart for EnumPattern {
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
-        bindings_id: LocIdent,
+        match_cont: NickelValue,
+        fail_cont: NickelValue,
     ) -> NickelValue {
         // %enum/get_tag% value_id == '<self.tag>
         let tag_matches = make::op2(
@@ -862,10 +684,10 @@ impl CompilePart for EnumPattern {
 
         if let Some(pat) = &self.pattern {
             // if %enum/is_variant% value_id && %enum/get_tag% value_id == '<self.tag> then
-            //   let value_id = %enum/get_arg% value_id in
-            //   <pattern.compile(value_id, bindings_id)>
+            //   let next_value_id = %enum/get_arg% value_id in
+            //   <pattern.compile(next_value_id, match_cont, fail_cont)>
             // else
-            //   null
+            //   fail_cont
 
             // %enum/is_variant% value_id && <tag_matches>
             let if_condition = mk_app!(
@@ -876,20 +698,22 @@ impl CompilePart for EnumPattern {
                 tag_matches
             );
 
+            let next_value_id = LocIdent::fresh();
+
             make::if_then_else(
                 if_condition,
                 make::let_one_in(
-                    value_id,
+                    next_value_id,
                     make::op1(UnaryOp::EnumGetArg, Term::Var(value_id)),
-                    pat.compile_part(pos_table, value_id, bindings_id),
+                    pat.compile_part(pos_table, next_value_id, match_cont, fail_cont.clone()),
                 ),
-                NickelValue::null(),
+                fail_cont,
             )
         } else {
             // if %typeof% value_id == 'Enum && !(%enum/is_variant% value_id) && <tag_matches> then
-            //   bindings_id
+            //   match_cont
             // else
-            //   null
+            //   fail_cont
 
             // %typeof% value_id == 'Enum
             let is_enum = make::op2(
@@ -910,14 +734,13 @@ impl CompilePart for EnumPattern {
                 mk_app!(make::op1(UnaryOp::BoolAnd, is_enum_tag,), tag_matches)
             );
 
-            make::if_then_else(if_condition, Term::Var(bindings_id), NickelValue::null())
+            make::if_then_else(if_condition, match_cont, fail_cont)
         }
     }
 }
 
 pub trait Compile {
-    /// Compile a match expression to a Nickel expression with the provided `value_id` as a
-    /// free variable (representing a placeholder for the matched expression).
+    /// Compile a match expression to a Nickel expression matching `value`.
     fn compile(self, pos_table: &mut PosTable, value: NickelValue, pos_idx: PosIdx) -> NickelValue;
 }
 
@@ -925,20 +748,9 @@ impl Compile for MatchData {
     // Compilation of a full match expression (code between < and > is Rust code, think of it as a
     // kind of templating). Note that some special cases compile differently as optimizations.
     //
-    // let value_id = value in
+    // let value_id = value in <fold_block>
     //
-    // <fold (pattern, body) in branches.rev()
-    //  - cont is the accumulator
-    //  - initial accumulator is the default branch (or error if not default branch)
-    // >
-    //    let init_bindings_id = {} in
-    //    let bindings_id = <pattern.compile()> value_id init_bindings_id in
-    //
-    //    if bindings_id == null then
-    //      cont
-    //    else
-    //      # this primop evaluates body with an environment extended with bindings_id
-    //      %pattern_branch% body bindings_id
+    // The main action is in <fold_block> (see below), which folds over the match branches.
     fn compile(
         mut self,
         pos_table: &mut PosTable,
@@ -1018,82 +830,36 @@ impl Compile for MatchData {
 
         let value_id = LocIdent::fresh();
 
-        // The fold block:
+        // The fold block.
+        //
+        // As in or pattern compilation, we fold in reverse over the
+        // alternatives, and our accumulator is the failure continuation. The
+        // initial accumulator is a runtime error.
         //
         // <for branch in branches.rev()
-        //  - cont is the accumulator
-        //  - initial accumulator is the default branch (or error if not default branch)
+        //  - fail_cont is the accumulator
         // >
-        //    let init_bindings_id = {} in
-        //    let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
-        //
-        //    if bindings_id == null || !<guard> then
-        //      cont
-        //    else
-        //      # this primop evaluates body with an environment extended with bindings_id
-        //      %pattern_branch% body bindings_id
+        //    <if there's a guard>
+        //      <pattern.compile_part(value_id, if <guard> then match_cont else fail_cont, fail_cont)>
+        //    <} else {>
+        //      <pattern.compile_part(value_id, match_cont, fail_cont)>
+        //    <}>
         let fold_block = self
             .branches
             .into_iter()
             .rev()
-            .fold(error_case, |cont, branch| {
-                let init_bindings_id = LocIdent::fresh();
-                let bindings_id = LocIdent::fresh();
-
-                // inner if condition:
-                // bindings_id == null || !<guard>
-                let inner_if_cond =
-                    make::op2(BinaryOp::Eq, Term::Var(bindings_id), NickelValue::null());
-                let inner_if_cond = if let Some(guard) = branch.guard {
-                    // the guard must be evaluated in the same environment as the body of the
-                    // branch, as it might use bindings introduced by the pattern. Since `||` is
-                    // lazy in Nickel, we know that `bindings_id` is not null if the guard
-                    // condition is ever evaluated.
-                    let guard_cond = mk_app!(
-                        make::op1(UnaryOp::PatternBranch, Term::Var(bindings_id)),
-                        guard
-                    );
-
-                    mk_app!(
-                        make::op1(UnaryOp::BoolOr, inner_if_cond),
-                        make::op1(UnaryOp::BoolNot, guard_cond)
-                    )
+            .fold(error_case, |fail_cont, branch| {
+                let match_cont = if let Some(guard) = branch.guard {
+                    // The guard expression becomes part of the match
+                    // continuation, so it will be evaluated in the same
+                    // environment as the body of the branch.
+                    make::if_then_else(guard, branch.body, fail_cont.clone())
                 } else {
-                    inner_if_cond
+                    branch.body
                 };
-
-                // inner if block:
-                //
-                // if bindings_id == null then
-                //   cont
-                // else
-                //   # this primop evaluates body with an environment extended with bindings_id
-                //   %pattern_branch% bindings_id body
-                let inner = make::if_then_else(
-                    inner_if_cond,
-                    cont,
-                    mk_app!(
-                        make::op1(UnaryOp::PatternBranch, Term::Var(bindings_id),),
-                        branch.body
-                    ),
-                );
-
-                // The two initial chained let-bindings:
-                //
-                // let init_bindings_id = {} in
-                // let bindings_id = <pattern.compile_part(value_id, init_bindings)> in
-                // <inner>
-                make::let_one_in(
-                    init_bindings_id,
-                    NickelValue::empty_record(),
-                    make::let_one_in(
-                        bindings_id,
-                        branch
-                            .pattern
-                            .compile_part(pos_table, value_id, init_bindings_id),
-                        inner,
-                    ),
-                )
+                branch
+                    .pattern
+                    .compile_part(pos_table, value_id, match_cont, fail_cont)
             });
 
         // let value_id = value in <fold_block>
