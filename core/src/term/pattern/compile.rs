@@ -176,6 +176,37 @@ pub trait CompilePart {
     /// this match expression. That is, `compile_part` is responsible for
     /// putting `match_cont` and `fail_cont` into environments containing these
     /// identifiers.
+    ///
+    /// Because of the free variables involved, pattern compilation *must not*
+    /// put `fail_cont` into any let block that binds a non-fresh variable.
+    /// Since a sub-pattern compilation might contain a `fail_cont`, this means
+    /// you must avoid generating code like:
+    ///
+    /// ```ignore
+    /// let pattern_var = ... in <sub_pattern.compile_part(match_cont, fail_cont)>
+    /// ```
+    ///
+    /// Instead, put the bindings on the inside:
+    ///
+    /// ```ignore
+    /// <sub_pattern.compile_part(let pattern_var = ... in match_cont, fail_cont)>
+    /// ```
+    ///
+    /// As a motivating example, consider a match block like
+    ///
+    /// ```nickel
+    /// let foo = 1 in
+    /// [2, 'Blah] |> match {
+    ///   [foo, 'Bar] => foo,
+    ///   [_, 'Blah] => foo,
+    /// }
+    /// ```
+    ///
+    /// This gets compiled by calling `compile_part` on the first match arm,
+    /// with a `fail_cont` continuation that falls through to the second match
+    /// arm. If the first match arm's pattern were to bind `foo` to `2` and
+    /// then fail to match `'Bar`, the second match arm would see the wrong
+    /// binding for `foo`.
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
@@ -362,7 +393,9 @@ impl CompilePart for RecordPattern {
             }
         }
 
-        // (%record/has_field_with_opts% field0 value_id) && (%record/has_field_with_opts% field1 value_id) && ...
+        let local_value_id = LocIdent::fresh();
+
+        // (%record/has_field_with_opts% field0 local_value_id) && (%record/has_field_with_opts% field1 local_value_id) && ...
         //
         // Where field0, field1, etc. are all the non-defaulted fields.
         let has_fields =
@@ -375,7 +408,7 @@ impl CompilePart for RecordPattern {
                         let has_field = make::op2(
                             BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
                             NickelValue::string_posless(field_pat.matched_id.label()),
-                            Term::Var(value_id),
+                            Term::Var(local_value_id),
                         );
 
                         and(has_field, has_other_fields)
@@ -384,7 +417,7 @@ impl CompilePart for RecordPattern {
 
         // If this pattern is non-open, this is
         //
-        // (%record/fields_with_opts% value_id |> %array/length%) == <self.patterns.len()>
+        // (%record/fields_with_opts% local_value_id |> %array/length%) == <self.patterns.len()>
         let has_right_length = if self.is_open() {
             NickelValue::bool_true()
         } else {
@@ -394,7 +427,7 @@ impl CompilePart for RecordPattern {
                     UnaryOp::ArrayLength,
                     make::op1(
                         UnaryOp::RecordFields(RecordOpKind::ConsiderAllFields),
-                        Term::Var(value_id),
+                        Term::Var(local_value_id),
                     ),
                 ),
                 NickelValue::number_posless(self.patterns.len()),
@@ -405,12 +438,12 @@ impl CompilePart for RecordPattern {
 
         let match_cont = if let TailPattern::Capture(tail) = self.tail {
             // let
-            //   <tail> = (%record/remove_with_opts% field0 (%record/remove_with_opts% field1 value_id) ... )
+            //   <tail> = (%record/remove_with_opts% field0 (%record/remove_with_opts% field1 local_value_id) ... )
             // in <match_cont>
             //
             // where field0, field1, ... are all the fields matched in the pattern.
             let tail_value = self.patterns.iter().fold(
-                NickelValue::term_posless(Term::Var(value_id)),
+                NickelValue::term_posless(Term::Var(local_value_id)),
                 |tail, field_pat| {
                     make::op2(
                         BinaryOp::RecordRemove(RecordOpKind::ConsiderAllFields),
@@ -435,30 +468,36 @@ impl CompilePart for RecordPattern {
         // There are two cases in the match block, depending on whether the
         // field in the pattern has an annotation. If it doesn't, we yield
         //
-        // let <field> = %static_access(<field>)% value_id in
+        // let <field> = %static_access(<field>)% local_value_id in
         // <field_pat.pattern.compile_part(field, match_cont, fail_cont)>
         //
         // If there is an annotation, we yield
         //
         // let value_id = <update_with_merge value_id field annotation> in
-        // let <field> = %static_access(<field>)% value_id in
+        // let <field> = %static_access(<field>)% local_value_id in
         // <field_pat.pattern.compile_part(field, match_cont, fail_cont)>
         let fold_block = self
             .patterns
             .iter()
             .fold(match_cont, |match_cont, field_pat| {
+                let local_field_id = LocIdent::fresh();
                 let field = field_pat.matched_id;
 
-                let match_cont =
-                    field_pat
-                        .pattern
-                        .compile_part(pos_table, field, match_cont, fail_cont.clone());
+                let match_cont = field_pat.pattern.compile_part(
+                    pos_table,
+                    local_field_id,
+                    // <field> isn't a generated name, so we must only bind it
+                    // in the innermost wrapper around the match continuation
+                    make::let_one_in(field, Term::Var(local_field_id), match_cont),
+                    fail_cont.clone(),
+                );
 
                 // %static_access(field)% value_id
-                let extracted_value = make::op1(UnaryOp::RecordAccess(field), Term::Var(value_id));
+                let extracted_value =
+                    make::op1(UnaryOp::RecordAccess(field), Term::Var(local_value_id));
 
-                // let <field> = <extracted_value> in <match_cont>
-                let match_cont = make::let_one_in(field, extracted_value, match_cont);
+                // let <local_field_id> = <extracted_value> in <match_cont>
+                let match_cont = make::let_one_in(local_field_id, extracted_value, match_cont);
 
                 // <if !field.annotation.is_empty()>
                 //   let value_id = <update_with_merge...> in <match_cont>
@@ -467,10 +506,10 @@ impl CompilePart for RecordPattern {
                 // <end if>
                 if !field_pat.annotation.is_empty() {
                     make::let_one_in(
-                        value_id,
+                        local_value_id,
                         update_with_merge(
                             pos_table,
-                            value_id,
+                            local_value_id,
                             field,
                             Field::from(FieldMetadata {
                                 annotation: field_pat.annotation.clone(),
@@ -495,7 +534,7 @@ impl CompilePart for RecordPattern {
         );
 
         // <if any default values {>
-        //   let value_id = <with_default_value(with_default_value(value_id, field0, default0), field1, default1) ...> in <match_cont>
+        //   let local_value_id = <with_default_value(with_default_value(value_id, field0, default0), field1, default1) ...> in match_cont
         // <} else {>
         //   match_cont
         // <}>
@@ -504,8 +543,13 @@ impl CompilePart for RecordPattern {
         let with_defaults = self.patterns.iter().fold(inner_if, |cont, field_pat| {
             if let Some(default) = field_pat.default.as_ref() {
                 make::let_one_in(
-                    value_id,
-                    with_default_value(pos_table, value_id, field_pat.matched_id, default.clone()),
+                    local_value_id,
+                    with_default_value(
+                        pos_table,
+                        local_value_id,
+                        field_pat.matched_id,
+                        default.clone(),
+                    ),
                     cont,
                 )
             } else {
@@ -513,8 +557,12 @@ impl CompilePart for RecordPattern {
             }
         });
 
-        // if <is_record> then <with_defaults> else <fail_cont>
-        make::if_then_else(is_record, with_defaults, fail_cont)
+        // if <is_record> then let local_value_id = value_id in <with_defaults> else <fail_cont>
+        make::if_then_else(
+            is_record,
+            make::let_one_in(local_value_id, Term::Var(value_id), with_defaults),
+            fail_cont,
+        )
     }
 }
 
