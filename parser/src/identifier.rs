@@ -37,6 +37,17 @@ impl Ident {
         self.label().to_owned()
     }
 
+    /// Look up a generated identifier by name, panicking if it doesn't exist.
+    ///
+    /// This is extremely slow because it scans over all symbols. It's only used
+    /// for tests that look at pretty-printed output.
+    ///
+    /// Public only because we use it in tests outside of `nickel_lang_parser`.
+    #[doc(hidden)]
+    pub fn find_generated(s: &str) -> Self {
+        Self(INTERNER.find_generated(s))
+    }
+
     /// Create a new fresh identifier. This identifier is unique and is
     /// guaranteed not to collide with any identifier defined before.
     ///
@@ -325,6 +336,20 @@ mod interner {
             unsafe { std::mem::transmute::<&'_ str, &'_ str>(self.0.read().unwrap().lookup(sym)) }
         }
 
+        /// Look up a generated identifier by name, panicking if it doesn't exist.
+        ///
+        /// This is extremely slow because it scans over all symbols. It's only used
+        /// for tests that look at pretty-printed output.
+        pub(crate) fn find_generated(&self, s: &str) -> Symbol {
+            let inner = self.0.read().unwrap();
+            inner.with(|inner| {
+                let idx = (0..inner.vec.len())
+                    .find(|&idx| inner.generated[idx] && inner.vec[idx] == s)
+                    .unwrap();
+                Symbol(idx as u32)
+            })
+        }
+
         pub(crate) fn is_generated(&self, sym: Symbol) -> bool {
             self.0.read().unwrap().is_generated(sym)
         }
@@ -386,7 +411,12 @@ mod interner {
             let sym = Symbol(self.borrow_vec().len() as u32);
             self.with_vec_mut(|v| v.push(in_string));
             self.with_generated_mut(|g| g.push(generated));
-            self.with_map_mut(|m| m.insert(in_string, sym));
+            // We only insert non-generated ids into the map, because we don't
+            // want deduplication to ever hit a generated id: if someone does
+            // `Ident::new("%0") they should get a non-generated id.
+            if !generated {
+                self.with_map_mut(|m| m.insert(in_string, sym));
+            }
             sym
         }
 
