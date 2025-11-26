@@ -751,7 +751,7 @@ impl<EC: EvalCache> Program<EC> {
                             value,
                             Label {
                                 typ: std::rc::Rc::new(typ),
-                                span: Some(span),
+                                span: self.vm_ctxt.pos_table.push(span.into()),
                                 ..Default::default()
                             },
                         ))

@@ -122,7 +122,7 @@ fn update_with_merge(
         .metadata
         .annotation
         .iter()
-        .filter_map(|labeled_ty| labeled_ty.label.span);
+        .filter_map(|labeled_ty| pos_table.get(labeled_ty.label.span).into_opt());
     let value_spans = field
         .value
         .as_ref()
@@ -152,7 +152,7 @@ fn update_with_merge(
     let singleton = NickelValue::term_posless(Term::Closurize(singleton));
 
     let merge_label = MergeLabel {
-        span,
+        span: pos_table.push(span.into()),
         kind: MergeKind::Standard,
     };
 

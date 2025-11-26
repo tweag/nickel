@@ -446,7 +446,7 @@ fn doctest_transform(
                         // test term.
                         let expected_term = prepare(pos_table, cache, s, &source_path)?;
                         // unwrap: we just parsed it, so it will have a span
-                        let expected_span = expected_term.pos(pos_table).into_opt().unwrap();
+                        let expected_span = expected_term.pos_idx();
 
                         let eq = make::static_access(
                             NickelValue::term_posless(Term::Var("std".into())),
@@ -461,7 +461,7 @@ fn doctest_transform(
                                     typ: eq_ty.clone(),
                                     label: Label {
                                         typ: Rc::new(eq_ty),
-                                        span: Some(expected_span),
+                                        span: expected_span,
                                         ..Default::default()
                                     },
                                 }],
