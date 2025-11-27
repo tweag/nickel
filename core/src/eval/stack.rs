@@ -301,7 +301,7 @@ pub(crate) enum SealedCont {
 /// Instead, we now implement the stack as an untyped sequence of bytes (`Vec<u8>`). When we push
 /// an arbitrary data structure to the stack, we first push the data, and then use the last word to
 /// store an [ItemKind] marker. When popping, we look at the first word which lets us know how to
-/// interpret the rest of the data at the top of the stack, and how much bytes we need to pop.
+/// interpret the rest of the data at the top of the stack, and how many bytes we need to pop.
 ///
 /// # Safety
 ///
