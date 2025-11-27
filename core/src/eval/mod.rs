@@ -113,8 +113,9 @@ pub mod stack;
 pub mod value;
 
 use callstack::*;
-use operation::OperationCont;
-use stack::{Stack, StrAccData};
+use stack::{
+    Op1ContItem, Op2FirstContItem, OpNContItem, PrimopAppInfo, SealedCont, Stack, StrAccItem,
+};
 use value::{
     Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef, ValueContentRefMut,
 };
@@ -239,7 +240,7 @@ impl<C: Cache> VmContext<ImportCaches, C> {
 /// The virtual machine implements [Drop]. The stack is unwinded by default upon dropping, which
 /// amounts to calling [VirtualMachine::reset()], and avoids leaving thunks in the blackholed state
 /// on abort. If you don't need unwinding and don't want to pay for it (though it doesn't cost
-/// anything for successful executions), see  [NoUnwindVirtualMachine].
+/// anything for successful executions), see [NoUnwindVirtualMachine].
 pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     context: &'ctxt mut VmContext<R, C>,
     /// The main stack, storing arguments, cache indices and pending computations.
@@ -278,7 +279,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     /// for another evaluation round.
     pub fn reset(&mut self) {
         self.call_stack.0.clear();
-        self.stack.reset(&mut self.context.cache);
+        self.stack.unwind(&mut self.context.cache);
     }
 
     pub fn import_resolver(&self) -> &R {
@@ -697,7 +698,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     self.enter_cache_index(None, thunk.clone(), pos_idx, env)?
                 }
                 ValueContentRef::Term(Term::Sealed(data)) => {
-                    let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
                         value: NickelValue::term(Term::Sealed(data.clone()), pos_idx),
                         env: env.clone(),
@@ -726,18 +726,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // - If it's anything else, we raise an error right away because the
                     //   corresponding polymorphic contract has been violated: a function tried to
                     //   use a polymorphic sealed value.
-                    match stack_item {
-                        Some(OperationCont::Op2Second(BinaryOp::Unseal, _, _, _)) => {
-                            self.continuate_operation(closure)?
-                        }
-                        Some(OperationCont::Op1(UnaryOp::Seq, _)) => {
-                            // Then, evaluate / `Seq` the inner value.
+                    match self.stack.peek_sealed_cont() {
+                        SealedCont::Unseal => self.continue_op(closure)?,
+                        SealedCont::Seq => {
+                            // evaluate / `Seq` the inner value.
                             Closure {
                                 value: data.inner.clone(),
                                 env,
                             }
                         }
-                        None | Some(..) => {
+                        SealedCont::Other => {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(Box::new(EvalErrorKind::BlameError {
                                 evaluated_arg: data.label.get_evaluated_arg(&self.context.cache),
@@ -798,11 +796,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::Op1(data)) => {
-                    self.stack.push_op_cont(
-                        OperationCont::Op1(data.op.clone(), data.arg.pos_idx()),
-                        self.call_stack.len(),
-                        pos_idx,
-                    );
+                    self.stack.push_op1_cont(Op1ContItem {
+                        op: data.op.clone(),
+                        orig_pos_arg: data.arg.pos_idx(),
+                        app_info: PrimopAppInfo {
+                            call_stack_size: self.call_stack.len(),
+                            pos_idx,
+                        },
+                    });
 
                     Closure {
                         value: data.arg.clone(),
@@ -810,18 +811,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::Op2(data)) => {
-                    self.stack.push_op_cont(
-                        OperationCont::Op2First(
-                            data.op.clone(),
-                            Closure {
-                                value: data.arg2.clone(),
-                                env: env.clone(),
-                            },
-                            data.arg1.pos_idx(),
-                        ),
-                        self.call_stack.len(),
-                        pos_idx,
-                    );
+                    self.stack.push_op2_first_cont(Op2FirstContItem {
+                        op: data.op.clone(),
+                        app_info: PrimopAppInfo {
+                            call_stack_size: self.call_stack.len(),
+                            pos_idx,
+                        },
+                        arg2: Closure {
+                            value: data.arg2.clone(),
+                            env: env.clone(),
+                        },
+                        orig_pos_arg1: data.arg1.pos_idx(),
+                    });
 
                     Closure {
                         value: data.arg1.clone(),
@@ -844,16 +845,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         })
                         .collect();
 
-                    self.stack.push_op_cont(
-                        OperationCont::OpN {
-                            op: data.op.clone(),
-                            evaluated: Vec::with_capacity(pending.len() + 1),
-                            pending,
-                            current_pos_idx: fst_arg.pos_idx(),
+                    self.stack.push_opn_cont(OpNContItem {
+                        op: data.op.clone(),
+                        app_info: PrimopAppInfo {
+                            call_stack_size: self.call_stack.len(),
+                            pos_idx,
                         },
-                        self.call_stack.len(),
-                        pos_idx,
-                    );
+                        evaluated: Vec::with_capacity(pending.len() + 1),
+                        pending,
+                        current_pos_idx: fst_arg.pos_idx(),
+                    });
 
                     Closure {
                         value: fst_arg.clone(),
@@ -871,10 +872,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             };
 
                             self.stack.push_str_chunks(chunks_iter);
-                            self.stack.push_str_acc(StrAccData {
+                            self.stack.push_str_acc(StrAccItem {
                                 acc: String::new(),
                                 env: env.clone(),
-                                curr_indent: indent,
+                                // unwrap(): we don't expect an indentation of `u32::MAX` lines...
+                                curr_indent: indent.try_into().unwrap(),
                                 curr_pos: arg.pos_idx(),
                             });
 
@@ -1182,7 +1184,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // If there is a primitive operator continuation on the stack, we proceed with
                     // the continuation.
                     else if self.stack.is_top_cont() {
-                        self.continuate_operation(evaluated)?
+                        self.continue_op(evaluated)?
                     }
                     // Otherwise, if the stack is non-empty, this is an ill-formed application (we
                     // are supposed to evaluate an application, but the left hand side isn't a
