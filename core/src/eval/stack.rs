@@ -678,8 +678,8 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Helper for an ad-hoc check that needs to be performed by the evaluation of a sealed term,
-    /// to decide what to do next. It used to be implemented using a generic `peek_op_cont` methodo
-    /// n, but such a generic method is now impossible to implement with the stack as a byte stream
+    /// to decide what to do next. It used to be implemented using a generic `peek_op_cont` method,
+    /// but such a generic method is now impossible to implement with the stack as a byte stream
     /// implementation. Instead, we moved this check inside stack.
     ///
     /// This method look at the first element of the stack and return a corresponding [SealedCont].
