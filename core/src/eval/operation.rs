@@ -2954,25 +2954,31 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 };
 
                 let decode_with = |engine: base64::engine::GeneralPurpose| {
-                    engine
+                    let decode_result = engine
                         .decode(s.as_str())
-                        .map_err(|err| {
-                            Box::new(EvalErrorKind::Base64DecodingError(
-                                format!("{err}"),
-                                pos_op_inh,
-                            ))
-                        })
+                        .map_err(|err| format!("Base64 decoding failed: {err}"))
                         .and_then(|decoded_bytes| {
                             String::from_utf8(decoded_bytes).map_err(|err| {
-                                Box::new(EvalErrorKind::Base64DecodingError(
-                                    format!("{err}"),
-                                    pos_op_inh,
-                                ))
+                                format!("Could not convert decoded value to string: {err}")
                             })
-                        })
-                        .map(|decoded_string| {
-                            NickelValue::string(decoded_string, pos_op_inh).into()
-                        })
+                        });
+                    match decode_result {
+                        Ok(decoded_string) => Ok(NickelValue::enum_variant(
+                            "Ok",
+                            Some(NickelValue::string_posless(decoded_string)),
+                            pos_op_inh,
+                        )
+                        .into()),
+                        Err(err) => Ok(NickelValue::enum_variant(
+                            "Error",
+                            Some(
+                                mk_record!(("message", NickelValue::string_posless(err)))
+                                    .with_pos_idx(pos_op_inh),
+                            ),
+                            pos_op_inh,
+                        )
+                        .into()),
+                    }
                 };
 
                 match b64_variant.tag.as_ref() {

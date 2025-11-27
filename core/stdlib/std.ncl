@@ -4741,7 +4741,7 @@
         # => "8J-Yjg"
         ```
       "%
-      = fun encoding s => %string/base64_encode% encoding s,
+      = fun variant s => %string/base64_encode% variant s,
 
     base64_decode
       : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
@@ -4774,7 +4774,34 @@
         # => "😎"
         ```
       "%
-      = fun encoding s => %string/base64_decode% encoding s,
+      = fun variant str =>
+        let Base64String =
+          %contract/custom% (fun _label value =>
+            (
+              %typeof% value
+              |> match {
+                'Enum => 'Ok (value | [| 'Decoded String |]),
+                'String =>
+                  (%string/base64_decode% variant (value | String))
+                  |> match {
+                    'Ok dec => 'Ok ('Decoded dec),
+                    'Error err => 'Error err
+                  },
+                _ => 'Error { message = "Expected a String or a [| 'Decoded String |]" }
+              }
+            )
+              | [|
+                'Ok Dyn,
+                'Error {
+                  message | String | optional,
+                  notes | Array String | optional,
+                  blame_location | Dyn | optional
+                }
+              |]
+          )
+        in
+        let decoded = str | Base64String
+        in (decoded | [| 'Decoded String |]) |> match { 'Decoded val => val },
 
     from
       | Stringable -> String

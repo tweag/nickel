@@ -455,13 +455,16 @@ impl PrimOpType for PrimOp {
                 ],
                 mk_uniftype::str(),
             ),
-            // < Base64, Base64Url > -> Str -> Str
+            // < Base64, Base64Url > -> Str -> [| 'Ok String, 'Error { message : String } |]
             PrimOp::StringBase64Decode => (
                 vec![
                     mk_uty_enum!("Standard", "UrlSafe", "NoPad", "UrlSafeNoPad"),
                     mk_uniftype::str(),
                 ],
-                mk_uniftype::str(),
+                mk_uty_enum!(
+                    ("Ok", TypeF::String),
+                    ("Error", mk_uty_record!(("message", TypeF::String)))
+                ),
             ),
             // The first argument is a contract, the second is a label.
             // forall a. Dyn -> Dyn -> Array a -> Array a
