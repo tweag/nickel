@@ -196,11 +196,11 @@ pub enum TermContent {
     RecRecord(ValueLens<Box<RecRecordData>>),
     Closurize(ValueLens<NickelValue>),
     Match(ValueLens<MatchData>),
-    Op1(ValueLens<Box<Op1Data>>),
-    Op2(ValueLens<Box<Op2Data>>),
+    Op1(ValueLens<Op1Data>),
+    Op2(ValueLens<Op2Data>),
     OpN(ValueLens<OpNData>),
-    Sealed(ValueLens<Box<SealedData>>),
-    Annotated(ValueLens<Box<AnnotatedData>>),
+    Sealed(ValueLens<SealedData>),
+    Annotated(ValueLens<AnnotatedData>),
     Import(ValueLens<Import>),
     ResolvedImport(ValueLens<FileId>),
     ParseError(ValueLens<Box<ParseError>>),
@@ -455,15 +455,15 @@ impl_term_boxed_lens!(
 
 impl_term_lens!(term_match_lens, term_match_extractor, Match, MatchData);
 
-impl_term_boxed_lens!(term_op1_lens, term_op1_extractor, Op1, Op1Data);
+impl_term_lens!(term_op1_lens, term_op1_extractor, Op1, Op1Data);
 
-impl_term_boxed_lens!(term_op2_lens, term_op2_extractor, Op2, Op2Data);
+impl_term_lens!(term_op2_lens, term_op2_extractor, Op2, Op2Data);
 
 impl_term_lens!(term_opn_lens, term_opn_extractor, OpN, OpNData);
 
-impl_term_boxed_lens!(term_sealed_lens, term_sealed_extractor, Sealed, SealedData);
+impl_term_lens!(term_sealed_lens, term_sealed_extractor, Sealed, SealedData);
 
-impl_term_boxed_lens!(
+impl_term_lens!(
     term_annotated_lens,
     term_annotated_extractor,
     Annotated,

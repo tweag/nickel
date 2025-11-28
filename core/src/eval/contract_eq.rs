@@ -307,21 +307,16 @@ fn contract_eq_bounded(
 
                     value_eq && ty_eq
                 }
-                (Term::Op1(data1), Term::Op1(data2)) => {
-                    if let Op1Data {
+                (
+                    Term::Op1(Op1Data {
                         op: UnaryOp::RecordAccess(id1),
                         arg: arg1,
-                    } = &**data1
-                        && let Op1Data {
-                            op: UnaryOp::RecordAccess(id2),
-                            arg: arg2,
-                        } = &**data2
-                    {
-                        id1 == id2 && contract_eq_bounded(state, arg1, env1, arg2, env2)
-                    } else {
-                        false
-                    }
-                }
+                    }),
+                    Term::Op1(Op1Data {
+                        op: UnaryOp::RecordAccess(id2),
+                        arg: arg2,
+                    }),
+                ) => id1 == id2 && contract_eq_bounded(state, arg1, env1, arg2, env2),
                 (Term::Sealed(data1), Term::Sealed(data2)) => {
                     data1.key == data2.key
                         && contract_eq_bounded(state, &data1.inner, env1, &data2.inner, env2)

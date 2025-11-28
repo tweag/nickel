@@ -739,7 +739,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             // This operation should not be allowed to evaluate a sealed term
                             break Err(Box::new(EvalErrorKind::BlameError {
                                 evaluated_arg: data.label.get_evaluated_arg(&self.context.cache),
-                                label: data.label.clone(),
+                                label: (*data.label).clone(),
                             }));
                         }
                     }

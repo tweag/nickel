@@ -324,7 +324,9 @@ impl CollectFreeVars for OpNData {
 
 impl CollectFreeVars for AnnotatedData {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        for ctr in self.annot.iter_mut() {
+        use std::rc::Rc;
+
+        for ctr in Rc::make_mut(&mut self.annot).iter_mut() {
             ctr.typ.collect_free_vars(set)
         }
 

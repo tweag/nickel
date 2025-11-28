@@ -260,7 +260,7 @@ impl<'ast> FromMainline<'ast, (LocIdent, term::record::Field)> for record::Field
                 .value
                 .as_ref()
                 .map(|term| term.to_ast(alloc, pos_table)),
-            metadata: content.metadata.to_ast(alloc, pos_table),
+            metadata: (*content.metadata).to_ast(alloc, pos_table),
             pos,
         }
     }
@@ -483,7 +483,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                             .value
                             .as_ref()
                             .map(|term| term.to_ast(alloc, pos_table)),
-                        metadata: field.metadata.to_ast(alloc, pos_table),
+                        metadata: (*field.metadata).to_ast(alloc, pos_table),
                         pos,
                     }
                 }));
@@ -501,7 +501,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                             alloc,
                             expr.to_ast(alloc, pos_table),
                         ),
-                        metadata: field.metadata.to_ast(alloc, pos_table),
+                        metadata: (*field.metadata).to_ast(alloc, pos_table),
                         value: field
                             .value
                             .as_ref()
@@ -574,7 +574,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             }
             Term::Sealed(..) => panic!("didn't expect a sealed term at the first stage"),
             Term::Annotated(data) => alloc.annotated(
-                data.annot.to_ast(alloc, pos_table),
+                (*data.annot).to_ast(alloc, pos_table),
                 data.inner.to_ast(alloc, pos_table),
             ),
             Term::Import(term::Import::Path { path, format }) => {

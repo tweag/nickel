@@ -34,7 +34,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                 };
 
                 let mut data = value_lens.take();
-                data.annot = data.annot.subst_wildcards(wildcards);
+                data.annot = Rc::new(Rc::unwrap_or_clone(data.annot).subst_wildcards(wildcards));
 
                 NickelValue::term(Term::Annotated(data), pos_idx)
             } else if let TermContent::RecRecord(record_lens) = term_lens {

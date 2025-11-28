@@ -124,7 +124,7 @@ pub struct Include {
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct FieldMetadata {
-    pub doc: Option<String>,
+    pub doc: Option<Rc<str>>,
     pub annotation: TypeAnnotation,
     /// If the field is optional.
     pub opt: bool,
@@ -189,7 +189,7 @@ impl From<TypeAnnotation> for FieldMetadata {
 pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<NickelValue>,
-    pub metadata: FieldMetadata,
+    pub metadata: Rc<FieldMetadata>,
     /// List of contracts yet to be applied.
     /// These are only observed when data enter or leave the record.
     pub pending_contracts: Vec<RuntimeContract>,
@@ -212,6 +212,12 @@ impl From<TypeAnnotation> for Field {
 
 impl From<FieldMetadata> for Field {
     fn from(metadata: FieldMetadata) -> Self {
+        Field::from(Rc::new(metadata))
+    }
+}
+
+impl From<Rc<FieldMetadata>> for Field {
+    fn from(metadata: Rc<FieldMetadata>) -> Self {
         Field {
             metadata,
             ..Default::default()
@@ -261,12 +267,13 @@ impl Traverse<NickelValue> for Field {
     where
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
-        let annotation = self.metadata.annotation.traverse(f, order)?;
+        let metadata = Rc::unwrap_or_clone(self.metadata);
+        let annotation = metadata.annotation.traverse(f, order)?;
         let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
 
         let metadata = FieldMetadata {
             annotation,
-            ..self.metadata
+            ..metadata
         };
 
         let pending_contracts = self
@@ -276,7 +283,7 @@ impl Traverse<NickelValue> for Field {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Field {
-            metadata,
+            metadata: Rc::new(metadata),
             value,
             pending_contracts,
         })
@@ -310,7 +317,7 @@ pub struct RecordData {
     /// Attributes which may be applied to a record.
     pub attrs: RecordAttrs,
     /// The hidden part of a record under a polymorphic contract.
-    pub sealed_tail: Option<SealedTail>,
+    pub sealed_tail: Option<Rc<SealedTail>>,
 }
 
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
@@ -343,7 +350,7 @@ impl RecordData {
         RecordData {
             fields,
             attrs,
-            sealed_tail,
+            sealed_tail: sealed_tail.map(Rc::new),
         }
     }
 
@@ -427,7 +434,7 @@ impl RecordData {
                 }
                 None if !field.metadata.opt => Some(Err(Box::new(MissingFieldDefErrorData {
                     id: *id,
-                    metadata: field.metadata.clone(),
+                    metadata: (*field.metadata).clone(),
                 }))),
                 None => None,
             })
@@ -447,7 +454,7 @@ impl RecordData {
                 None if !field.metadata.opt && !field.metadata.not_exported => {
                     Some(Err(Box::new(MissingFieldDefErrorData {
                         id: *id,
-                        metadata: field.metadata.clone(),
+                        metadata: (*field.metadata).clone(),
                     })))
                 }
                 _ => None,
@@ -467,11 +474,11 @@ impl RecordData {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
-                metadata: metadata @ FieldMetadata { opt: false, .. },
+                metadata,
                 ..
-            }) => Err(Box::new(MissingFieldDefErrorData {
+            }) if !metadata.opt => Err(Box::new(MissingFieldDefErrorData {
                 id: *id,
-                metadata: metadata.clone(),
+                metadata: (**metadata).clone(),
             })),
             Some(Field {
                 value: Some(value),
