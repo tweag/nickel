@@ -141,8 +141,7 @@ impl From<&Field> for FieldInterface {
 
         let subfields_from_contracts = field
             .metadata
-            .annotation
-            .iter()
+            .iter_annots()
             .map(ExtractInterface::extract_interface);
 
         let subfields_from_value = std::iter::once(field.extract_interface());
@@ -197,7 +196,7 @@ impl FieldInterface {
 
     /// Return true is the field's merge priority is `default`.
     pub(super) fn is_default(&self) -> bool {
-        matches!(self.field.metadata.priority, MergePriority::Bottom)
+        matches!(self.field.metadata.priority(), MergePriority::Bottom)
     }
 
     pub(super) fn has_subfields(&self) -> bool {
@@ -207,7 +206,7 @@ impl FieldInterface {
     /// Return the list of the type and contract annotations joined as a comma-separated string, if
     /// any.
     pub(super) fn type_and_contracts(&self) -> Option<String> {
-        let annotation = &self.field.metadata.annotation;
+        let annotation = &self.field.metadata.as_ref()?.annotation;
 
         (!annotation.is_empty()).then(|| {
             let anns: Vec<String> = annotation

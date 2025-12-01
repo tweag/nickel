@@ -54,7 +54,7 @@ use md5::digest::Digest;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::{convert::TryFrom, iter::Extend};
+use std::{convert::TryFrom, iter::Extend, rc::Rc};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -647,7 +647,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // is something users will actually need to do, so we've
                     // decided to prevent this until we have a clearer idea
                     // of potential use-cases.
-                    if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                    if let Some(tail) = record.sealed_tail {
+                        let label = Rc::unwrap_or_clone(tail).label;
+
                         return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Map,
                             evaluated_arg: label.get_evaluated_arg(&self.context.cache),
@@ -1059,7 +1061,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .iter()
                             .filter(|(_, field)| {
                                 !(field.is_empty_optional()
-                                    || (ignore_not_exported && field.metadata.not_exported))
+                                    || (ignore_not_exported && field.metadata.not_exported()))
                             })
                             .map(|(id, field)| (*id, field.clone()))
                             .map_values_closurize(&mut self.context.cache, &env, |_, value| {
@@ -1205,11 +1207,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // would be, as there might be dependencies between the sealed part and the
                     // unsealed part. Merging is disallowed on records with tail, so we disallow
                     // freezing as well.
-                    if let Some(record::SealedTail { label, .. }) = &record.sealed_tail {
+                    if let Some(tail) = &record.sealed_tail {
                         return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Freeze,
-                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                            label: label.clone(),
+                            evaluated_arg: tail.label.get_evaluated_arg(&self.context.cache),
+                            label: tail.label.clone(),
                         }));
                     }
 
@@ -2292,7 +2294,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     BinaryOp::RecordInsert {
                         ext_kind,
                         op_kind,
-                        metadata: Box::new(FieldMetadata::default()),
+                        metadata: SharedMetadata::empty(),
                         pending_contracts: Vec::new(),
                     }
                     .to_string()
@@ -2342,7 +2344,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     LocIdent::from(id),
                     Field {
                         value,
-                        metadata: *metadata,
+                        metadata,
                         pending_contracts,
                     },
                 ) {
@@ -2397,10 +2399,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             RecordOpKind::IgnoreEmptyOpt,
                             Some(Field {
                                 value: None,
-                                metadata: FieldMetadata { opt: true, .. },
-                                ..
+                                metadata, ..
                             })
-                        )
+                        ) if metadata.opt()
                     )
                 {
                     match record.sealed_tail.as_ref() {
@@ -3112,11 +3113,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // additional sealed tail itself (tail can be sealed multiple times in a nested
                 // way), and the right behavior (tm) is to just keep it.
                 let sealed_tail = match (&record1.sealed_tail, &record2.sealed_tail) {
-                    (Some(record::SealedTail { label, .. }), Some(_)) => {
+                    (Some(tail1), Some(_)) => {
                         return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                             action: IllegalPolymorphicTailAction::Merge,
-                            evaluated_arg: label.get_evaluated_arg(&self.context.cache),
-                            label: label.clone(),
+                            evaluated_arg: tail1.label.get_evaluated_arg(&self.context.cache),
+                            label: tail1.label.clone(),
                         }));
                     }
                     (tail1, tail2) => tail1.as_ref().or(tail2.as_ref()).cloned(),
@@ -3451,12 +3452,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .into_opt()
                     .map(|r| r.fields.keys().map(|s| s.ident()).collect())
                     .unwrap_or_default();
-                r.sealed_tail = Some(record::SealedTail::new(
+                r.sealed_tail = Some(Rc::new(record::SealedTail::new(
                     *s,
                     label.clone(),
                     tail_closurized,
                     fields,
-                ));
+                )));
 
                 Ok(Closure {
                     value: arg3,
@@ -3879,7 +3880,7 @@ fn eq<C: Cache>(
 
                             Some(Err(Box::new(EvalErrorKind::MissingFieldDef {
                                 id,
-                                metadata,
+                                metadata: metadata.into_inner(),
                                 pos_record,
                                 pos_access: pos_op,
                             })))
@@ -4024,7 +4025,7 @@ where
                     })
                     .ok_or(record::MissingFieldDefErrorData {
                         id,
-                        metadata: field.metadata.clone(),
+                        metadata: field.metadata.clone_inner(),
                     })?;
 
                 let field = Field {

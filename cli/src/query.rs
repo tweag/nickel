@@ -103,13 +103,15 @@ impl From<Field> for QueryResult {
             }
         });
 
+        let metadata = field.metadata.into_inner();
+
         QueryResult {
-            doc: field.metadata.doc,
-            typ: field.metadata.annotation.typ,
-            contracts: field.metadata.annotation.contracts,
-            optional: field.metadata.opt,
-            not_exported: field.metadata.not_exported,
-            priority: field.metadata.priority,
+            doc: metadata.doc.map(|doc| doc.to_string()),
+            typ: metadata.annotation.typ,
+            contracts: metadata.annotation.contracts,
+            optional: metadata.opt,
+            not_exported: metadata.not_exported,
+            priority: metadata.priority,
             sub_fields,
             value: field
                 .value

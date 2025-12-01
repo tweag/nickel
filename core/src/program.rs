@@ -1279,20 +1279,18 @@ mod doc {
                     // spine before extracting documentation
                     let typ = field
                         .metadata
-                        .annotation
-                        .typ
+                        .0
                         .as_ref()
+                        .and_then(|m| m.annotation.typ.as_ref())
                         .map(|lt| lt.label.typ.to_string());
 
                     let contracts = field
                         .metadata
-                        .annotation
-                        .contracts
+                        .0
                         .iter()
+                        .flat_map(|m| m.annotation.contracts.iter())
                         .map(|lt| lt.label.typ.to_string())
                         .collect();
-
-                    let documentation = field.metadata.doc.clone();
 
                     (
                         ident.label().to_owned(),
@@ -1300,7 +1298,7 @@ mod doc {
                             fields,
                             typ,
                             contracts,
-                            documentation,
+                            documentation: field.metadata.doc().map(ToOwned::to_owned),
                         },
                     )
                 })

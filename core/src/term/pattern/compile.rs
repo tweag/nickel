@@ -120,8 +120,7 @@ fn update_with_merge(
 
     let annot_spans = field
         .metadata
-        .annotation
-        .iter()
+        .iter_annots()
         .filter_map(|labeled_ty| labeled_ty.label.span);
     let value_spans = field
         .value

@@ -6,7 +6,7 @@ pub mod record;
 pub mod string;
 
 use pattern::Pattern;
-use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};
+use record::{Field, FieldDeps, Include, RecordData, RecordDeps, SharedMetadata};
 use smallvec::SmallVec;
 use string::NickelString;
 
@@ -470,7 +470,7 @@ impl From<LetMetadata> for record::FieldMetadata {
     fn from(let_metadata: LetMetadata) -> Self {
         record::FieldMetadata {
             annotation: let_metadata.annotation,
-            doc: let_metadata.doc,
+            doc: let_metadata.doc.map(Rc::from),
             ..Default::default()
         }
     }
@@ -922,11 +922,18 @@ impl Term {
     }
 
     pub fn sealed(key: SealingKey, inner: NickelValue, label: Label) -> Self {
-        Term::Sealed(SealedData { key, inner, label: Rc::new(label) })
+        Term::Sealed(SealedData {
+            key,
+            inner,
+            label: Rc::new(label),
+        })
     }
 
     pub fn annotated(annot: TypeAnnotation, inner: NickelValue) -> Self {
-        Term::Annotated(AnnotatedData { annot: Rc::new(annot), inner })
+        Term::Annotated(AnnotatedData {
+            annot: Rc::new(annot),
+            inner,
+        })
     }
 
     pub fn app(head: NickelValue, arg: NickelValue) -> Self {
@@ -1485,7 +1492,7 @@ pub enum BinaryOp {
     /// directly to the extend primop. This isn't ideal, and in the future we may want to have a
     /// more principled primop.
     RecordInsert {
-        metadata: Box<FieldMetadata>,
+        metadata: SharedMetadata,
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
         op_kind: RecordOpKind,
@@ -1859,7 +1866,7 @@ impl Traverse<NickelValue> for Term {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                data.record = RecordData::new(
+                data.record = RecordData::new_shared_tail(
                     static_fields_res?,
                     data.record.attrs,
                     data.record.sealed_tail,
@@ -1968,6 +1975,29 @@ impl Traverse<NickelValue> for Term {
                 .or_else(|| data.annot.traverse_ref(f, state)),
         }
     }
+}
+
+/// A helper for some reference counted term data that we expect to be unique (1-referenced
+/// counted) and we need to map in place. This function make it possible to do it without
+/// discarding the `Rc` allocation.
+///
+/// If the `Rc` isn't unique, this method still works but will allocate (in that case, it's better
+/// to avoid using this function and rather clone the content and allocate a new `Rc` manually).
+pub fn unique_map_in_place<T: Default + Clone>(rc: &mut Rc<T>, f: impl FnOnce(T) -> T) {
+    let data_slot = Rc::make_mut(rc);
+    let mapped = f(std::mem::take(data_slot));
+    let _ = std::mem::replace(data_slot, mapped);
+}
+
+/// A fallible version of [unique_map_in_place].
+pub fn fallible_unique_map_in_place<T: Default + Clone, E>(
+    rc: &mut Rc<T>,
+    f: impl FnOnce(T) -> Result<T, E>,
+) -> Result<(), E> {
+    let data_slot = Rc::make_mut(rc);
+    let mapped = f(std::mem::take(data_slot))?;
+    let _ = std::mem::replace(data_slot, mapped);
+    Ok(())
 }
 
 impl_display_from_pretty!(Term);

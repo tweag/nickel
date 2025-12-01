@@ -462,7 +462,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             let Some(current_value) = field.value else {
                 return self.throw_with_ctxt(EvalErrorKind::MissingFieldDef {
                     id: *prev_id,
-                    metadata: field.metadata,
+                    metadata: field.metadata.into_inner(),
                     pos_record: prev_pos_idx,
                     pos_access: PosIdx::NONE,
                 });
@@ -518,7 +518,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         if field.value.is_none() && require_defined {
             return self.throw_with_ctxt(EvalErrorKind::MissingFieldDef {
                 id: *prev_id,
-                metadata: field.metadata,
+                metadata: field.metadata.into_inner(),
                 pos_record: prev_pos_idx,
                 pos_access: PosIdx::NONE,
             });
@@ -961,7 +961,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                         self.get_var(incl.ident, &env, PosIdx::NONE)?,
                                         self.context.pos_table.push(incl.ident.pos),
                                     )),
-                                    metadata: incl.metadata.clone(),
+                                    metadata: incl.metadata.clone().into(),
                                     pending_contracts: Vec::new(),
                                 };
 
@@ -1043,7 +1043,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                             let extend = mk_term::op2(
                                 BinaryOp::RecordInsert {
-                                    metadata: Box::new(metadata),
+                                    metadata,
                                     pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
@@ -1266,7 +1266,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             } else {
                                 acc.push(this.err_with_ctxt(EvalErrorKind::MissingFieldDef {
                                     id: *id,
-                                    metadata: field.metadata.clone(),
+                                    metadata: field.metadata.clone_inner(),
                                     pos_record: pos_idx,
                                     pos_access: PosIdx::NONE,
                                 }));

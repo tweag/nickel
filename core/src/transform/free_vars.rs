@@ -16,7 +16,7 @@ use crate::{
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
 
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 /// Apply the full free var transformation on a term.
 pub fn transform(value: &mut NickelValue) {
@@ -158,8 +158,10 @@ impl CollectFreeVars for TypeAnnotation {
 
 impl CollectFreeVars for Field {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        for labeled_ty in self.metadata.annotation.iter_mut() {
-            labeled_ty.typ.collect_free_vars(set)
+        if let Some(metadata) = &mut self.metadata.0 {
+            for labeled_ty in Rc::make_mut(metadata).annotation.iter_mut() {
+                labeled_ty.typ.collect_free_vars(set)
+            }
         }
 
         if let Some(ref mut value) = self.value {

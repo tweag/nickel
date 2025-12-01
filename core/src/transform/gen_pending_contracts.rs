@@ -37,13 +37,22 @@ pub fn with_pending_contracts(
     field: Field,
 ) -> Result<Field, UnboundTypeVariableError> {
     // We simply add the contracts to the pending contract fields
-    let pending_contracts = field.metadata.annotation.pending_contracts(pos_table)?;
+    let pending_contracts = field
+        .metadata
+        .as_ref()
+        .map(|m| m.annotation.pending_contracts(pos_table))
+        .transpose()?
+        .unwrap_or_default();
     // Type annotations are different: the contract is generated statically, because as opposed
     // to contract annotations, type anntotations don't propagate.
     let value = field
         .value
         .map(|v| -> Result<NickelValue, UnboundTypeVariableError> {
-            if let Some(labeled_ty) = &field.metadata.annotation.typ {
+            if let Some(labeled_ty) = field
+                .metadata
+                .as_ref()
+                .and_then(|m| m.annotation.typ.as_ref())
+            {
                 let pos_idx = v.pos_idx();
                 let contract = RuntimeContract::from_static_type(pos_table, labeled_ty.clone())?;
                 Ok(contract.apply(v, pos_idx))

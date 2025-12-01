@@ -542,7 +542,10 @@ impl Allocator {
                             self,
                             self.line(),
                             "| doc ",
-                            self.chunks(&[StrChunk::Literal(doc)], StringRenderStyle::Multiline),
+                            self.chunks(
+                                &[StrChunk::Literal(doc.to_string())],
+                                StringRenderStyle::Multiline
+                            ),
                         ]
                     })
                     .unwrap_or_else(|| self.nil())
@@ -586,10 +589,13 @@ impl Allocator {
     fn field_body<'a>(&'a self, field: &Field) -> DocBuilder<'a, Self> {
         docs![
             self,
-            self.field_metadata(&field.metadata, true),
+            if let Some(metadata) = field.metadata.as_ref() {
+                self.field_metadata(metadata, true)
+            } else {
+                self.nil()
+            },
             if let Some((priority, value)) = field.value.as_ref().map(split_recursive_priority) {
-                let has_metadata =
-                    field.metadata != FieldMetadata::default() || priority.is_present();
+                let has_metadata = !field.metadata.is_empty() || priority.is_present();
 
                 docs![
                     self,

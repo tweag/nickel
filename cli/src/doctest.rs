@@ -430,7 +430,7 @@ fn doctest_transform(
         let mut doc_fields: Vec<(Ident, NickelValue)> = Vec::new();
 
         for (id, field) in &record_data.fields {
-            if let Some(doc) = &field.metadata.doc {
+            if let Some(doc) = &field.metadata.doc() {
                 let arena = Arena::new();
                 let snippets = nickel_code_blocks(comrak::parse_document(
                     &arena,
