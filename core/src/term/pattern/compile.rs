@@ -33,7 +33,7 @@ use crate::{
     position::PosTable,
     term::{
         BinaryOp, MatchBranch, MatchData, NAryOp, RecordExtKind, RecordOpKind, Term, UnaryOp, make,
-        record::FieldMetadata,
+        pattern::bindings::Bindings, record::FieldMetadata,
     },
 };
 
@@ -171,26 +171,13 @@ pub trait CompilePart {
     ///
     /// `match_cont` and `fail_cont` are continuations: `match_cont` is the
     /// one to use if this pattern matches, while `fail_cont` is the one to
-    /// use if this pattern fails to match. Both `match_cont` is allowed
-    /// to contain -- as free variables -- identifiers bound by
-    /// this match expression. That is, `compile_part` is responsible for
-    /// putting `match_cont` into an environment containing these
-    /// identifiers.
+    /// use if this pattern fails to match. Both `match_cont` and `fail_cont`
+    /// are allowed to contain -- as free variables -- identifiers bound by this
+    /// match expression.
     ///
-    /// Because of the free variables involved, pattern compilation *must not*
-    /// put `fail_cont` into any let block that binds a non-fresh variable.
-    /// Since a sub-pattern compilation might contain a `fail_cont`, this means
-    /// you must avoid generating code like:
-    ///
-    /// ```nickel
-    /// let pattern_var = ... in <sub_pattern.compile_part(match_cont, fail_cont)>
-    /// ```
-    ///
-    /// Instead, put the bindings on the inside:
-    ///
-    /// ```nickel
-    /// <sub_pattern.compile_part(let pattern_var = ... in match_cont, fail_cont)>
-    /// ```
+    /// Pattern compilation must avoid shadowing any variables. In particular,
+    /// `compile_part` is not responsible for binding any of the free variables
+    /// in `match_cont` or `fail_cont`.
     ///
     /// As a motivating example, consider a match block like
     ///
@@ -207,12 +194,20 @@ pub trait CompilePart {
     /// arm. If the first match arm's pattern were to bind `foo` to `2` and
     /// then fail to match `'Bar`, the second match arm would see the wrong
     /// binding for `foo`.
+    ///
+    /// To avoid this unwanted shadowing, we accept a `bindings` mapping that
+    /// maps the pattern variables to pattern-local identifiers. In the example
+    /// above, `bindings` would be `{ foo => %1 }`. Pattern compilation can
+    /// safely bind `%1` because it doesn't shadow anything, and the actual
+    /// `foo` binding will be done by the match arm just before entering the
+    /// body.
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue;
 }
 
@@ -221,21 +216,24 @@ impl CompilePart for Pattern {
     // compiles to
     //
     // pattern_data.compile(value_id, let <alias> = value_id in <match_cont>, <fail_cont>)
+    //
+    // where `<alias>` is a generated id, not the actual id bound in the pattern.
     fn compile_part(
         &self,
         pos_table: &mut PosTable,
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         let match_cont = if let Some(alias) = self.alias {
-            make::let_one_in(alias, Term::Var(value_id), match_cont)
+            make::let_one_in(bindings[&alias], Term::Var(value_id), match_cont)
         } else {
             match_cont
         };
 
         self.data
-            .compile_part(pos_table, value_id, match_cont, fail_cont)
+            .compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
     }
 }
 
@@ -246,19 +244,26 @@ impl CompilePart for PatternData {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         match self {
             PatternData::Wildcard => match_cont,
-            PatternData::Any(id) => make::let_one_in(*id, Term::Var(value_id), match_cont),
+            PatternData::Any(id) => make::let_one_in(bindings[id], Term::Var(value_id), match_cont),
             PatternData::Record(pat) => {
-                pat.compile_part(pos_table, value_id, match_cont, fail_cont)
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
             }
-            PatternData::Array(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
-            PatternData::Enum(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
+            PatternData::Array(pat) => {
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
+            }
+            PatternData::Enum(pat) => {
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
+            }
             PatternData::Constant(pat) => {
-                pat.compile_part(pos_table, value_id, match_cont, fail_cont)
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
             }
-            PatternData::Or(pat) => pat.compile_part(pos_table, value_id, match_cont, fail_cont),
+            PatternData::Or(pat) => {
+                pat.compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
+            }
         }
     }
 }
@@ -270,9 +275,10 @@ impl CompilePart for ConstantPattern {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         self.data
-            .compile_part(pos_table, value_id, match_cont, fail_cont)
+            .compile_part(pos_table, value_id, match_cont, fail_cont, bindings)
     }
 }
 
@@ -283,6 +289,7 @@ impl CompilePart for ConstantPatternData {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        _bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         let compile_constant = |nickel_type: &str, value: NickelValue| {
             // if %typeof% value_id == '<nickel_type> && value_id == <value> then
@@ -339,9 +346,10 @@ impl CompilePart for OrPattern {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         self.patterns.iter().rev().fold(fail_cont, |cont, pattern| {
-            pattern.compile_part(pos_table, value_id, match_cont.clone(), cont)
+            pattern.compile_part(pos_table, value_id, match_cont.clone(), cont, bindings)
         })
     }
 }
@@ -380,6 +388,7 @@ impl CompilePart for RecordPattern {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         // <a> && <b>
         // (with a small optimization if one is `true`)
@@ -398,22 +407,22 @@ impl CompilePart for RecordPattern {
         // (%record/has_field_with_opts% field0 local_value_id) && (%record/has_field_with_opts% field1 local_value_id) && ...
         //
         // Where field0, field1, etc. are all the non-defaulted fields.
-        let has_fields =
-            self.patterns
-                .iter()
-                .fold(NickelValue::bool_true(), |has_other_fields, field_pat| {
-                    if field_pat.default.is_some() {
-                        has_other_fields
-                    } else {
-                        let has_field = make::op2(
-                            BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
-                            NickelValue::string_posless(field_pat.matched_id.label()),
-                            Term::Var(local_value_id),
-                        );
+        let has_fields = self.patterns.iter().rev().fold(
+            NickelValue::bool_true(),
+            |has_other_fields, field_pat| {
+                if field_pat.default.is_some() {
+                    has_other_fields
+                } else {
+                    let has_field = make::op2(
+                        BinaryOp::RecordFieldIsDefined(RecordOpKind::ConsiderAllFields),
+                        NickelValue::string_posless(field_pat.matched_id.label()),
+                        Term::Var(local_value_id),
+                    );
 
-                        and(has_field, has_other_fields)
-                    }
-                });
+                    and(has_field, has_other_fields)
+                }
+            },
+        );
 
         // If this pattern is non-open, this is
         //
@@ -441,7 +450,8 @@ impl CompilePart for RecordPattern {
             //   <tail> = (%record/remove_with_opts% field0 (%record/remove_with_opts% field1 local_value_id) ... )
             // in <match_cont>
             //
-            // where field0, field1, ... are all the fields matched in the pattern.
+            // where field0, field1, ... are all the fields matched in the pattern, and <tail> is a generated
+            // id, not the actual id bound in the pattern.
             let tail_value = self.patterns.iter().fold(
                 NickelValue::term_posless(Term::Var(local_value_id)),
                 |tail, field_pat| {
@@ -452,7 +462,7 @@ impl CompilePart for RecordPattern {
                     )
                 },
             );
-            make::let_one_in(tail, tail_value, match_cont)
+            make::let_one_in(bindings[&tail], tail_value, match_cont)
         } else {
             match_cont
         };
@@ -479,6 +489,7 @@ impl CompilePart for RecordPattern {
         let fold_block = self
             .patterns
             .iter()
+            .rev()
             .fold(match_cont, |match_cont, field_pat| {
                 let local_field_id = LocIdent::fresh();
                 let field = field_pat.matched_id;
@@ -486,10 +497,9 @@ impl CompilePart for RecordPattern {
                 let match_cont = field_pat.pattern.compile_part(
                     pos_table,
                     local_field_id,
-                    // <field> isn't a generated name, so we must only bind it
-                    // in the innermost wrapper around the match continuation
-                    make::let_one_in(field, Term::Var(local_field_id), match_cont),
+                    match_cont,
                     fail_cont.clone(),
+                    bindings,
                 );
 
                 // %static_access(field)% value_id
@@ -585,6 +595,7 @@ impl CompilePart for ArrayPattern {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         let value_len_id = LocIdent::fresh();
         let pats_len = NickelValue::number_posless(self.patterns.len());
@@ -592,7 +603,7 @@ impl CompilePart for ArrayPattern {
         let match_cont = if let TailPattern::Capture(rest) = self.tail {
             // let <rest> = %array/slice% <self.patterns.len()> value_len value_id in <match_cont>
             make::let_one_in(
-                rest,
+                bindings[&rest],
                 make::opn(
                     NAryOp::ArraySlice,
                     vec![
@@ -631,7 +642,13 @@ impl CompilePart for ArrayPattern {
                 make::let_one_in(
                     local_value_id,
                     extracted_value,
-                    elem_pat.compile_part(pos_table, local_value_id, match_cont, fail_cont.clone()),
+                    elem_pat.compile_part(
+                        pos_table,
+                        local_value_id,
+                        match_cont,
+                        fail_cont.clone(),
+                        bindings,
+                    ),
                 )
             },
         );
@@ -674,6 +691,7 @@ impl CompilePart for EnumPattern {
         value_id: LocIdent,
         match_cont: NickelValue,
         fail_cont: NickelValue,
+        bindings: &HashMap<LocIdent, LocIdent>,
     ) -> NickelValue {
         // %enum/get_tag% value_id == '<self.tag>
         let tag_matches = make::op2(
@@ -705,7 +723,13 @@ impl CompilePart for EnumPattern {
                 make::let_one_in(
                     next_value_id,
                     make::op1(UnaryOp::EnumGetArg, Term::Var(value_id)),
-                    pat.compile_part(pos_table, next_value_id, match_cont, fail_cont.clone()),
+                    pat.compile_part(
+                        pos_table,
+                        next_value_id,
+                        match_cont,
+                        fail_cont.clone(),
+                        bindings,
+                    ),
                 ),
                 fail_cont,
             )
@@ -836,19 +860,35 @@ impl Compile for MatchData {
         // alternatives, and our accumulator is the failure continuation. The
         // initial accumulator is a runtime error.
         //
+        // This is the point at which we actually bind the variables from the
+        // pattern. We start by generating a map of pattern-bound variables
+        // to fresh variables (e.g. `{ foo => %1, bar => %2 }`) if `foo` and
+        // `bar` are the variables bound by the current pattern. We pass
+        // this map to the pattern compilation so that it will bind `%1` to
+        // the expression that we'll eventually bind `foo` to.
+        // See `CompilePart::compile_part` for why we do this.
+        //
         // <for branch in branches.rev()
         //  - fail_cont is the accumulator
         // >
-        //    <if there's a guard>
-        //      <pattern.compile_part(value_id, if <guard> then match_cont else fail_cont, fail_cont)>
-        //    <} else {>
-        //      <pattern.compile_part(value_id, match_cont, fail_cont)>
-        //    <}>
+        //    <let match_cont = if there's a guard {
+        //      let foo = %1, bar = %2, <...other bindings> in if <guard> then match_cont else fail_cont
+        //    } else {
+        //      let foo = %1, bar = %2, <...other bindings> in match_cont
+        //    }
+        //    >
+        //    <pattern.compile_part(value_id, match_cont, fail_cont)>
         let fold_block = self
             .branches
             .into_iter()
             .rev()
             .fold(error_case, |fail_cont, branch| {
+                let bindings = branch
+                    .pattern
+                    .bindings()
+                    .iter()
+                    .map(|(_path, id, _fld)| (*id, LocIdent::fresh()))
+                    .collect::<HashMap<_, _>>();
                 let match_cont = if let Some(guard) = branch.guard {
                     // The guard expression becomes part of the match
                     // continuation, so it will be evaluated in the same
@@ -857,9 +897,17 @@ impl Compile for MatchData {
                 } else {
                     branch.body
                 };
+
+                let match_cont = make::let_in(
+                    false,
+                    bindings
+                        .iter()
+                        .map(|(binding_id, fresh_id)| (*binding_id, Term::Var(*fresh_id))),
+                    match_cont,
+                );
                 branch
                     .pattern
-                    .compile_part(pos_table, value_id, match_cont, fail_cont)
+                    .compile_part(pos_table, value_id, match_cont, fail_cont, &bindings)
             });
 
         // let value_id = value in <fold_block>

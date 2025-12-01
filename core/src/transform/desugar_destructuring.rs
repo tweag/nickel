@@ -1,17 +1,18 @@
 //! Destructuring desugaring
 //!
 //! Replace a let and function bindings with destructuring by simpler constructs.
+use std::collections::HashMap;
+
 use smallvec::SmallVec;
 
 use crate::{
     error::EvalErrorKind,
-    eval::value::{NickelValue, ValueContent, lens::TermContent},
+    eval::value::{NickelValue, RecordData, ValueContent, lens::TermContent},
     identifier::LocIdent,
     mk_app,
     position::PosTable,
     term::{
         BindingType, FunPatternData, LetAttrs, LetPatternData, Term, UnaryOp, make, pattern::*,
-        record::Include,
     },
 };
 
@@ -81,8 +82,8 @@ pub fn desugar_fun(FunPatternData { mut pattern, body }: FunPatternData) -> Term
 ///   %b2 = <bound2>,
 /// in
 /// let
-///   %r1 = <pat1.compile_part(%b1, { include foo }, <error>)>,
-///   %r2 = <pat2.compile_part(%b2, { include baz }, <error>)>,
+///   %r1 = <pat1.compile_part(%b1, { foo = %c1 }, <error>, <{ foo => %c1 }>)>,
+///   %r2 = <pat2.compile_part(%b2, { baz = %c2 }, <error>), <{ bar => %c2 }>)>,
 /// in
 /// let
 ///   foo = %r1.foo,
@@ -129,29 +130,38 @@ pub fn desugar_let(
 
         let mid_id = LocIdent::fresh();
 
-        let mut includes = Vec::new();
+        let mut pattern_bindings = HashMap::new();
         for (_path, id, _field) in pat.bindings() {
             inner_bindings.push((
                 id,
                 make::static_access(Term::Var(mid_id), std::iter::once(id)),
             ));
-            includes.push(Include {
-                ident: id,
-                metadata: Default::default(),
-            });
+            pattern_bindings.insert(id, LocIdent::fresh());
         }
 
-        let bindings_record = NickelValue::term_posless(Term::rec_record(
-            Default::default(),
-            includes,
-            Vec::new(),
-            None,
-            false,
-        ));
+        // Build the mapping from pattern variables to fresh variables
+        // (see `CompilePart::compile_part` for details). This corresponds
+        // to the <{ foo => %c1 }> part of the documentation above.
+        let bindings_record = NickelValue::record_posless(RecordData {
+            fields: pattern_bindings
+                .iter()
+                .map(|(bound_id, fresh_id)| {
+                    (*bound_id, NickelValue::from(Term::Var(*fresh_id)).into())
+                })
+                .collect(),
+            attrs: Default::default(),
+            sealed_tail: None,
+        });
 
         mid_bindings.push((
             mid_id,
-            pat.compile_part(pos_table, outer_id, bindings_record, error_case),
+            pat.compile_part(
+                pos_table,
+                outer_id,
+                bindings_record,
+                error_case,
+                &pattern_bindings,
+            ),
         ));
     }
 
