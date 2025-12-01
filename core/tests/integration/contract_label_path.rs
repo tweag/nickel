@@ -3,19 +3,19 @@ use nickel_lang_core::{
     error::{Error, EvalErrorKind, IntoDiagnostics},
     eval::value::NickelValue,
     files::Files,
-    label::Label,
+    label::ty_path::Elem,
 };
 
 use nickel_lang_utils::test_program::eval;
 
-fn extract_blame_label(eval_result: &Result<NickelValue, Error>) -> Option<&Label> {
+fn extract_blame_label_path(eval_result: &Result<NickelValue, Error>) -> Option<Vec<Elem>> {
     if let Err(Error::EvalError(data)) = &eval_result
         && let EvalErrorKind::BlameError {
             evaluated_arg: _,
             label,
         } = &data.error
     {
-        Some(label)
+        Some(label.path.iter().copied().collect())
     } else {
         None
     }
@@ -23,12 +23,10 @@ fn extract_blame_label(eval_result: &Result<NickelValue, Error>) -> Option<&Labe
 
 #[test]
 fn array_contracts_label_path_is_set_correctly() {
-    use nickel_lang_core::label::ty_path::Elem;
-
     let res = eval("%force% ([{a = [1]}] | Array {a: Array String}) false");
 
     assert_matches!(
-        extract_blame_label(&res).unwrap().path.as_slice(),
+        extract_blame_label_path(&res).unwrap().as_slice(),
         [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a"
     );
 
@@ -44,7 +42,7 @@ fn array_contracts_label_path_is_set_correctly() {
     );
 
     assert_matches!(
-        extract_blame_label(&res).unwrap().path.as_slice(),
+        extract_blame_label_path(&res).unwrap().as_slice(),
         [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo"
     );
 
@@ -53,12 +51,10 @@ fn array_contracts_label_path_is_set_correctly() {
 
 #[test]
 fn dictionary_contracts_label_path_is_set_correctly() {
-    use nickel_lang_core::label::ty_path::Elem;
-
     let res = eval("%force% ({foo = 1} | {_ | String}) false");
 
     assert_matches!(
-        extract_blame_label(&res).unwrap().path.as_slice(),
+        extract_blame_label_path(&res).unwrap().as_slice(),
         [Elem::Dict]
     );
     res.unwrap_err().into_diagnostics(&mut Files::empty());
