@@ -17,7 +17,7 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    position::{PosIdx, PosTable, RawSpan},
+    position::{PosIdx, PosTable},
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
