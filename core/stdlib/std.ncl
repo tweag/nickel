@@ -4755,8 +4755,13 @@
          - 'NoPad: Use the standard alphabet with no padding.
          - 'UrlSafeNoPad: Use the url-safe alphabet without padding.
 
-        This may fail if the input string is not valid base64 encoded data. It may also fail if
-        the decoding succeeds, but the decoded value is not a valid utf-8 string.
+        # Preconditions
+
+        This will fail if the input string is not valid base64 encoded data. It will also fail if
+        the decoding succeeds, but the decoded value is not a valid utf-8 string. Internally, this
+        is implemented as a contract, `Base64String`. This contract accounts for the encoding
+        variant, so failure may indicate that the wrong variant was chosen, along with the other
+        potential problems with the input string.
 
         # Examples
 
@@ -4775,29 +4780,19 @@
         ```
       "%
       = fun variant str =>
-        let Base64String =
+        let Base64String | Dyn =
           %contract/custom% (fun _label value =>
-            (
-              %typeof% value
-              |> match {
-                'Enum => 'Ok (value | [| 'Decoded String |]),
-                'String =>
-                  (%string/base64_decode% variant (value | String))
-                  |> match {
-                    'Ok dec => 'Ok ('Decoded dec),
-                    'Error err => 'Error err
-                  },
-                _ => 'Error { message = "Expected a String or a [| 'Decoded String |]" }
-              }
-            )
-              | [|
-                'Ok Dyn,
-                'Error {
-                  message | String | optional,
-                  notes | Array String | optional,
-                  blame_location | Dyn | optional
-                }
-              |]
+            %typeof% value
+            |> match {
+              'Enum => 'Ok (value | [| 'Decoded String |]),
+              'String =>
+                (%string/base64_decode% variant (value | String))
+                |> match {
+                  'Ok dec => 'Ok ('Decoded dec),
+                  'Error err => 'Error err
+                },
+              _ => 'Error { message = "Expected a String or a [| 'Decoded String |]" }
+            }
           )
         in
         let decoded = str | Base64String

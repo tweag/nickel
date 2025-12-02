@@ -4,9 +4,9 @@ expression: err
 ---
 error: contract broken by a value
        Base64 decoding failed: Invalid symbol 33, offset 0.
-     ┌─ <stdlib/std.ncl>:4803:29
+     ┌─ <stdlib/std.ncl>:4798:29
      │
-4803 │         let decoded = str | Base64String
+4798 │         let decoded = str | Base64String
      │                             ------------ expected type
      │
      ┌─ [INPUTS_PATH]/errors/base64_decode_invalid_encoding.ncl:3:36
