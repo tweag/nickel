@@ -32,7 +32,7 @@ use crate::{
     metrics::increment,
     mk_app, mk_fun, mk_record,
     position::PosIdx,
-    serialize::{self, ExportFormat},
+    serialize::{self, ExportFormat, yaml::Listify},
     stdlib::internals,
     term::{make as mk_term, record::*, string::NickelString, *},
 };
@@ -144,7 +144,7 @@ struct OpNEvalData {
 
 /// A string represention of the type of the first argument of serialization-related primitive
 /// operations. This is a Nickel enum of the supported serialization formats.
-static ENUM_FORMAT: &str = "[| 'Json, 'Yaml, 'Toml |]";
+static ENUM_FORMAT: &str = "[| 'Json, 'Toml, 'Yaml, 'YamlDocuments |]";
 
 impl std::fmt::Debug for OperationCont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2763,6 +2763,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let format = match enum_data.tag.to_string().as_str() {
                     "Json" => ExportFormat::Json,
                     "Yaml" => ExportFormat::Yaml,
+                    "YamlDocuments" => ExportFormat::YamlDocuments,
                     "Toml" => ExportFormat::Toml,
                     _ => return mk_err_fst(),
                 };
@@ -2807,18 +2808,26 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // error location, this would be easy to fix. Unfortunately getting the
                     // locations right would involve handling location shifts caused by
                     // escape sequences and interpolation.
-                    "Yaml" => crate::serialize::yaml::load_yaml_value(
-                        &mut self.context.pos_table,
-                        s,
-                        None,
-                    )
-                    .map_err(|err| {
-                        Box::new(EvalErrorKind::DeserializationErrorWithInner {
-                            format: InputFormat::Yaml,
-                            inner: err,
-                            pos: pos_op,
-                        })
-                    })?,
+                    tag @ ("Yaml" | "YamlDocuments") => {
+                        let listify = if tag == "Yaml" {
+                            Listify::Auto
+                        } else {
+                            Listify::Always
+                        };
+                        crate::serialize::yaml::load_yaml_value(
+                            &mut self.context.pos_table,
+                            s,
+                            None,
+                            listify,
+                        )
+                        .map_err(|err| {
+                            Box::new(EvalErrorKind::DeserializationErrorWithInner {
+                                format: InputFormat::Yaml,
+                                inner: err,
+                                pos: pos_op,
+                            })
+                        })?
+                    }
                     "Toml" => toml::from_str(s).map_err(|err| {
                         Box::new(EvalErrorKind::DeserializationError(
                             String::from("toml"),

@@ -5141,21 +5141,27 @@
     = fun type s => %hash% type s,
 
   serialize
-    : [| 'Json, 'Toml, 'Yaml |] -> Dyn -> String
+    : [| 'Json, 'Toml, 'Yaml, 'YamlDocuments |] -> Dyn -> String
     | doc m%"
       Serializes a value into the desired representation.
 
+      The `'YamlDocuments` variant serializes an array into a YAML
+      file containing multiple documents.
+
       # Examples
 
-      ```nickel
+      ```nickel multiline
       serialize 'Json { hello = "Hello", world = "World" }
       # => "{\n  \"hello\": \"Hello\",\n  \"world\": \"World\"\n}"
+
+      serialize 'YamlDocuments [{ hello = "Hello" }, { world = "World" }]
+      # => "---\nhello: Hello\n---\nworld: World\n"
       ```
     "%
     = fun format x => %serialize% format (%force% x),
 
   deserialize
-    : [| 'Json, 'Toml, 'Yaml |] -> String -> Dyn
+    : [| 'Json, 'Toml, 'Yaml, 'YamlDocuments |] -> String -> Dyn
     | doc m%"
       Deserializes a string into a Nickel value from the given representation.
 

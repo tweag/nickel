@@ -2,7 +2,7 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: yaml-documents export requires an array
+error: yaml-documents export expects an array
    ┌─ [INPUTS_PATH]/export/yaml_documents_not_array.ncl:4:1
    │  
  4 │ ╭ {

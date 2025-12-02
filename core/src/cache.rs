@@ -15,21 +15,21 @@ use crate::{
     },
     closurize::Closurize as _,
     error::{Error, ImportError, ImportErrorKind, ParseError, ParseErrors, TypecheckError},
-    eval::{cache::Cache as EvalCache, value::NickelValue},
+    eval::{self, cache::Cache as EvalCache, value::NickelValue},
     files::{FileId, Files},
     identifier::LocIdent,
     metrics::measure_runtime,
     package::PackageMap,
-    parser::{ErrorTolerantParser, ExtendedTerm, lexer::Lexer},
+    parser::{self, ErrorTolerantParser, ExtendedTerm, lexer::Lexer},
     position::{PosIdx, PosTable, TermPos},
     program::FieldPath,
+    serialize::yaml::Listify,
     stdlib::{self as nickel_stdlib, StdlibModule},
     term::{self},
-    transform::{Wildcards, import_resolution},
+    transform::{self, Wildcards, import_resolution},
     traverse::TraverseOrder,
     typ::UnboundTypeVariableError,
     typecheck::{self, HasApparentType, TypecheckMode, typecheck},
-    {eval, parser, transform},
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -567,9 +567,12 @@ impl SourceCache {
             InputFormat::Json => {
                 crate::serialize::yaml::load_json_value(pos_table, source, Some(file_id))
             }
-            InputFormat::Yaml => {
-                crate::serialize::yaml::load_yaml_value(pos_table, source, Some(file_id))
-            }
+            InputFormat::Yaml => crate::serialize::yaml::load_yaml_value(
+                pos_table,
+                source,
+                Some(file_id),
+                Listify::Auto,
+            ),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
                 .map(|v: NickelValue| v.with_pos_idx(pos_idx))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
