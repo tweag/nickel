@@ -1384,25 +1384,6 @@ impl<'a> Pretty<'a, Allocator> for &Type {
     }
 }
 
-impl<'a> Pretty<'a, Allocator> for &MatchBranch {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let guard = if let Some(guard) = &self.guard {
-            docs![allocator, allocator.line(), "if", allocator.space(), guard]
-        } else {
-            allocator.nil()
-        };
-
-        docs![
-            allocator,
-            &self.pattern,
-            guard,
-            allocator.space(),
-            "=>",
-            docs![allocator, allocator.line(), self.body.pretty(allocator),].nest(2),
-        ]
-    }
-}
-
 /// Generate an implementation of `fmt::Display` for types that implement `Pretty`.
 #[macro_export]
 macro_rules! impl_display_from_pretty {

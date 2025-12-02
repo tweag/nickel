@@ -9,8 +9,7 @@ use crate::{
     term::pattern::*,
     term::{
         AnnotatedData, AppData, FunData, FunPatternData, IndexMap, LetData, LetPatternData,
-        MatchBranch, MatchData, Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term,
-        TypeAnnotation,
+        Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -339,27 +338,6 @@ impl CollectFreeVars for AppData {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         self.head.collect_free_vars(set);
         self.arg.collect_free_vars(set);
-    }
-}
-
-impl CollectFreeVars for MatchData {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        for MatchBranch {
-            pattern,
-            guard,
-            body,
-        } in self.branches.iter_mut()
-        {
-            let mut fresh = HashSet::new();
-
-            if let Some(guard) = guard {
-                guard.collect_free_vars(&mut fresh);
-            }
-
-            body.collect_free_vars(&mut fresh);
-            pattern.remove_bindings(&mut fresh);
-            set.extend(fresh);
-        }
     }
 }
 

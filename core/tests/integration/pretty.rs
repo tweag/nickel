@@ -2,14 +2,11 @@ use nickel_lang_core::{
     ast::AstAlloc,
     eval::value::NickelValue,
     mk_app,
-    position::PosTable,
     term::{StrChunk, Term, UnaryOp, make},
 };
 
 use nickel_lang_utils::{
-    project_root::project_root,
-    test_program::parse_bytecode_ast,
-    test_program::{eval, parse},
+    project_root::project_root, test_program::eval, test_program::parse_bytecode_ast,
 };
 
 use std::io::Read;
@@ -36,24 +33,24 @@ fn diff(s1: &str, s2: &str) {
     }
 }
 
-#[track_caller]
-fn check_idempotent(path: &str) {
-    let mut buffer = String::new();
-    let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
-    let mut pos_table = PosTable::new();
+// #[track_caller]
+// fn check_idempotent(path: &str) {
+//     let mut buffer = String::new();
+//     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
+//     let mut pos_table = PosTable::new();
 
-    file.read_to_string(&mut buffer)
-        .expect("Fail to read content of test file");
+//     file.read_to_string(&mut buffer)
+//         .expect("Fail to read content of test file");
 
-    // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
-    // only proceed with samples that do.
-    if let Ok(rt) = parse(&mut pos_table, &buffer) {
-        let pretty_rt = format!("{}", &rt);
-        let double_pretty = format!("{}", &parse(&mut pos_table, &pretty_rt).unwrap());
+//     // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
+//     // only proceed with samples that do.
+//     if let Ok(rt) = parse(&mut pos_table, &buffer) {
+//         let pretty_rt = format!("{}", &rt);
+//         let double_pretty = format!("{}", &parse(&mut pos_table, &pretty_rt).unwrap());
 
-        diff(&pretty_rt, &double_pretty);
-    }
-}
+//         diff(&pretty_rt, &double_pretty);
+//     }
+// }
 
 #[track_caller]
 fn check_bytecode_ast_idempotent(path: &str) {
