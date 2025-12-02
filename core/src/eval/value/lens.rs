@@ -10,8 +10,8 @@ use crate::{
     identifier::LocIdent,
     metrics::increment,
     term::{
-        AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData,
-        MatchData, Op1Data, Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
+        AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData, Op1Data,
+        Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
     },
 };
 
@@ -198,7 +198,6 @@ pub enum TermContent {
     Var(ValueLens<LocIdent>),
     RecRecord(ValueLens<Box<RecRecordData>>),
     Closurize(ValueLens<NickelValue>),
-    Match(ValueLens<MatchData>),
     Op1(ValueLens<Op1Data>),
     Op2(ValueLens<Op2Data>),
     OpN(ValueLens<OpNData>),
@@ -223,7 +222,6 @@ impl TermContent {
             TermContent::Var(lens) => lens.restore(),
             TermContent::RecRecord(lens) => lens.restore(),
             TermContent::Closurize(lens) => lens.restore(),
-            TermContent::Match(lens) => lens.restore(),
             TermContent::Op1(lens) => lens.restore(),
             TermContent::Op2(lens) => lens.restore(),
             TermContent::OpN(lens) => lens.restore(),
@@ -249,7 +247,6 @@ impl TermContent {
             TermContent::Var(lens) => &lens.value,
             TermContent::RecRecord(lens) => &lens.value,
             TermContent::Closurize(lens) => &lens.value,
-            TermContent::Match(lens) => &lens.value,
             TermContent::Op1(lens) => &lens.value,
             TermContent::Op2(lens) => &lens.value,
             TermContent::OpN(lens) => &lens.value,
@@ -277,7 +274,6 @@ impl TermContent {
             TermContent::Var(lens) => lens.value,
             TermContent::RecRecord(lens) => lens.value,
             TermContent::Closurize(lens) => lens.value,
-            TermContent::Match(lens) => lens.value,
             TermContent::Op1(lens) => lens.value,
             TermContent::Op2(lens) => lens.value,
             TermContent::OpN(lens) => lens.value,
@@ -455,8 +451,6 @@ impl_term_boxed_lens!(
     RecRecord,
     RecRecordData
 );
-
-impl_term_lens!(term_match_lens, term_match_extractor, Match, MatchData);
 
 impl_term_lens!(term_op1_lens, term_op1_extractor, Op1, Op1Data);
 

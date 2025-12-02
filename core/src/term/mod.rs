@@ -197,10 +197,6 @@ pub enum Term {
     /// elements of the container in the current environment.
     Closurize(NickelValue),
 
-    /// A match expression. Corresponds only to the case branches: this expression is still to be
-    /// applied to an argument to match on.
-    Match(MatchData),
-
     /// A primitive unary operator.
     Op1(Op1Data),
 
@@ -762,9 +758,6 @@ impl Term {
             Term::Closurize(value) => value.type_of(),
             Term::RecRecord(..) => Some("Record"),
             Term::Fun(_) | Term::FunPattern(_) => Some("Function"),
-            // We could print a separate type for predicates. For the time being, we just consider
-            // it to be the function resulting of `$predicate_to_ctr pred`.
-            Term::Match { .. } => Some("MatchExpression"),
             Term::Sealed(..) => Some("Sealed"),
             Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
@@ -786,9 +779,7 @@ impl Term {
     /// normal form isn't evaluated further by the virtual machine.
     pub fn is_whnf(&self) -> bool {
         match self {
-            Term::Fun(..)
-            // Match expressions are function
-            | Term::Match {..} => true,
+            Term::Fun(..) => true,
             Term::Closurize(_)
             | Term::Let(..)
             | Term::LetPattern(..)
@@ -835,7 +826,6 @@ impl Term {
             Term::Op2(data) => matches!(&data.op, BinaryOp::RecordGet),
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Let(..)
-            | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
@@ -1801,35 +1791,6 @@ impl Traverse<NickelValue> for Term {
                 data.arg = data.arg.traverse(f, order)?;
                 Term::App(data)
             }
-            Term::Match(data) => {
-                // The annotation on `map_res` use Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let branches: Result<Vec<MatchBranch>, E> = data
-                    .branches
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(
-                        |MatchBranch {
-                             pattern,
-                             guard,
-                             body,
-                         }| {
-                            let guard = guard.map(|cond| cond.traverse(f, order)).transpose()?;
-                            let body = body.traverse(f, order)?;
-
-                            Ok(MatchBranch {
-                                pattern,
-                                guard,
-                                body,
-                            })
-                        },
-                    )
-                    .collect();
-
-                Term::Match(MatchData {
-                    branches: branches?,
-                })
-            }
             Term::Op1(mut data) => {
                 data.arg = data.arg.traverse(f, order)?;
                 Term::Op1(data)
@@ -1963,19 +1924,6 @@ impl Traverse<NickelValue> for Term {
                             .or_else(|| field.traverse_ref(f, state))
                     })
                 }),
-            Term::Match(data) => data.branches.iter().find_map(
-                |MatchBranch {
-                     pattern: _,
-                     guard,
-                     body,
-                 }| {
-                    if let Some(cond) = guard.as_ref() {
-                        cond.traverse_ref(f, state)?;
-                    }
-
-                    body.traverse_ref(f, state)
-                },
-            ),
             Term::OpN(data) => data.args.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(data) => data
                 .inner

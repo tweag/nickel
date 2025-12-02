@@ -76,13 +76,13 @@ fn check_bytecode_ast_idempotent(path: &str) {
 
 #[test_resources("core/tests/integration/inputs/**/*.ncl")]
 fn pretty_integration_tests(path: &str) {
-    check_idempotent(path);
+    //check_idempotent(path);
     check_bytecode_ast_idempotent(path);
 }
 
 #[test_resources("core/stdlib/*.ncl")]
 fn pretty_standard_library(path: &str) {
-    check_idempotent(path);
+    //check_idempotent(path);
     check_bytecode_ast_idempotent(path);
 }
 

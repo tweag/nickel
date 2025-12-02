@@ -86,7 +86,6 @@ impl CollectFreeVars for Term {
             Term::Let(data) => data.collect_free_vars(free_vars),
             Term::LetPattern(data) => data.collect_free_vars(free_vars),
             Term::App(data) => data.collect_free_vars(free_vars),
-            Term::Match(data) => data.collect_free_vars(free_vars),
             Term::Op1(data) => data.collect_free_vars(free_vars),
             Term::Op2(data) => data.collect_free_vars(free_vars),
             Term::OpN(data) => data.collect_free_vars(free_vars),

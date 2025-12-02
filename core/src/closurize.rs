@@ -256,10 +256,7 @@ impl Closurize for RecordData {
 /// need to be cached, but with some subtle differences.
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {
-        ValueContentRef::Term(Term::Var(_)
-            | Term::Fun(_)
-            // match acts like a function, and is a WHNF
-            | Term::Match(_)) => false,
+        ValueContentRef::Term(Term::Var(_) | Term::Fun(_)) => false,
         ValueContentRef::Term(_)
         // In general types are WHNF that shouldn't be shared, but currently the have an additional
         // field storing their conversion to a contract. In order to take advantage of this local

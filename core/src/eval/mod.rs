@@ -87,9 +87,8 @@ use crate::{
     position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
-        BinaryOp, BindingType, FunData, Import, MatchBranch, MatchData, RecordOpKind,
-        RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
-        pattern::compile::Compile,
+        BinaryOp, BindingType, FunData, Import, RecordOpKind, RuntimeContract, StrChunk, Term,
+        UnaryOp, make as mk_term,
         record::{Field, RecordData},
         string::NickelString,
     },
@@ -1130,6 +1129,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContentRef::Term(Term::Fun(FunData { arg, body })) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
                     {
+                        // FIXME: back when Match was compiled at eval time, it didn't modify the
+                        // call stack. Should we replicate that?
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
                         Closure {
@@ -1138,31 +1139,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         }
                     } else {
                         break Ok(Closure { value, env });
-                    }
-                }
-                // A match expression acts as a function (in Nickel, a match expression corresponds
-                // to the cases, and doesn't include the examined value).
-                //
-                // The behavior is the same as for a function: we look for an argument on the
-                // stack, and proceed to the evaluation of the match, or stop here otherwise. If
-                // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
-                // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
-                // argument `arg` and doing the actual matching operation.
-                ValueContentRef::Term(Term::Match(data)) if !has_cont_on_stack => {
-                    if let Some((arg, _)) = self.stack.pop_arg(&self.context.cache) {
-                        Closure {
-                            value: data.clone().compile(
-                                &mut self.context.pos_table,
-                                arg.value.closurize(&mut self.context.cache, arg.env),
-                                pos_idx,
-                            ),
-                            env,
-                        }
-                    } else {
-                        break Ok(Closure {
-                            value: NickelValue::term(Term::Match(data.clone()), pos_idx),
-                            env,
-                        });
                     }
                 }
                 ValueContentRef::Term(Term::FunPattern(..) | Term::LetPattern(..)) => {
@@ -1548,21 +1524,6 @@ pub fn subst<C: Cache>(
                     data.arg = subst(pos_table, cache, data.arg, initial_env, env);
 
                     NickelValue::term(Term::App(data), pos_idx)
-                }
-                TermContent::Match(lens) => {
-                    let data = lens.take();
-                    let branches = data.branches
-                        .into_iter()
-                        .map(|MatchBranch { pattern, guard, body} | {
-                            MatchBranch {
-                                pattern,
-                                guard: guard.map(|cond| subst(pos_table, cache, cond, initial_env, env)),
-                                body: subst(pos_table, cache, body, initial_env, env),
-                            }
-                        })
-                        .collect();
-
-                    NickelValue::term(Term::Match(MatchData { branches }), pos_idx)
                 }
                 TermContent::Op1(lens) => {
                     let mut data = lens.take();

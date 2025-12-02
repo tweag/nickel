@@ -13,7 +13,8 @@ use crate::{
     },
     label,
     position::{PosTable, RawSpan},
-    term, typ as mline_type,
+    term::{self, pattern::compile::Compile as _},
+    typ as mline_type,
 };
 
 use nickel_lang_parser::{
@@ -536,18 +537,6 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     ),
                     open: data.record.attrs.open,
                 })
-            }
-            Term::Match(data) => {
-                let branches = data.branches.iter().map(|branch| MatchBranch {
-                    pattern: branch.pattern.to_ast(alloc, pos_table),
-                    guard: branch
-                        .guard
-                        .as_ref()
-                        .map(|term| term.to_ast(alloc, pos_table)),
-                    body: branch.body.to_ast(alloc, pos_table),
-                });
-
-                alloc.match_expr(branches)
             }
             Term::Op1(data) => alloc.prim_op(
                 PrimOp::from(&data.op),
@@ -1622,10 +1611,15 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     .iter()
                     .map(|branch| branch.to_mainline(pos_table))
                     .collect();
-
+                let match_data = term::MatchData { branches };
+                let arg = LocIdent::fresh();
+                let pos_idx = pos_table.push(ast.pos);
                 NickelValue::term(
-                    Term::Match(term::MatchData { branches }),
-                    pos_table.push(ast.pos),
+                    Term::Fun(term::FunData {
+                        arg,
+                        body: match_data.compile(pos_table, Term::Var(arg).into(), pos_idx),
+                    }),
+                    pos_idx,
                 )
             }
             Node::Array(array) => {

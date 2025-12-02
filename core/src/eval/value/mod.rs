@@ -824,9 +824,6 @@ impl NickelValue {
                                 Term::Closurize(_) => {
                                     TermContent::Closurize(ValueLens::term_closurize_lens(self))
                                 }
-                                Term::Match(_) => {
-                                    TermContent::Match(ValueLens::term_match_lens(self))
-                                }
                                 Term::Op1(..) => TermContent::Op1(ValueLens::term_op1_lens(self)),
                                 Term::Op2(..) => TermContent::Op2(ValueLens::term_op2_lens(self)),
                                 Term::OpN(..) => TermContent::OpN(ValueLens::term_opn_lens(self)),
@@ -1027,7 +1024,6 @@ impl NickelValue {
                 Term::Closurize(v) => v.type_of(),
                 Term::RecRecord(..) => Some("Record"),
                 Term::Fun(..) | Term::FunPattern(..) => Some("Function"),
-                Term::Match { .. } => Some("MatchExpression"),
                 Term::Sealed(..) => Some("Sealed"),
                 Term::Annotated(..) => Some("Annotated"),
                 Term::Let(..)

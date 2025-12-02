@@ -1101,26 +1101,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Term::RecRecord(data) => {
                 allocator.record(&data.record, &data.includes, &data.dyn_fields)
             }
-            Term::Match(data) => docs![
-                allocator,
-                "match ",
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.intersperse(
-                        data.branches.iter().map(|branch| docs![
-                            allocator,
-                            branch.pretty(allocator),
-                            ","
-                        ]),
-                        allocator.line(),
-                    ),
-                ]
-                .nest(2)
-                .append(allocator.line())
-                .braces()
-            ]
-            .group(),
             Term::Op1(data) => {
                 match &data.op {
                     UnaryOp::RecordAccess(id) => docs![allocator, allocator.atom(&data.arg), ".", ident_quoted(id)],
@@ -1728,23 +1708,6 @@ mod tests {
                   3,
                   4
                 ]"
-            },
-        );
-    }
-
-    #[test]
-    fn pretty_match() {
-        assert_long_short_term(
-            "match { 'A => a, 'B => b, 'C => c, }",
-            indoc! {"
-                match {
-                  'A =>
-                    a,
-                  'B =>
-                    b,
-                  'C =>
-                    c,
-                }"
             },
         );
     }
