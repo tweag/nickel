@@ -1858,7 +1858,7 @@ fn merge_fields(
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => {
             (Some(merge_values(id_span, t1, t2)), metadata1.priority)
         }
-        (Some(t), _) if metadata1.priority > metadata2.priority => (Some(t), metadata2.priority),
+        (Some(t), _) if metadata1.priority > metadata2.priority => (Some(t), metadata1.priority),
         (_, Some(t)) if metadata1.priority < metadata2.priority => (Some(t), metadata2.priority),
         (Some(t), None) => (Some(t), metadata1.priority),
         (None, Some(t)) => (Some(t), metadata2.priority),
