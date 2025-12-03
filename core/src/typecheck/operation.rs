@@ -403,17 +403,23 @@ impl PrimOpType for PrimOp {
                 ],
                 mk_uniftype::str(),
             ),
-            // forall a. <Json, Yaml, Toml> -> a -> Str
+            // forall a. [| 'Json, 'Toml, 'Yaml, 'YamlDocuments |] -> a -> String
             PrimOp::Serialize => {
                 let ty_input = state.table.fresh_type_uvar(var_level);
                 (
-                    vec![mk_uty_enum!("Json", "Yaml", "Toml"), ty_input],
+                    vec![
+                        mk_uty_enum!("Json", "Toml", "Yaml", "YamlDocuments"),
+                        ty_input,
+                    ],
                     mk_uniftype::str(),
                 )
             }
-            // <Json, Yaml, Toml> -> Str -> Dyn
+            // [| 'Json, 'Toml, 'Yaml, 'YamlDocuments |] -> String -> Dyn
             PrimOp::Deserialize => (
-                vec![mk_uty_enum!("Json", "Yaml", "Toml"), mk_uniftype::str()],
+                vec![
+                    mk_uty_enum!("Json", "Toml", "Yaml", "YamlDocuments"),
+                    mk_uniftype::str(),
+                ],
                 mk_uniftype::dynamic(),
             ),
             // Num -> Num -> Num

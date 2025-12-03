@@ -503,8 +503,9 @@ pub fn load_yaml<'ast>(
     alloc: &'ast AstAlloc,
     s: &str,
     file_id: Option<FileId>,
+    listify: Listify,
 ) -> Result<Ast<'ast>, ParseError> {
-    load(alloc, s, file_id, "yaml")
+    load(alloc, s, file_id, "yaml", listify)
 }
 
 fn json_scanner_error(file_id: Option<FileId>, e: json_scanner::ParseError) -> ParseError {
@@ -618,11 +619,24 @@ fn unused_ident(all_idents: &mut HashSet<Ident>, counter: &mut u64) -> Ident {
     }
 }
 
+/// A YAML file can contain multiple documents. How should they be handled?
+#[derive(Debug, PartialEq)]
+pub enum Listify {
+    /// If the YAML file contains multiple documents, pack them into an array.
+    /// If it contains a single document, return it "bare". If it's empty,
+    /// return `null`.
+    Auto,
+    /// Pack the documents into a list no matter what: a single document
+    /// becomes a single-element list, and an empty file becomes an empty list.
+    Always,
+}
+
 fn load<'ast>(
     alloc: &'ast AstAlloc,
     s: &str,
     file_id: Option<FileId>,
     format_name: &'static str,
+    listify: Listify,
 ) -> Result<Ast<'ast>, ParseError> {
     let mut loader = Loader {
         format_name,
@@ -643,18 +657,19 @@ fn load<'ast>(
     }
     let mut yaml = loader.docs;
 
-    let main_term = if yaml.is_empty() {
-        Ast {
-            node: ast::Node::Null,
-            pos: mk_pos(file_id, 0, 0, &[]),
-        }
-    } else if yaml.len() == 1 {
-        yaml.pop().unwrap()
-    } else {
+    let main_term = if listify == Listify::Always || yaml.len() > 1 {
         Ast {
             node: alloc.array(yaml),
             pos: mk_pos(file_id, 0, s.len(), &[]),
         }
+    } else if yaml.is_empty() {
+        Ast {
+            node: ast::Node::Null,
+            pos: mk_pos(file_id, 0, 0, &[]),
+        }
+    } else {
+        // yaml.len() == 1 {
+        yaml.pop().unwrap()
     };
 
     if loader.anchor_map.map.is_empty() {
@@ -763,9 +778,13 @@ pub fn load_yaml_value(
     pos_table: &mut PosTable,
     s: &str,
     file_id: Option<FileId>,
+    listify: Listify,
 ) -> Result<NickelValue, ParseError> {
     let alloc = AstAlloc::new();
-    Ok(ast_to_term(pos_table, load_yaml(&alloc, s, file_id)?))
+    Ok(ast_to_term(
+        pos_table,
+        load_yaml(&alloc, s, file_id, listify)?,
+    ))
 }
 
 #[cfg(test)]
@@ -776,7 +795,9 @@ mod tests {
     // and pretty-printing. This is more convenient for testing than comparing Asts.
     fn yaml_to_ncl(s: &str) -> String {
         let alloc = AstAlloc::new();
-        load_yaml(&alloc, s, None).unwrap().to_string()
+        load_yaml(&alloc, s, None, Listify::Auto)
+            .unwrap()
+            .to_string()
     }
 
     #[test]

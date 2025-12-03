@@ -29,13 +29,17 @@ pub mod yaml;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum ExportFormat {
-    /// Evalute a Nickel expression to a string and write that text to the output
+    /// Evaluate a Nickel expression to a string and write that text to the output
     /// Note: `raw` is a deprecated alias for `text`; prefer `text` instead.
     #[cfg_attr(feature = "clap", value(alias("raw")))]
     Text,
     #[default]
     Json,
     Yaml,
+    /// Like `Yaml`, but generates multiple YAML documents in a single file,
+    /// separated by `---`. The output data must be a list: each list element is
+    /// converted into its own document.
+    YamlDocuments,
     Toml,
 }
 
@@ -45,6 +49,7 @@ impl fmt::Display for ExportFormat {
             Self::Text => write!(f, "text"),
             Self::Json => write!(f, "json"),
             Self::Yaml => write!(f, "yaml"),
+            Self::YamlDocuments => write!(f, "yaml-documents"),
             Self::Toml => write!(f, "toml"),
         }
     }
@@ -567,6 +572,21 @@ where
             .map_err(|err| ExportErrorKind::Other(err.to_string())),
         ExportFormat::Yaml => serde_yaml::to_writer(writer, &value)
             .map_err(|err| ExportErrorKind::Other(err.to_string())),
+        ExportFormat::YamlDocuments => {
+            if let Some(arr) = value.as_array() {
+                for value in arr.iter() {
+                    writeln!(writer, "---")
+                        .map_err(|err| ExportErrorKind::Other(err.to_string()))?;
+                    serde_yaml::to_writer(&mut writer, value)
+                        .map_err(|err| ExportErrorKind::Other(err.to_string()))?;
+                }
+                Ok(())
+            } else {
+                Err(ExportErrorKind::ExpectedArray {
+                    value: value.clone(),
+                })
+            }
+        }
         ExportFormat::Toml => toml::to_string_pretty(value)
             .map_err(|err| ExportErrorKind::Other(err.to_string()))
             .and_then(|s| {

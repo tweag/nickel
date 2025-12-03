@@ -671,6 +671,10 @@ pub enum ExportErrorKind {
         term: NickelValue,
         value: Number,
     },
+    /// The YAML documents export format expects the value to be an array.
+    ExpectedArray {
+        value: NickelValue,
+    },
     Other(String),
 }
 
@@ -2875,6 +2879,14 @@ impl IntoDiagnostics for ExportErrorData {
                 vec![
                     Diagnostic::error()
                         .with_message("serialization failed")
+                        .with_notes(notes),
+                ]
+            }
+            ExportErrorKind::ExpectedArray { value } => {
+                vec![
+                    Diagnostic::error()
+                        .with_message("yaml-documents export expects an array")
+                        .with_labels(vec![primary_term(&pos_table, &value, files)])
                         .with_notes(notes),
                 ]
             }

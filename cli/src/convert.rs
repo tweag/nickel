@@ -9,6 +9,7 @@ use nickel_lang_core::{
     error::{ParseError, Reporter as _},
     files::Files,
     parser::{self, ErrorTolerantParser, lexer::Lexer},
+    serialize::yaml::Listify,
 };
 
 use crate::{
@@ -88,10 +89,13 @@ impl ConvertCommand {
                 nickel_lang_core::serialize::yaml::load_json(&alloc, &data, Some(file_id))
                     .map_err(|e| e.into())
             }
-            InputFormat::Yaml => {
-                nickel_lang_core::serialize::yaml::load_yaml(&alloc, &data, Some(file_id))
-                    .map_err(|e| e.into())
-            }
+            InputFormat::Yaml => nickel_lang_core::serialize::yaml::load_yaml(
+                &alloc,
+                &data,
+                Some(file_id),
+                Listify::Auto,
+            )
+            .map_err(|e| e.into()),
             InputFormat::Toml => {
                 nickel_lang_core::serialize::toml_deser::ast_from_str(&alloc, &data, file_id)
                     .map_err(|e| ParseError::from_toml(e, file_id).into())

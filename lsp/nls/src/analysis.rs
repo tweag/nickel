@@ -21,6 +21,7 @@ use nickel_lang_core::{
         lexer::{Lexer, OffsetLexer},
     },
     position::{RawPos, RawSpan, TermPos},
+    serialize::yaml::Listify,
     stdlib::StdlibModule,
     traverse::{TraverseAlloc, TraverseControl},
     typ::TypeF,
@@ -557,7 +558,12 @@ impl<'std> PackedAnalysis<'std> {
             file_id,
             |alloc| {
                 let source = sources.source(file_id);
-                match nickel_lang_core::serialize::yaml::load_yaml(alloc, source, Some(file_id)) {
+                match nickel_lang_core::serialize::yaml::load_yaml(
+                    alloc,
+                    source,
+                    Some(file_id),
+                    Listify::Auto,
+                ) {
                     Ok(ast) => alloc.alloc(ast),
                     Err(e) => {
                         parse_errors.errors.push(e);
