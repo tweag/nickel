@@ -4716,14 +4716,14 @@
     base64_encode
       : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
       | doc m%"
-        `base64_encode variant str` base64 encodes the value of a string using the given variant
+        `base64_encode variant str` base64 encodes a string using the given variant
          of the encoding.
 
          The encoding options are:
-         - 'Standard: Use the standard base64 alphabet and include padding.
-         - 'UrlSafe: Use the url-safe variant of the base64 alphabet, with padding.
-         - 'NoPad: Use the standard alphabet with no padding.
-         - 'UrlSafeNoPad: Use the url-safe alphabet without padding.
+         - `'Standard`: Use the standard base64 alphabet and include padding.
+         - `'UrlSafe`: Use the url-safe variant of the base64 alphabet, with padding.
+         - `'NoPad`: Use the standard alphabet with no padding.
+         - `'UrlSafeNoPad`: Use the url-safe alphabet without padding.
 
         # Examples
 
@@ -4746,14 +4746,14 @@
     base64_decode
       : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
       | doc m%"
-        `base64_decode variant str` decodes the value of the string using the given variant of
+        `base64_decode variant str` decodes a string using the given variant of
          base64 encoding.
 
          The encoding options are:
-         - 'Standard: Use the standard base64 alphabet and include padding.
-         - 'UrlSafe: Use the url-safe variant of the base64 alphabet, with padding.
-         - 'NoPad: Use the standard alphabet with no padding.
-         - 'UrlSafeNoPad: Use the url-safe alphabet without padding.
+         - `'Standard`: Use the standard base64 alphabet and include padding.
+         - `'UrlSafe`: Use the url-safe variant of the base64 alphabet, with padding.
+         - `'NoPad`: Use the standard alphabet with no padding.
+         - `'UrlSafeNoPad`: Use the url-safe alphabet without padding.
 
         # Preconditions
 
