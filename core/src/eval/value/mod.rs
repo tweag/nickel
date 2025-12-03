@@ -9,6 +9,7 @@ use crate::{
     identifier::LocIdent,
     impl_display_from_pretty,
     label::Label,
+    metrics::increment,
     position::{PosIdx, PosTable, TermPos},
     term::{
         ForeignIdPayload, IndexMap, Number, RecordOpKind, RuntimeContract, SealingKey, Term,
@@ -901,12 +902,11 @@ impl NickelValue {
         unsafe fn make_mut<T: ValueBlockData + Clone>(value: &mut NickelValue) -> &mut T {
             unsafe {
                 // Safety: if `value.tag()` is `Pointer`, `value.data` is a non-null pointer (precondition)
-
                 let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
-                // Safety: if `value.tag()` is `Pointer`, `value.data` is a non-null pointer (precondition)
                 let header = ValueBlockRc::header_from_raw(as_ptr);
 
                 if header.ref_count() != 1 {
+                    increment!("value::content_make_mut::strong clone");
                     let unique = ValueBlockRc::encode(
                         // Safety: `value.data_tag()` is `T::Tag` (precondition)
                         ValueBlockRc::decode_from_raw_unchecked::<T>(as_ptr).clone(),
@@ -914,9 +914,11 @@ impl NickelValue {
                     );
                     as_ptr = unique.0;
                     *value = unique.into();
+                } else {
+                    increment!("value::content_make_mut::no clone");
                 }
 
-                // Safety: we've made sure `value` is unique
+                // Safety: we've made sure `value` is now unique
                 ValueBlockRc::decode_mut_from_raw_unchecked::<T>(as_ptr)
             }
         }
@@ -1160,12 +1162,12 @@ impl NickelValue {
         match self.tag() {
             ValueTag::Pointer => {
                 // unwrap(): if the tag is `Pointer`, `ValueBlocRc::try_from(self)` must succeed.
-                let block: ValueBlockRc = self.try_into().unwrap();
-                let unique = block.make_unique();
+                let mut block: ValueBlockRc = self.try_into().unwrap();
+                block.make_unique();
                 // Safety: `make_unique()` ensures there's no sharing, and we have the exclusive
                 // access (ownership) of the block.
-                unsafe { (*unique.header_mut()).pos_idx = pos_idx }
-                unique.into()
+                unsafe { (*block.header_mut()).pos_idx = pos_idx }
+                block.into()
             }
             // Safety: the tag is checked to be `Inline`
             ValueTag::Inline => self.with_inline_pos_idx(pos_idx),
@@ -1800,63 +1802,17 @@ impl ValueBlockRc {
         self.try_get_mut().unwrap().unwrap()
     }
 
-    /// Same as [Self::try_make_mut] but doesn't check that `self.tag()` matches `T::Tag`, and
-    /// operate on a raw pointer to a value block.
-    ///
-    /// `ptr` isn't wrapped in a [ValueBlockRc] or a [NickelValue], so it won't de-allocate the
-    /// block when it goes out of scope. It is the responsibility of the caller to wrap this
-    /// pointer in a a block or a value, e.g. by using [Self::from_raw], to avoid leaks.
-    ///
-    /// # Safety
-    ///
-    /// - `ptr` must be a valid non-null pointer to a value block
-    /// - the tag in the header of the pointee block must be equal to `T::Tag`
-    /// - the pointee block must be alive for the duration of `'a`
-    /// - the reference count of the pointee block must not change during `'a`. For example, one
-    ///   could extract the underlying pointer of a 1-reference counted value (while keeping the
-    ///   value alive), make a mutable reference through this method, and while the mutable
-    ///   reference is still alive, clone the original value. We would then have mutable aliasing,
-    ///   which is undefined behavior.
-    pub unsafe fn make_mut_from_raw_unchecked<'a, T: ValueBlockData + Clone>(
-        ptr: &mut NonNull<u8>,
-    ) -> &'a mut T {
-        unsafe {
-            // Safety: `ptr` is a valid non-null pointer to a value block (precondition)
-            let header = Self::header_from_raw(*ptr);
-
-            if header.ref_count() == 1 {
-                // Safety: we know that the value block is unique, so we can safely decode the content
-                // without any risk of aliasing.
-                Self::decode_mut_from_raw_unchecked::<T>(*ptr)
-            } else {
-                // Safety: `ptr` is a valid pointer to a block with a `T` inside (precondition)
-                let unique = ManuallyDrop::new(ValueBlockRc::encode(
-                    Self::decode_from_raw_unchecked::<T>(*ptr).clone(),
-                    header.pos_idx,
-                ));
-                *ptr = unique.0;
-                // Safety: we just made a unique block, so we can safely decode the content without any
-                // risk of aliasing.
-                Self::decode_mut_from_raw_unchecked::<T>(*ptr)
-            }
-        }
-    }
-
     /// Same as [std::rc::Rc::make_mut] but for a value block. Returns an error if the tag doesn't
     /// match `T::Tag`.
     pub fn try_make_mut<T: ValueBlockData + Clone>(&mut self) -> Result<&mut T, TagMismatchError> {
         if self.tag() != T::TAG {
-            Err(TagMismatchError)
-        } else if self.header().ref_count() == 1 {
-            // Safety: we know that the value block is unique, so we can safely decode the content
-            // without any risk of aliasing.
-            unsafe { Ok(self.decode_mut_unchecked::<T>()) }
-        } else {
-            let unique = ValueBlockRc::encode(self.decode::<T>().clone(), self.pos_idx());
-            *self = unique;
-            // Safety: `self.tag()` is `T::TAG`
-            unsafe { Ok(self.decode_mut_unchecked::<T>()) }
+            return Err(TagMismatchError);
         }
+
+        self.make_unique();
+        // Safety: we know that the value block is unique, so we can safely decode the content
+        // without any risk of aliasing.
+        unsafe { Ok(self.decode_mut_unchecked::<T>()) }
     }
 
     /// Panicking variant of [Self::try_make_mut]. Equivalent to `self.try_make_mut().unwrap()`.
@@ -1864,17 +1820,18 @@ impl ValueBlockRc {
         self.try_make_mut().unwrap()
     }
 
-    /// Make a unique (non shared) value block out of `self`, that is a 1-reference counted block
-    /// with the same data. Similar to [Self::make_mut] in spirit but it doesn't require to specify
-    /// the `T` and doesn't return a mutable reference.
+    /// Makes `self` a unique (non shared) block, that is a 1-reference counted block with the same
+    /// data. Similar to [Self::make_mut] in spirit but it doesn't require to specify the `T` and
+    /// doesn't return a mutable reference.
     ///
-    /// This is a no-op if `self` is 1-reference counted. Otherwise, a new (strong) copy is
-    /// allocated and returned.
-    pub fn make_unique(self) -> Self {
+    /// This is a no-op if `self` is 1-reference counted. Otherwise, a fresh (strong) copy is
+    /// allocated and assigned to `self`.
+    pub fn make_unique(&mut self) {
         if self.header().ref_count() == 1 {
-            self
+            increment!("value::make_unique::no clone");
         } else {
-            self.strong_clone()
+            increment!("value::make_unique::strong clone");
+            *self = self.strong_clone();
         }
     }
 
