@@ -149,3 +149,7 @@ opt-level = 3
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+[profile.profiling]
+inherits = "release"
+debug = true
