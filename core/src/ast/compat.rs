@@ -43,7 +43,7 @@ use std::rc::Rc;
 /// - `'ast`: the lifetime of the AST nodes, tied to the allocator
 /// - `'a`: the lifetime of the reference to the mainline Nickel object, which doesn't need to be
 ///   related to `'ast` (we will copy any required data into the allocator)
-/// - `T`: the type of the mainline Nickel object ([term::Term], [term::pattern::Pattern], etc.)
+/// - `T`: the type of the mainline Nickel object ([term::Term], etc.)
 pub trait FromMainline<'ast, T> {
     fn from_mainline(alloc: &'ast AstAlloc, pos_table: &PosTable, mainline: &T) -> Self;
 }

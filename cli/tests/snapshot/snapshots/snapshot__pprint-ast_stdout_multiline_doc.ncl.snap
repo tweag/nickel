@@ -17,6 +17,5 @@ expression: out
         (true | BoolLiteral) =>
           error
       ```
-    "%%
-    = 1,
+    "%% = 1
 }

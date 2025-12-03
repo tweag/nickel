@@ -52,6 +52,9 @@ use crate::{
 };
 
 /// A branch of a match expression.
+///
+/// This is a weird mix of `Ast` and `NickelValue`, because it's used during the
+/// AST lowering. Also, `Pattern` doesn't have a runtime representation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchBranch<'ast> {
     /// The pattern on the left hand side of `=>`.

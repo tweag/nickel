@@ -2,4 +2,4 @@
 source: cli/tests/snapshot/main.rs
 expression: out
 ---
-{ "this needs \\\"escaping\"\nvery much" = true, }
+{ "this needs \\\"escaping\"\nvery much" = true }
