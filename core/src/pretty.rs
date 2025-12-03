@@ -157,12 +157,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Contract(term) = &typ.typ {
         match term.content_ref() {
             ValueContentRef::Term(
-                Term::Fun(..)
-                | Term::FunPattern(..)
-                | Term::Let(..)
-                | Term::LetPattern(..)
-                | Term::Import { .. }
-                | Term::ResolvedImport(..),
+                Term::Fun(..) | Term::Let(..) | Term::Import { .. } | Term::ResolvedImport(..),
             )
             | ValueContentRef::CustomContract(_) => true,
             ValueContentRef::Term(Term::Op1(data)) => matches!(data.op, UnaryOp::IfThenElse),
@@ -494,23 +489,9 @@ impl Allocator {
     ) -> DocBuilder<'a, Self> {
         let mut builder = docs![self, "fun", self.line(), first_param];
 
-        loop {
-            match body.as_term() {
-                Some(Term::Fun(data)) => {
-                    builder = docs![self, builder, self.line(), self.as_string(data.arg)];
-                    body = &data.body;
-                }
-                Some(Term::FunPattern(data)) => {
-                    builder = docs![
-                        self,
-                        builder,
-                        self.line(),
-                        self.pat_with_parens(&data.pattern)
-                    ];
-                    body = &data.body;
-                }
-                _ => break,
-            }
+        while let Some(Term::Fun(data)) = body.as_term() {
+            builder = docs![self, builder, self.line(), self.as_string(data.arg)];
+            body = &data.body;
         }
 
         docs![
@@ -1004,9 +985,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
         match self {
             Term::StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Term::Fun(data) => allocator.function(allocator.as_string(data.arg), &data.body),
-            Term::FunPattern(data) => {
-                allocator.function(allocator.pat_with_parens(&data.pattern), &data.body)
-            }
             Term::Let(data) => docs![
                 allocator,
                 "let",
@@ -1020,29 +998,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     data.bindings
                         .iter()
                         .map(|(k, v)| allocator.binding(*k, v.clone())),
-                    docs![allocator, ",", allocator.line()]
-                ),
-                allocator.line(),
-                "in",
-            ]
-            .nest(2)
-            .group()
-            .append(allocator.line())
-            .append(data.body.pretty(allocator).nest(2))
-            .group(),
-            Term::LetPattern(data) => docs![
-                allocator,
-                "let",
-                allocator.space(),
-                if data.attrs.rec {
-                    docs![allocator, "rec", allocator.space()]
-                } else {
-                    allocator.nil()
-                },
-                allocator.intersperse(
-                    data.bindings
-                        .iter()
-                        .map(|(k, v)| allocator.binding(k, v.clone())),
                     docs![allocator, ",", allocator.line()]
                 ),
                 allocator.line(),
@@ -1819,57 +1774,6 @@ mod tests {
     }
 
     #[test]
-    fn pretty_let_pattern() {
-        assert_long_short_term(
-            "let foo @ { a | Bool ? true = a', b ? false, } = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      | Bool
-                      ? true
-                      = a',
-                    b
-                      ? false,
-                  }
-                  = c
-                  in
-                {}"
-            },
-        );
-        assert_long_short_term(
-            "let foo @ { a = a', b = e @ { foo, .. }, } = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      = a',
-                    b
-                      = e @ {
-                        foo,
-                        ..
-                      },
-                  }
-                  = c
-                  in
-                {}"
-            },
-        );
-        assert_long_short_term(
-            "let foo @ { a = a', b, } | String = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      = a',
-                    b,
-                  }
-                  | String
-                  = c
-                  in
-                {}"
-            },
-        );
-    }
-
-    #[test]
     fn pretty_fun() {
         assert_long_short_term(
             "fun x y z => x y z",
@@ -1878,24 +1782,6 @@ mod tests {
                   x
                   y
                   z
-                  =>
-                  x
-                    y
-                    z"
-            },
-        );
-        assert_long_short_term(
-            "fun x @ { foo, bar ? true, } y @ { baz, } => x y z",
-            indoc! {"
-                fun
-                  x @ {
-                    foo,
-                    bar
-                      ? true,
-                  }
-                  y @ {
-                    baz,
-                  }
                   =>
                   x
                     y

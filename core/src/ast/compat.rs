@@ -410,13 +410,9 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     }
                 }))
             }
-            t @ (Term::Fun(..) | Term::FunPattern(..)) => {
-                let (fst_arg, body) = match t {
-                    Term::Fun(data) => (Pattern::any(data.arg), &data.body),
-                    Term::FunPattern(data) => (data.pattern.to_ast(alloc, pos_table), &data.body),
-                    // unreachable!(): we are in a match arm that matches either Fun or FunPattern
-                    _ => unreachable!(),
-                };
+            Term::Fun(data) => {
+                let fst_arg = Pattern::any(data.arg);
+                let body = &data.body;
 
                 let mut args = vec![fst_arg];
                 let mut maybe_next_fun = body;
@@ -425,10 +421,6 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
                     match maybe_next_fun.as_term() {
                         Some(Term::Fun(data)) => {
                             args.push(Pattern::any(data.arg));
-                            maybe_next_fun = &data.body;
-                        }
-                        Some(Term::FunPattern(data)) => {
-                            args.push(data.pattern.to_ast(alloc, pos_table));
                             maybe_next_fun = &data.body;
                         }
                         _ => break maybe_next_fun,
@@ -440,15 +432,6 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             Term::Let(data) => alloc.let_block(
                 data.bindings.iter().map(|(id, value)| LetBinding {
                     pattern: Pattern::any(*id),
-                    value: value.to_ast(alloc, pos_table),
-                    metadata: Default::default(),
-                }),
-                data.body.to_ast(alloc, pos_table),
-                data.attrs.rec,
-            ),
-            Term::LetPattern(data) => alloc.let_block(
-                data.bindings.iter().map(|(pat, value)| LetBinding {
-                    pattern: pat.to_ast(alloc, pos_table),
                     value: value.to_ast(alloc, pos_table),
                     metadata: Default::default(),
                 }),
@@ -1266,9 +1249,9 @@ impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
     }
 }
 
-impl<'ast> FromAst<MatchBranch<'ast>> for term::MatchBranch {
+impl<'ast> FromAst<MatchBranch<'ast>> for term::pattern::compile::MatchBranch {
     fn from_ast(branch: &MatchBranch<'ast>, pos_table: &mut PosTable) -> Self {
-        term::MatchBranch {
+        term::pattern::compile::MatchBranch {
             pattern: branch.pattern.to_mainline(pos_table),
             guard: branch.guard.as_ref().map(|ast| ast.to_mainline(pos_table)),
             body: branch.body.to_mainline(pos_table),
@@ -1468,7 +1451,10 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     .fold(NickelValue::from_ast(body, pos_table), |acc, arg| {
                         let term = match arg.data {
                             PatternData::Any(id) => Term::fun(id, acc),
-                            _ => Term::fun_pattern((*arg).to_mainline(pos_table), acc),
+                            _ => {
+                                let pat = (*arg).to_mainline(pos_table);
+                                term::pattern::compile::compile_fun_pattern(pos_table, pat, acc)
+                            }
                         };
 
                         // [^nary-constructors-unrolling]: this case is a bit annoying: we need to
@@ -1549,9 +1535,9 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                                 )
                             },
                         )
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    Term::let_pattern(bindings, body, attrs)
+                    term::pattern::compile::compile_let_pattern(pos_table, &bindings, body, attrs)
                 };
 
                 NickelValue::term(term, pos_table.push(ast.pos))
@@ -1611,7 +1597,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
                     .iter()
                     .map(|branch| branch.to_mainline(pos_table))
                     .collect();
-                let match_data = term::MatchData { branches };
+                let match_data = term::pattern::compile::MatchData { branches };
                 let arg = LocIdent::fresh();
                 let pos_idx = pos_table.push(ast.pos);
                 NickelValue::term(

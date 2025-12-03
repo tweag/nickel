@@ -10,8 +10,8 @@ use crate::{
     identifier::LocIdent,
     metrics::increment,
     term::{
-        AnnotatedData, AppData, FunData, FunPatternData, Import, LetData, LetPatternData, Op1Data,
-        Op2Data, OpNData, RecRecordData, SealedData, StrChunk, Term,
+        AnnotatedData, AppData, FunData, Import, LetData, Op1Data, Op2Data, OpNData, RecRecordData,
+        SealedData, StrChunk, Term,
     },
 };
 
@@ -191,9 +191,7 @@ impl ValueLens<bool> {
 pub enum TermContent {
     StrChunks(ValueLens<Vec<StrChunk<NickelValue>>>),
     Fun(ValueLens<FunData>),
-    FunPattern(ValueLens<Box<FunPatternData>>),
     Let(ValueLens<Box<LetData>>),
-    LetPattern(ValueLens<Box<LetPatternData>>),
     App(ValueLens<AppData>),
     Var(ValueLens<LocIdent>),
     RecRecord(ValueLens<Box<RecRecordData>>),
@@ -215,9 +213,7 @@ impl TermContent {
         match self {
             TermContent::StrChunks(lens) => lens.restore(),
             TermContent::Fun(lens) => lens.restore(),
-            TermContent::FunPattern(lens) => lens.restore(),
             TermContent::Let(lens) => lens.restore(),
-            TermContent::LetPattern(lens) => lens.restore(),
             TermContent::App(lens) => lens.restore(),
             TermContent::Var(lens) => lens.restore(),
             TermContent::RecRecord(lens) => lens.restore(),
@@ -240,9 +236,7 @@ impl TermContent {
         let value = match self {
             TermContent::StrChunks(lens) => &lens.value,
             TermContent::Fun(lens) => &lens.value,
-            TermContent::FunPattern(lens) => &lens.value,
             TermContent::Let(lens) => &lens.value,
-            TermContent::LetPattern(lens) => &lens.value,
             TermContent::App(lens) => &lens.value,
             TermContent::Var(lens) => &lens.value,
             TermContent::RecRecord(lens) => &lens.value,
@@ -267,9 +261,7 @@ impl TermContent {
         let value = match self {
             TermContent::StrChunks(lens) => lens.value,
             TermContent::Fun(lens) => lens.value,
-            TermContent::FunPattern(lens) => lens.value,
             TermContent::Let(lens) => lens.value,
-            TermContent::LetPattern(lens) => lens.value,
             TermContent::App(lens) => lens.value,
             TermContent::Var(lens) => lens.value,
             TermContent::RecRecord(lens) => lens.value,
@@ -425,21 +417,7 @@ impl_term_lens!(
 
 impl_term_lens!(term_fun_lens, term_fun_extractor, Fun, FunData);
 
-impl_term_boxed_lens!(
-    term_fun_pat_lens,
-    term_fun_pat_extractor,
-    FunPattern,
-    FunPatternData
-);
-
 impl_term_boxed_lens!(term_let_lens, term_let_extractor, Let, LetData);
-
-impl_term_boxed_lens!(
-    term_let_pat_lens,
-    term_let_pat_extractor,
-    LetPattern,
-    LetPatternData
-);
 
 impl_term_lens!(term_app_lens, term_app_extractor, App, AppData);
 

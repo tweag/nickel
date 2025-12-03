@@ -6,10 +6,9 @@
 use crate::{
     eval::value::{Container, NickelValue, ValueContentRefMut},
     identifier::Ident,
-    term::pattern::*,
     term::{
-        AnnotatedData, AppData, FunData, FunPatternData, IndexMap, LetData, LetPatternData,
-        Op1Data, Op2Data, OpNData, RecRecordData, StrChunk, Term, TypeAnnotation,
+        AnnotatedData, AppData, FunData, IndexMap, LetData, Op1Data, Op2Data, OpNData,
+        RecRecordData, StrChunk, Term, TypeAnnotation,
         record::{Field, FieldDeps, Include, RecordDeps},
     },
     typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
@@ -81,9 +80,7 @@ impl CollectFreeVars for Term {
             | Term::Import { .. }
             | Term::ResolvedImport(_) => (),
             Term::Fun(data) => data.collect_free_vars(free_vars),
-            Term::FunPattern(data) => data.collect_free_vars(free_vars),
             Term::Let(data) => data.collect_free_vars(free_vars),
-            Term::LetPattern(data) => data.collect_free_vars(free_vars),
             Term::App(data) => data.collect_free_vars(free_vars),
             Term::Op1(data) => data.collect_free_vars(free_vars),
             Term::Op2(data) => data.collect_free_vars(free_vars),
@@ -185,17 +182,6 @@ impl CollectFreeVars for FunData {
     }
 }
 
-impl CollectFreeVars for FunPatternData {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        let mut fresh = HashSet::new();
-
-        self.body.collect_free_vars(&mut fresh);
-        self.pattern.remove_bindings(&mut fresh);
-
-        set.extend(fresh);
-    }
-}
-
 impl CollectFreeVars for LetData {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         let mut fresh = HashSet::new();
@@ -211,27 +197,6 @@ impl CollectFreeVars for LetData {
         self.body.collect_free_vars(&mut fresh);
         for (id, _value) in &self.bindings {
             fresh.remove(&id.ident());
-        }
-
-        set.extend(fresh);
-    }
-}
-
-impl CollectFreeVars for LetPatternData {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        let mut fresh = HashSet::new();
-
-        for (_pat, value) in self.bindings.iter_mut() {
-            if self.attrs.rec {
-                value.collect_free_vars(&mut fresh);
-            } else {
-                value.collect_free_vars(set);
-            }
-        }
-
-        self.body.collect_free_vars(&mut fresh);
-        for (pat, _value) in &self.bindings {
-            pat.remove_bindings(&mut fresh);
         }
 
         set.extend(fresh);
@@ -338,90 +303,5 @@ impl CollectFreeVars for AppData {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         self.head.collect_free_vars(set);
         self.arg.collect_free_vars(set);
-    }
-}
-
-trait RemoveBindings {
-    /// For a binding form that introduces new variables in scope, typically patterns, remove the
-    /// variable introduced by this binding form from the provided set of free variables.
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>);
-}
-
-impl RemoveBindings for PatternData {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        match self {
-            PatternData::Any(id) => {
-                working_set.remove(&id.ident());
-            }
-            PatternData::Record(record_pat) => record_pat.remove_bindings(working_set),
-            PatternData::Array(array_pat) => array_pat.remove_bindings(working_set),
-            PatternData::Enum(enum_variant_pat) => enum_variant_pat.remove_bindings(working_set),
-            PatternData::Or(or_pat) => or_pat.remove_bindings(working_set),
-            // A wildcard pattern or a constant pattern doesn't bind any variable.
-            PatternData::Wildcard | PatternData::Constant(_) => (),
-        }
-    }
-}
-
-impl RemoveBindings for Pattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        self.data.remove_bindings(working_set);
-
-        if let Some(alias) = self.alias {
-            working_set.remove(&alias.ident());
-        }
-    }
-}
-
-impl RemoveBindings for FieldPattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        self.pattern.remove_bindings(working_set);
-    }
-}
-
-impl RemoveBindings for RecordPattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        for m in &self.patterns {
-            m.remove_bindings(working_set);
-        }
-
-        if let TailPattern::Capture(rest) = self.tail {
-            working_set.remove(&rest.ident());
-        }
-    }
-}
-
-impl RemoveBindings for ArrayPattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        for m in &self.patterns {
-            m.remove_bindings(working_set);
-        }
-
-        if let TailPattern::Capture(rest) = self.tail {
-            working_set.remove(&rest.ident());
-        }
-    }
-}
-
-impl RemoveBindings for EnumPattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        if let Some(ref arg_pat) = self.pattern {
-            arg_pat.remove_bindings(working_set);
-        }
-    }
-}
-
-impl RemoveBindings for OrPattern {
-    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        // Theoretically, we could just remove the bindings of the first pattern, as all
-        // branches in an or patterns should bind exactly the same variables. However, at the
-        // time of writing, this condition isn't enforced at parsing time (it's enforced
-        // during typechecking). It doesn't cost much to be conservative and to remove all
-        // the bindings (removing something non-existent from a hashet is a no-op), so that
-        // we don't miss free variables in the case of ill-formed or-patterns, although we
-        // should ideally rule those out before reaching the free var transformation.
-        for pat in &self.patterns {
-            pat.remove_bindings(working_set);
-        }
     }
 }

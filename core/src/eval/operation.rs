@@ -4046,14 +4046,13 @@ fn eq<C: Cache>(
         // Function-like terms and foreign ids can't be compared together.
         (ValueContentRef::ForeignId(_), ValueContentRef::ForeignId(_))
         | (ValueContentRef::CustomContract(_), ValueContentRef::CustomContract(_))
-        | (
-            ValueContentRef::Term(Term::Fun(..) | Term::FunPattern(..)),
-            ValueContentRef::Term(Term::Fun(..) | Term::FunPattern(..)),
-        ) => Err(Box::new(EvalErrorKind::IncomparableValues {
-            eq_pos: pos_op,
-            left: value1,
-            right: value2,
-        })),
+        | (ValueContentRef::Term(Term::Fun(..)), ValueContentRef::Term(Term::Fun(..))) => {
+            Err(Box::new(EvalErrorKind::IncomparableValues {
+                eq_pos: pos_op,
+                left: value1,
+                right: value2,
+            }))
+        }
         (_, _) => Ok(EqResult::Bool(false)),
     }
 }

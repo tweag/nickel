@@ -53,7 +53,8 @@ use crate::{
     pretty::PrettyPrintCap,
     stdlib::internals,
     term::{
-        IndexMap, MatchBranch, MatchData, make as mk_term, pattern::compile::Compile,
+        IndexMap, make as mk_term,
+        pattern::compile::{Compile, MatchBranch, MatchData},
         record::RecordData,
     },
     traverse::*,

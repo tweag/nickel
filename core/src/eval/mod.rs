@@ -1141,12 +1141,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         break Ok(Closure { value, env });
                     }
                 }
-                ValueContentRef::Term(Term::FunPattern(..) | Term::LetPattern(..)) => {
-                    break Err(Box::new(EvalErrorKind::InternalError(
-                        "unexpected let-pattern or fun-pattern during evaluation".to_owned(),
-                        pos_idx,
-                    )));
-                }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
                     let evaluated = Closure { value, env };
@@ -1515,9 +1509,6 @@ pub fn subst<C: Cache>(
 
                     NickelValue::term(Term::Let(data), pos_idx)
                 }
-                lens @ (TermContent::LetPattern(..) | TermContent::FunPattern(..)) => panic!(
-                    "Pattern {:?} has not been transformed before evaluation", lens.restore()
-                ),
                 TermContent::App(lens) => {
                     let mut data = lens.take();
                     data.head = subst(pos_table, cache, data.head, initial_env, env);
