@@ -784,6 +784,24 @@ pub enum PrimOp {
     /// 2. The right string.
     StringCompare,
 
+    /// Base64 encode the value of a string
+    ///
+    /// # Arguments
+    ///
+    /// 1. An enum representing the base64 encoding variant ('Standard, 'UrlSafe, 'NoPad,
+    ///    'UrlSafeNoPad).
+    /// 2. The string to encode.
+    StringBase64Encode,
+
+    /// Decode a base64 encoded string
+    ///
+    /// # Arguments
+    ///
+    /// 1. An enum representing the base64 encoding variant ('Standard, 'UrlSafe, 'NoPad,
+    ///    'UrlSafeNoPad).
+    /// 2. The string to decode
+    StringBase64Decode,
+
     /// Seal a term with a sealing key (used by the implementation of polymorphic contracts).
     ///
     /// # Argumens
@@ -980,6 +998,8 @@ impl fmt::Display for PrimOp {
             StringUppercase => write!(f, "string/uppercase"),
             StringLowercase => write!(f, "string/lowercase"),
             StringLength => write!(f, "string/length"),
+            StringBase64Encode => write!(f, "string/base64_encode"),
+            StringBase64Decode => write!(f, "string/base64_decode"),
             ToString => write!(f, "to_string"),
             NumberFromString => write!(f, "number/from_string"),
             EnumFromString => write!(f, "enum/from_string"),
@@ -1168,6 +1188,8 @@ impl PrimOp {
             | StringSplit
             | StringContains
             | StringCompare
+            | StringBase64Encode
+            | StringBase64Decode
             | Seal
             | Unseal
             | ContractArrayLazyApp

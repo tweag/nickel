@@ -436,6 +436,25 @@ impl PrimOpType for PrimOp {
                 vec![mk_uniftype::str(), mk_uniftype::str()],
                 mk_uniftype::array(TypeF::String),
             ),
+            // [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
+            PrimOp::StringBase64Encode => (
+                vec![
+                    mk_uty_enum!("Standard", "UrlSafe", "NoPad", "UrlSafeNoPad"),
+                    mk_uniftype::str(),
+                ],
+                mk_uniftype::str(),
+            ),
+            // [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> [| 'Ok String, 'Error { message : String } |]
+            PrimOp::StringBase64Decode => (
+                vec![
+                    mk_uty_enum!("Standard", "UrlSafe", "NoPad", "UrlSafeNoPad"),
+                    mk_uniftype::str(),
+                ],
+                mk_uty_enum!(
+                    ("Ok", TypeF::String),
+                    ("Error", mk_uty_record!(("message", TypeF::String)))
+                ),
+            ),
             // The first argument is a contract, the second is a label.
             // forall a. Dyn -> Dyn -> Array a -> Array a
             PrimOp::ContractArrayLazyApp => {

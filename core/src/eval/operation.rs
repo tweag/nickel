@@ -37,6 +37,7 @@ use crate::{
     term::{make as mk_term, record::*, string::NickelString, *},
 };
 
+use base64::Engine;
 use nickel_lang_parser::utils::parse_number_sci;
 
 #[cfg(feature = "metrics")]
@@ -2807,6 +2808,94 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         pos_op,
                     },
                 )
+            }
+            BinaryOp::StringBase64Encode => {
+                let mk_err_fst = || {
+                    mk_type_error!(
+                        "[| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |]",
+                        1,
+                        value1.clone()
+                    )
+                };
+
+                let Some(b64_variant) = value1.as_enum_variant() else {
+                    return mk_err_fst();
+                };
+
+                if b64_variant.arg.is_some() {
+                    return mk_err_fst();
+                }
+
+                let Some(s) = value2.as_string() else {
+                    return mk_type_error!("String", 2, value2);
+                };
+
+                let result = match b64_variant.tag.as_ref() {
+                    "Standard" => base64::prelude::BASE64_STANDARD.encode(s.as_str()),
+                    "UrlSafe" => base64::prelude::BASE64_URL_SAFE.encode(s.as_str()),
+                    "NoPad" => base64::prelude::BASE64_STANDARD_NO_PAD.encode(s.as_str()),
+                    "UrlSafeNoPad" => base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(s.as_str()),
+                    _ => return mk_err_fst(),
+                };
+
+                Ok(NickelValue::string(result, pos_op_inh).into())
+            }
+            BinaryOp::StringBase64Decode => {
+                let mk_err_fst = || {
+                    mk_type_error!(
+                        "[| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |]",
+                        1,
+                        value1.clone()
+                    )
+                };
+
+                let Some(b64_variant) = value1.as_enum_variant() else {
+                    return mk_err_fst();
+                };
+
+                if b64_variant.arg.is_some() {
+                    return mk_err_fst();
+                }
+
+                let Some(s) = value2.as_string() else {
+                    return mk_type_error!("String", 2, value2);
+                };
+
+                let decode_with = |engine: base64::engine::GeneralPurpose| {
+                    let decode_result = engine
+                        .decode(s.as_str())
+                        .map_err(|err| format!("Base64 decoding failed: {err}"))
+                        .and_then(|decoded_bytes| {
+                            String::from_utf8(decoded_bytes).map_err(|err| {
+                                format!("Could not convert decoded value to string: {err}")
+                            })
+                        });
+                    match decode_result {
+                        Ok(decoded_string) => Ok(NickelValue::enum_variant(
+                            "Ok",
+                            Some(NickelValue::string(decoded_string, pos_op_inh)),
+                            pos_op_inh,
+                        )
+                        .into()),
+                        Err(err) => Ok(NickelValue::enum_variant(
+                            "Error",
+                            Some(
+                                mk_record!(("message", NickelValue::string_posless(err)))
+                                    .with_pos_idx(pos_op_inh),
+                            ),
+                            pos_op_inh,
+                        )
+                        .into()),
+                    }
+                };
+
+                match b64_variant.tag.as_ref() {
+                    "Standard" => decode_with(base64::prelude::BASE64_STANDARD),
+                    "UrlSafe" => decode_with(base64::prelude::BASE64_URL_SAFE),
+                    "NoPad" => decode_with(base64::prelude::BASE64_STANDARD_NO_PAD),
+                    "UrlSafeNoPad" => decode_with(base64::prelude::BASE64_URL_SAFE_NO_PAD),
+                    _ => mk_err_fst(),
+                }
             }
             BinaryOp::ContractArrayLazyApp => {
                 let (ctr, _) = self.stack.pop_arg(&self.context.cache).ok_or_else(|| {

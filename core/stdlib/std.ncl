@@ -4713,6 +4713,91 @@
       "%
       = fun start end s => %string/substr% s start end,
 
+    base64_encode
+      : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
+      | doc m%"
+        `base64_encode variant str` base64 encodes a string using the given variant
+         of the encoding.
+
+         The encoding options are:
+         - `'Standard`: Use the standard base64 alphabet and include padding.
+         - `'UrlSafe`: Use the url-safe variant of the base64 alphabet, with padding.
+         - `'NoPad`: Use the standard alphabet with no padding.
+         - `'UrlSafeNoPad`: Use the url-safe alphabet without padding.
+
+        # Examples
+
+        ```nickel multiline
+        std.string.base64_encode 'Standard "Hello, world!"
+        # => "SGVsbG8sIHdvcmxkIQ=="
+
+        std.string.base64_encode 'NoPad "Hello, world!"
+        # => "SGVsbG8sIHdvcmxkIQ"
+
+        std.string.base64_encode 'UrlSafe "😎"
+        # => "8J-Yjg=="
+
+        std.string.base64_encode 'UrlSafeNoPad "😎"
+        # => "8J-Yjg"
+        ```
+      "%
+      = fun variant s => %string/base64_encode% variant s,
+
+    base64_decode
+      : [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
+      | doc m%"
+        `base64_decode variant str` decodes a string using the given variant of
+         base64 encoding.
+
+         The encoding options are:
+         - `'Standard`: Use the standard base64 alphabet and include padding.
+         - `'UrlSafe`: Use the url-safe variant of the base64 alphabet, with padding.
+         - `'NoPad`: Use the standard alphabet with no padding.
+         - `'UrlSafeNoPad`: Use the url-safe alphabet without padding.
+
+        # Preconditions
+
+        This will fail if the input string is not valid base64 encoded data. It will also fail if
+        the decoding succeeds, but the decoded value is not a valid utf-8 string. Internally, this
+        is implemented as a contract, `Base64String`. This contract accounts for the encoding
+        variant, so failure may indicate that the wrong variant was chosen, along with the other
+        potential problems with the input string.
+
+        # Examples
+
+        ```nickel multiline
+        std.string.base64_decode 'Standard "SGVsbG8sIHdvcmxkIQ=="
+        # => "Hello, world!"
+
+        std.string.base64_decode 'NoPad "SGVsbG8sIHdvcmxkIQ"
+        # => "Hello, world!"
+
+        std.string.base64_decode 'UrlSafe "8J-Yjg=="
+        # => "😎"
+
+        std.string.base64_decode 'UrlSafeNoPad "8J-Yjg"
+        # => "😎"
+        ```
+      "%
+      = fun variant str =>
+        let Base64String | Dyn =
+          %contract/custom% (fun _label value =>
+            %typeof% value
+            |> match {
+              'Enum => 'Ok (value | [| 'Decoded String |]),
+              'String =>
+                (%string/base64_decode% variant (value | String))
+                |> match {
+                  'Ok dec => 'Ok ('Decoded dec),
+                  'Error err => 'Error err
+                },
+              _ => 'Error { message = "Expected a String or a [| 'Decoded String |]" }
+            }
+          )
+        in
+        let decoded = str | Base64String
+        in (decoded | [| 'Decoded String |]) |> match { 'Decoded val => val },
+
     from
       | Stringable -> String
       | doc m%"
