@@ -7,7 +7,6 @@ pub mod string;
 
 use record::{Field, FieldDeps, Include, RecordData, RecordDeps, SharedMetadata};
 use smallvec::SmallVec;
-use string::NickelString;
 
 use crate::{
     cache::InputFormat,

@@ -62,6 +62,7 @@ use crate::{
 
 use std::{collections::HashSet, convert::Infallible};
 
+use nickel_lang_parser::ast::AstAlloc;
 pub use nickel_lang_parser::typ::{
     DictTypeFlavour, EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF, VarKind,
     VarKindDiscriminant,
@@ -531,11 +532,10 @@ impl Subcontract for EnumRows {
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<NickelValue, UnboundTypeVariableError> {
-        use crate::term::{
-            BinaryOp,
-            pattern::{EnumPattern, Pattern, PatternData},
-        };
+        use crate::ast::pattern::{EnumPattern, Pattern, PatternData};
+        use crate::term::BinaryOp;
 
+        let alloc = AstAlloc::new();
         let mut branches = Vec::new();
         let mut tail_var = None;
 
@@ -570,12 +570,10 @@ impl Subcontract for EnumRows {
         for row in self.iter() {
             match row {
                 EnumRowsIteratorItem::Row(row) => {
-                    let arg_pattern = row.typ.as_ref().map(|_| {
-                        Box::new(Pattern {
-                            data: PatternData::Any(variant_arg),
-                            alias: None,
-                            pos: PosIdx::NONE,
-                        })
+                    let arg_pattern = row.typ.as_ref().map(|_| Pattern {
+                        data: PatternData::Any(variant_arg),
+                        alias: None,
+                        pos: TermPos::None,
                     });
 
                     let body = if let Some(ty) = row.typ.as_ref() {
@@ -597,13 +595,13 @@ impl Subcontract for EnumRows {
                     let body = mk_term::enum_variant("Ok", body);
 
                     let pattern = Pattern {
-                        data: PatternData::Enum(EnumPattern {
+                        data: PatternData::Enum(alloc.alloc(EnumPattern {
                             tag: row.id,
                             pattern: arg_pattern,
-                            pos: pos_table.push(row.id.pos),
-                        }),
+                            pos: row.id.pos,
+                        })),
                         alias: None,
-                        pos: pos_table.push(row.id.pos),
+                        pos: row.id.pos,
                     };
 
                     branches.push(MatchBranch {
@@ -641,7 +639,7 @@ impl Subcontract for EnumRows {
             pattern: Pattern {
                 data: PatternData::Wildcard,
                 alias: None,
-                pos: pos_table.push(default_pos),
+                pos: default_pos,
             },
             guard: None,
             body: default,

@@ -8,7 +8,6 @@ use crate::{
     parser::lexer::KEYWORDS,
     term::{
         self,
-        pattern::*,
         record::{Field, FieldMetadata, Include, RecordData},
         *,
     },
@@ -632,22 +631,6 @@ impl Allocator {
     fn type_part<'a>(&'a self, typ: &Type) -> DocBuilder<'a, Self> {
         typ.pretty(self).parens_if(needs_parens_in_type_pos(typ))
     }
-
-    /// Pretty printing of a restricted patterns that requires enum variant patterns and or
-    /// patterns to be parenthesized (typically function pattern arguments). The only difference
-    /// with a general pattern is that for a function, a top-level enum variant pattern with an
-    /// enum tag as an argument such as `'Foo 'Bar` must be parenthesized, because `fun 'Foo 'Bar
-    /// => ...` is parsed as a function of two arguments, which are bare enum tags `'Foo` and
-    /// `'Bar`. We must print `fun ('Foo 'Bar) => ..` instead.
-    fn pat_with_parens<'a>(&'a self, pattern: &Pattern) -> DocBuilder<'a, Self> {
-        pattern.pretty(self).parens_if(matches!(
-            pattern.data,
-            PatternData::Enum(EnumPattern {
-                pattern: Some(_),
-                ..
-            }) | PatternData::Or(_)
-        ))
-    }
 }
 
 trait NickelDocBuilderExt {
@@ -761,165 +744,6 @@ impl<'a> Pretty<'a, Allocator> for &BinaryOp {
 impl<'a> Pretty<'a, Allocator> for &NAryOp {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         allocator.as_string(format!("%{self}%"))
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &Pattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let alias_prefix = if let Some(alias) = self.alias {
-            docs![
-                allocator,
-                alias.to_string(),
-                allocator.space(),
-                "@",
-                allocator.space()
-            ]
-        } else {
-            allocator.nil()
-        };
-
-        docs![allocator, alias_prefix, &self.data]
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &PatternData {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        match self {
-            PatternData::Wildcard => allocator.text("_"),
-            PatternData::Any(id) => allocator.as_string(id),
-            PatternData::Record(rp) => rp.pretty(allocator),
-            PatternData::Array(ap) => ap.pretty(allocator),
-            PatternData::Enum(evp) => evp.pretty(allocator),
-            PatternData::Constant(cp) => cp.pretty(allocator),
-            PatternData::Or(op) => op.pretty(allocator),
-        }
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ConstantPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        self.data.pretty(allocator)
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ConstantPatternData {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        match self {
-            ConstantPatternData::Bool(b) => allocator.as_string(b),
-            ConstantPatternData::Number(n) => allocator.as_string(format!("{}", n.to_sci())),
-            ConstantPatternData::String(s) => allocator.escaped_string(s).double_quotes(),
-            ConstantPatternData::Null => allocator.text("null"),
-        }
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &EnumPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            "'",
-            enum_tag_quoted(&self.tag),
-            if let Some(ref arg_pat) = self.pattern {
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.pat_with_parens(arg_pat)
-                ]
-            } else {
-                allocator.nil()
-            }
-        ]
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &RecordPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let RecordPattern {
-            patterns: matches,
-            tail,
-            ..
-        } = self;
-        docs![
-            allocator,
-            allocator.line(),
-            allocator.intersperse(
-                matches.iter().map(|field_pat| {
-                    docs![
-                        allocator,
-                        field_pat.matched_id.to_string(),
-                        allocator.field_metadata(
-                            &FieldMetadata {
-                                annotation: field_pat.annotation.clone(),
-                                ..Default::default()
-                            },
-                            false
-                        ),
-                        if let Some(default) = field_pat.default.as_ref() {
-                            docs![allocator, allocator.line(), "? ", allocator.atom(default),]
-                        } else {
-                            allocator.nil()
-                        },
-                        match &field_pat.pattern.data {
-                            PatternData::Any(id) if *id == field_pat.matched_id => allocator.nil(),
-                            _ => docs![allocator, allocator.line(), "= ", &field_pat.pattern],
-                        },
-                        ","
-                    ]
-                    .nest(2)
-                }),
-                allocator.line()
-            ),
-            match tail {
-                TailPattern::Empty => allocator.nil(),
-                TailPattern::Open => docs![allocator, allocator.line(), ".."],
-                TailPattern::Capture(id) =>
-                    docs![allocator, allocator.line(), "..", id.ident().to_string()],
-            },
-        ]
-        .nest(2)
-        .append(allocator.line())
-        .braces()
-        .group()
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ArrayPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            allocator.intersperse(
-                self.patterns.iter(),
-                docs![allocator, ",", allocator.line()],
-            ),
-            if !self.patterns.is_empty() && self.is_open() {
-                docs![allocator, ",", allocator.line()]
-            } else {
-                allocator.nil()
-            },
-            match self.tail {
-                TailPattern::Empty => allocator.nil(),
-                TailPattern::Open => allocator.text(".."),
-                TailPattern::Capture(id) => docs![allocator, "..", id.ident().to_string()],
-            },
-        ]
-        .nest(2)
-        .brackets()
-        .group()
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &OrPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            allocator.intersperse(
-                self.patterns
-                    .iter()
-                    .map(|pat| allocator.pat_with_parens(pat)),
-                docs![allocator, allocator.line(), "or", allocator.space()],
-            ),
-        ]
-        .group()
     }
 }
 
