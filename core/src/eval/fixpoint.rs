@@ -75,7 +75,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
             } else {
                 let error = EvalErrorKind::MissingFieldDef {
                     id: *id,
-                    metadata: field.metadata.clone(),
+                    metadata: field.metadata.clone_inner(),
                     pos_record,
                     // The access location is not yet known (there may not be any access, if the
                     // current field is never used).

@@ -2,10 +2,7 @@ use nickel_lang_core::{
     error::NullReporter,
     eval::cache::lazy::CBNCache,
     program::Program,
-    term::{
-        TypeAnnotation, make as mk_term,
-        record::{Field, FieldMetadata},
-    },
+    term::{TypeAnnotation, make as mk_term, record::FieldMetadata},
 };
 
 use nickel_lang_utils::test_program::TestProgram;
@@ -34,7 +31,7 @@ pub fn test_query_metadata_basic() {
     .query()
     .unwrap();
 
-    assert_eq!(result.metadata.doc, Some(String::from("Test basic")));
+    assert_eq!(result.metadata.doc(), Some("Test basic"));
     assert_eq!(result.value.unwrap().without_pos(), mk_term::integer(2));
 }
 
@@ -65,44 +62,36 @@ pub fn test_query_with_wildcard() {
         .with_field_path(path)
         .query()
         .unwrap();
-        if let (
-            Field {
-                metadata:
-                    FieldMetadata {
-                        annotation:
-                            TypeAnnotation {
-                                typ: Some(contract1),
-                                ..
-                            },
+        let (
+            Some(FieldMetadata {
+                annotation:
+                    TypeAnnotation {
+                        typ: Some(contract1),
                         ..
                     },
                 ..
-            },
-            Field {
-                metadata:
-                    FieldMetadata {
-                        annotation:
-                            TypeAnnotation {
-                                typ: Some(contract2),
-                                ..
-                            },
+            }),
+            Some(FieldMetadata {
+                annotation:
+                    TypeAnnotation {
+                        typ: Some(contract2),
                         ..
                     },
                 ..
-            },
-        ) = (term1, term2)
-        {
-            // Since RFC005, we closurize the contracts attached to fields, which makes comparing
-            // them after transformation quite hard. We can only rely on the original types as
-            // stored inside the label, which is the one used for reporting anyway.
-            // assert_eq!(contract1.types, contract2.types);
-            assert_eq!(
-                contract1.label.typ.as_ref().clone().without_pos(),
-                contract2.label.typ.as_ref().clone().without_pos()
-            );
-        } else {
+            }),
+        ) = (term1.metadata.as_ref(), term2.metadata.as_ref())
+        else {
             panic!();
-        }
+        };
+
+        // Since RFC005, we closurize the contracts attached to fields, which makes comparing
+        // them after transformation quite hard. We can only rely on the original types as
+        // stored inside the label, which is the one used for reporting anyway.
+        // assert_eq!(contract1.types, contract2.types);
+        assert_eq!(
+            contract1.label.typ.as_ref().clone().without_pos(),
+            contract2.label.typ.as_ref().clone().without_pos()
+        );
     }
 
     // Without wildcard, the result has no type annotation
@@ -117,16 +106,14 @@ pub fn test_query_with_wildcard() {
     .query()
     .unwrap();
 
-    assert!(matches!(
-        result,
-        Field {
-            metadata: FieldMetadata {
-                annotation: TypeAnnotation { typ: None, .. },
-                ..
-            },
-            ..
-        }
-    ));
+    assert!(result.metadata.is_empty());
+    // assert!(matches!(
+    //     result.metadata.as_ref(),
+    //     Some(FieldMetadata {
+    //         annotation: TypeAnnotation { typ: None, .. },
+    //         ..
+    //     }),
+    // ));
 
     // With a wildcard, there is a type annotation, inferred to be Number
     assert_types_eq("{value : _ = 10}", "{value : Number = 10}", path);

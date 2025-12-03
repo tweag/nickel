@@ -35,6 +35,8 @@ use crate::{
     typ::Type,
 };
 
+use std::rc::Rc;
+
 type StaticPath = Vec<Ident>;
 
 /// Typestate style tag for `Field`s that are not yet completely specified
@@ -59,7 +61,7 @@ impl<A> Field<A> {
 
     /// Attach documentation metadata to the field, optionally
     pub fn some_doc(mut self, some_doc: Option<impl AsRef<str>>) -> Self {
-        self.metadata.doc = some_doc.map(|d| d.as_ref().to_owned());
+        self.metadata.doc = some_doc.map(|d| Rc::from(d.as_ref()));
         self
     }
 
@@ -191,7 +193,7 @@ impl Field<Record> {
         self.record.fields.push((
             self.path,
             record::Field {
-                metadata: self.metadata,
+                metadata: self.metadata.into(),
                 ..Default::default()
             },
         ));
@@ -204,7 +206,7 @@ impl Field<Record> {
             self.path,
             record::Field {
                 value: Some(value.into()),
-                metadata: self.metadata,
+                metadata: self.metadata.into(),
                 ..Default::default()
             },
         ));
@@ -247,10 +249,10 @@ where
             (Some(t), None) | (None, Some(t)) => Some(t),
             (None, None) => None,
         };
-        let metadata = Combine::combine(field1.metadata, field2.metadata);
+
         record::Field {
             value,
-            metadata,
+            metadata: Combine::combine(field1.metadata, field2.metadata),
             pending_contracts: vec![],
         }
     }

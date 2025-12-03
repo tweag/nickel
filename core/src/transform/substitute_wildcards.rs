@@ -14,6 +14,7 @@ use crate::{
     term::{
         LabeledType, Term, TypeAnnotation,
         record::{Field, FieldMetadata, RecordData},
+        unique_map_in_place,
     },
     traverse::{Traverse, TraverseOrder},
     typ::{Type, TypeF},
@@ -34,7 +35,7 @@ pub fn transform_one(value: NickelValue, wildcards: &Wildcards) -> NickelValue {
                 };
 
                 let mut data = value_lens.take();
-                data.annot = data.annot.subst_wildcards(wildcards);
+                unique_map_in_place(&mut data.annot, |annot| annot.subst_wildcards(wildcards));
 
                 NickelValue::term(Term::Annotated(data), pos_idx)
             } else if let TermContent::RecRecord(record_lens) = term_lens {
@@ -131,9 +132,12 @@ impl SubstWildcard for FieldMetadata {
 }
 
 impl SubstWildcard for Field {
-    fn subst_wildcards(self, wildcards: &Wildcards) -> Field {
-        let metadata = self.metadata.subst_wildcards(wildcards);
-        Field { metadata, ..self }
+    fn subst_wildcards(mut self, wildcards: &Wildcards) -> Field {
+        if let Some(metadata) = &mut self.metadata.0 {
+            unique_map_in_place(metadata, |metadata| metadata.subst_wildcards(wildcards));
+        }
+
+        self
     }
 }
 

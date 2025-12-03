@@ -6,7 +6,7 @@ pub mod record;
 pub mod string;
 
 use pattern::Pattern;
-use record::{Field, FieldDeps, FieldMetadata, Include, RecordData, RecordDeps};
+use record::{Field, FieldDeps, Include, RecordData, RecordDeps, SharedMetadata};
 use smallvec::SmallVec;
 use string::NickelString;
 
@@ -118,12 +118,12 @@ pub struct OpNData {
 pub struct SealedData {
     pub key: SealingKey,
     pub inner: NickelValue,
-    pub label: Label,
+    pub label: Rc<Label>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnnotatedData {
-    pub annot: TypeAnnotation,
+    pub annot: Rc<TypeAnnotation>,
     pub inner: NickelValue,
 }
 
@@ -147,6 +147,17 @@ pub struct AppData {
 /// is a hybrid representation where values (weak head normal forms) use the the compact
 /// representation described in RFC007. The remaining constructors of [Term] are the equivalent of
 /// "code" in the future VM, that is, computations.
+///
+/// # Memory representation
+///
+/// We try to strike a balance between the memory consumption of an expression, and runtime: having
+/// more data inline and less indirection can make evaluation faster, but it consumes more memory
+/// (and is detrimental past some threshold). In practice, we try to keep the size [Self] to fit in
+/// a modern cache line (smaller or equal to 64 bytes). Some data are boxed, other are reference
+/// counted: this reflects their usage. Typically, patterns in let or function are only seen during
+/// program transformation currently as they are then compiled away; there shouldn't be any sharing
+/// here, so it doesn't make sense to use [std::rc::Rc]. Other values might be cloned a lot on the
+/// other hand, so if they aren't expected to be modified much, they are put behind `Rc`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     /// A string containing interpolated expressions, represented as a list of either literals or
@@ -191,10 +202,10 @@ pub enum Term {
     Match(MatchData),
 
     /// A primitive unary operator.
-    Op1(Box<Op1Data>),
+    Op1(Op1Data),
 
     /// A primitive binary operator.
-    Op2(Box<Op2Data>),
+    Op2(Op2Data),
 
     /// An primitive n-ary operator.
     OpN(OpNData),
@@ -218,10 +229,10 @@ pub enum Term {
     ///   term is of the form `Sealed(id, term)` where `id` corresponds to the identifier of the
     ///   type variable. In our example, the last cast to `a` finds `Sealed(2, "a")`, while it
     ///   expected `Sealed(1, _)`, hence it raises a positive blame.
-    Sealed(Box<SealedData>),
+    Sealed(SealedData),
 
     /// A term with a type and/or contract annotation.
-    Annotated(Box<AnnotatedData>),
+    Annotated(AnnotatedData),
 
     /// An unresolved import.
     Import(Import),
@@ -459,7 +470,7 @@ impl From<LetMetadata> for record::FieldMetadata {
     fn from(let_metadata: LetMetadata) -> Self {
         record::FieldMetadata {
             annotation: let_metadata.annotation,
-            doc: let_metadata.doc,
+            doc: let_metadata.doc.map(Rc::from),
             ..Default::default()
         }
     }
@@ -899,11 +910,11 @@ impl Term {
     }
 
     pub fn op1(op: UnaryOp, arg: NickelValue) -> Self {
-        Term::Op1(Box::new(Op1Data { op, arg }))
+        Term::Op1(Op1Data { op, arg })
     }
 
     pub fn op2(op: BinaryOp, arg1: NickelValue, arg2: NickelValue) -> Self {
-        Term::Op2(Box::new(Op2Data { op, arg1, arg2 }))
+        Term::Op2(Op2Data { op, arg1, arg2 })
     }
 
     pub fn opn(op: NAryOp, args: Vec<NickelValue>) -> Self {
@@ -911,11 +922,18 @@ impl Term {
     }
 
     pub fn sealed(key: SealingKey, inner: NickelValue, label: Label) -> Self {
-        Term::Sealed(Box::new(SealedData { key, inner, label }))
+        Term::Sealed(SealedData {
+            key,
+            inner,
+            label: Rc::new(label),
+        })
     }
 
     pub fn annotated(annot: TypeAnnotation, inner: NickelValue) -> Self {
-        Term::Annotated(Box::new(AnnotatedData { annot, inner }))
+        Term::Annotated(AnnotatedData {
+            annot: Rc::new(annot),
+            inner,
+        })
     }
 
     pub fn app(head: NickelValue, arg: NickelValue) -> Self {
@@ -1474,7 +1492,7 @@ pub enum BinaryOp {
     /// directly to the extend primop. This isn't ideal, and in the future we may want to have a
     /// more principled primop.
     RecordInsert {
-        metadata: Box<FieldMetadata>,
+        metadata: SharedMetadata,
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
         op_kind: RecordOpKind,
@@ -1856,7 +1874,7 @@ impl Traverse<NickelValue> for Term {
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
-                data.record = RecordData::new(
+                data.record = RecordData::new_shared_tail(
                     static_fields_res?,
                     data.record.attrs,
                     data.record.sealed_tail,
@@ -1878,7 +1896,7 @@ impl Traverse<NickelValue> for Term {
                 Term::StrChunks(chunks_res?)
             }
             Term::Annotated(mut data) => {
-                data.annot = data.annot.traverse(f, order)?;
+                data.annot = Rc::new(Rc::unwrap_or_clone(data.annot).traverse(f, order)?);
                 data.inner = data.inner.traverse(f, order)?;
                 Term::Annotated(data)
             }
@@ -1965,6 +1983,29 @@ impl Traverse<NickelValue> for Term {
                 .or_else(|| data.annot.traverse_ref(f, state)),
         }
     }
+}
+
+/// A helper for some reference counted term data that we expect to be unique (1-referenced
+/// counted) and we need to map in place. This function make it possible to do it without
+/// discarding the `Rc` allocation.
+///
+/// If the `Rc` isn't unique, this method still works but will allocate (in that case, it's better
+/// to avoid using this function and rather clone the content and allocate a new `Rc` manually).
+pub fn unique_map_in_place<T: Default + Clone>(rc: &mut Rc<T>, f: impl FnOnce(T) -> T) {
+    let data_slot = Rc::make_mut(rc);
+    let mapped = f(std::mem::take(data_slot));
+    let _ = std::mem::replace(data_slot, mapped);
+}
+
+/// A fallible version of [unique_map_in_place].
+pub fn fallible_unique_map_in_place<T: Default + Clone, E>(
+    rc: &mut Rc<T>,
+    f: impl FnOnce(T) -> Result<T, E>,
+) -> Result<(), E> {
+    let data_slot = Rc::make_mut(rc);
+    let mapped = f(std::mem::take(data_slot))?;
+    let _ = std::mem::replace(data_slot, mapped);
+    Ok(())
 }
 
 impl_display_from_pretty!(Term);

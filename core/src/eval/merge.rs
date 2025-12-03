@@ -270,8 +270,11 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // is non-trivial. It's also not entirely clear that this is something
                 // users will generally have reason to do, so in the meantime we've
                 // decided to just prevent this entirely
-                if let Some(record::SealedTail { label, .. }) =
-                    r1.sealed_tail.as_ref().or(r2.sealed_tail.as_ref())
+                if let Some(record::SealedTail { label, .. }) = r1
+                    .sealed_tail
+                    .as_ref()
+                    .or(r2.sealed_tail.as_ref())
+                    .map(|rc| &**rc)
                 {
                     return Err(Box::new(EvalErrorKind::IllegalPolymorphicTailAccess {
                         action: IllegalPolymorphicTailAction::Merge,
@@ -442,6 +445,9 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         pending_contracts: pending_contracts2,
     } = field2;
 
+    let metadata1 = metadata1.into_inner();
+    let metadata2 = metadata2.into_inner();
+
     // Selecting either meta1's value, meta2's value, or the merge of the two values,
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
@@ -480,7 +486,8 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
             opt: metadata1.opt && metadata2.opt,
             not_exported: metadata1.not_exported || metadata2.not_exported,
             priority,
-        },
+        }
+        .into(),
         value,
         pending_contracts,
     })

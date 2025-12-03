@@ -124,7 +124,7 @@ pub struct Include {
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct FieldMetadata {
-    pub doc: Option<String>,
+    pub doc: Option<Rc<str>>,
     pub annotation: TypeAnnotation,
     /// If the field is optional.
     pub opt: bool,
@@ -138,6 +138,7 @@ impl FieldMetadata {
         Default::default()
     }
 
+    /// Checks if those metadata are empty, that is if `self` is the same as [Self::default].
     pub fn is_empty(&self) -> bool {
         self.doc.is_none()
             && self.annotation.is_empty()
@@ -175,6 +176,18 @@ impl Combine for FieldMetadata {
     }
 }
 
+impl Combine for SharedMetadata {
+    fn combine(left: Self, right: Self) -> Self {
+        match (left.0, right.0) {
+            (None, None) => SharedMetadata(None),
+            (None, m @ Some(_)) | (m @ Some(_), None) => SharedMetadata(m),
+            (Some(m1), Some(m2)) => {
+                Combine::combine(Rc::unwrap_or_clone(m1), Rc::unwrap_or_clone(m2)).into()
+            }
+        }
+    }
+}
+
 impl From<TypeAnnotation> for FieldMetadata {
     fn from(annotation: TypeAnnotation) -> Self {
         FieldMetadata {
@@ -184,12 +197,97 @@ impl From<TypeAnnotation> for FieldMetadata {
     }
 }
 
+/// A reference-counted wrapper around [FieldMetadata] to allow sharing metadata between multiple
+/// fields. An `Option` layer is added to allow representing the absence of metadata without any
+/// allocation: since each and every [Field] has a `metadata` field, empty metadata would lead to
+/// significant useless allocations if it wasn't optional.
+///
+/// Converting from [`FieldMetadata`] or `Rc<FieldMetadata>` will automatically set `self.0` to
+/// `None` and discard the metadata if they are empty.
+#[derive(Clone, Default, PartialEq, Debug)]
+pub struct SharedMetadata(pub Option<Rc<FieldMetadata>>);
+
+impl From<FieldMetadata> for SharedMetadata {
+    fn from(metadata: FieldMetadata) -> Self {
+        if metadata.is_empty() {
+            SharedMetadata(None)
+        } else {
+            SharedMetadata(Some(Rc::new(metadata)))
+        }
+    }
+}
+
+impl From<Rc<FieldMetadata>> for SharedMetadata {
+    fn from(metadata: Rc<FieldMetadata>) -> Self {
+        if metadata.is_empty() {
+            SharedMetadata(None)
+        } else {
+            SharedMetadata(Some(metadata))
+        }
+    }
+}
+
+impl SharedMetadata {
+    /// Extracts [FieldMetadata] from `self`:
+    ///
+    /// - If `self.0` is `None`, [FieldMetadata::default()] is returned
+    /// - If `self.0` is `Some(rc)`, then [Rc::unwrap_or_clone] is used
+    pub fn into_inner(self) -> FieldMetadata {
+        self.0.map(Rc::unwrap_or_clone).unwrap_or_default()
+    }
+
+    /// Clone the inner [FieldMetadata] value, or returns [FieldMetadata::default] if `self.0` is
+    /// `None`.
+    pub fn clone_inner(&self) -> FieldMetadata {
+        self.0.as_ref().map(|rc| (**rc).clone()).unwrap_or_default()
+    }
+
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.as_ref().is_some_and(|m| m.is_empty()) || self.0.is_none()
+    }
+
+    /// Whether this metadata marks the field as not exported. Returns the default value (`false`)
+    /// if there is no metadata.
+    pub fn not_exported(&self) -> bool {
+        self.0.as_ref().is_some_and(|m| m.not_exported)
+    }
+
+    /// Whether this metadata marks the field as optional. Returns the default value (`false`)
+    /// if there is no metadata.
+    pub fn opt(&self) -> bool {
+        self.0.as_ref().is_some_and(|m| m.opt)
+    }
+
+    pub fn priority(&self) -> &MergePriority {
+        self.0
+            .as_ref()
+            .map(|m| &m.priority)
+            .unwrap_or(&MergePriority::Neutral)
+    }
+
+    pub fn doc(&self) -> Option<&str> {
+        self.0.as_ref().and_then(|m| m.doc.as_ref()).map(|s| &**s)
+    }
+
+    pub fn as_ref(&self) -> Option<&FieldMetadata> {
+        self.0.as_deref()
+    }
+
+    pub fn iter_annots(&self) -> impl Iterator<Item = &LabeledType> {
+        self.0.iter().flat_map(|m| m.annotation.iter())
+    }
+}
+
 /// A record field with its metadata.
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<NickelValue>,
-    pub metadata: FieldMetadata,
+    pub metadata: SharedMetadata,
     /// List of contracts yet to be applied.
     /// These are only observed when data enter or leave the record.
     pub pending_contracts: Vec<RuntimeContract>,
@@ -212,6 +310,12 @@ impl From<TypeAnnotation> for Field {
 
 impl From<FieldMetadata> for Field {
     fn from(metadata: FieldMetadata) -> Self {
+        Field::from(SharedMetadata::from(metadata))
+    }
+}
+
+impl From<SharedMetadata> for Field {
+    fn from(metadata: SharedMetadata) -> Self {
         Field {
             metadata,
             ..Default::default()
@@ -242,7 +346,7 @@ impl Field {
     /// Determine if a field is optional and without a defined value. In that case, it is usually
     /// silently ignored by most record operations (`has_field`, `values`, etc.).
     pub fn is_empty_optional(&self) -> bool {
-        self.value.is_none() && self.metadata.opt
+        self.value.is_none() && self.metadata.opt()
     }
 
     /// Required by the dynamic extension operator to know if the field being treated has a defined
@@ -261,13 +365,16 @@ impl Traverse<NickelValue> for Field {
     where
         F: FnMut(NickelValue) -> Result<NickelValue, E>,
     {
-        let annotation = self.metadata.annotation.traverse(f, order)?;
-        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
+        let mut metadata = self.metadata;
 
-        let metadata = FieldMetadata {
-            annotation,
-            ..self.metadata
-        };
+        if let Some(rc) = metadata.0.as_mut() {
+            fallible_unique_map_in_place(rc, |m| {
+                let annotation = m.annotation.traverse(f, order)?;
+                Ok(FieldMetadata { annotation, ..m })
+            })?;
+        }
+
+        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
 
         let pending_contracts = self
             .pending_contracts
@@ -288,8 +395,9 @@ impl Traverse<NickelValue> for Field {
         state: &S,
     ) -> Option<U> {
         self.metadata
-            .annotation
-            .traverse_ref(f, state)
+            .0
+            .as_ref()
+            .and_then(|m| m.annotation.traverse_ref(f, state))
             .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f, state)))
             .or_else(|| {
                 self.pending_contracts
@@ -310,7 +418,7 @@ pub struct RecordData {
     /// Attributes which may be applied to a record.
     pub attrs: RecordAttrs,
     /// The hidden part of a record under a polymorphic contract.
-    pub sealed_tail: Option<SealedTail>,
+    pub sealed_tail: Option<Rc<SealedTail>>,
 }
 
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
@@ -339,6 +447,21 @@ impl RecordData {
         fields: IndexMap<LocIdent, Field>,
         attrs: RecordAttrs,
         sealed_tail: Option<SealedTail>,
+    ) -> Self {
+        RecordData {
+            fields,
+            attrs,
+            sealed_tail: sealed_tail.map(Rc::new),
+        }
+    }
+
+    /// Variant of [Self::new] that takes an `Option<Rc<_>>` for the sealed tail. This is useful
+    /// when re-using the tail from existing record data. Using [Self::new] instead would otherwise
+    /// require to clone the inner content and allocate a new `Rc`, which is wasteful.
+    pub fn new_shared_tail(
+        fields: IndexMap<LocIdent, Field>,
+        attrs: RecordAttrs,
+        sealed_tail: Option<Rc<SealedTail>>,
     ) -> Self {
         RecordData {
             fields,
@@ -425,9 +548,9 @@ impl RecordData {
                         ),
                     )))
                 }
-                None if !field.metadata.opt => Some(Err(Box::new(MissingFieldDefErrorData {
+                None if !field.metadata.opt() => Some(Err(Box::new(MissingFieldDefErrorData {
                     id: *id,
-                    metadata: field.metadata.clone(),
+                    metadata: field.metadata.clone_inner(),
                 }))),
                 None => None,
             })
@@ -443,11 +566,11 @@ impl RecordData {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
-                Some(ref v) if !field.metadata.not_exported => Some(Ok((id.ident(), v))),
-                None if !field.metadata.opt && !field.metadata.not_exported => {
+                Some(ref v) if !field.metadata.not_exported() => Some(Ok((id.ident(), v))),
+                None if !field.metadata.opt() && !field.metadata.not_exported() => {
                     Some(Err(Box::new(MissingFieldDefErrorData {
                         id: *id,
-                        metadata: field.metadata.clone(),
+                        metadata: field.metadata.clone_inner(),
                     })))
                 }
                 _ => None,
@@ -467,11 +590,11 @@ impl RecordData {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
-                metadata: metadata @ FieldMetadata { opt: false, .. },
+                metadata,
                 ..
-            }) => Err(Box::new(MissingFieldDefErrorData {
+            }) if !metadata.opt() => Err(Box::new(MissingFieldDefErrorData {
                 id: *id,
-                metadata: metadata.clone(),
+                metadata: metadata.clone_inner(),
             })),
             Some(Field {
                 value: Some(value),

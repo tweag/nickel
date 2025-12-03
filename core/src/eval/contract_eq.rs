@@ -307,21 +307,16 @@ fn contract_eq_bounded(
 
                     value_eq && ty_eq
                 }
-                (Term::Op1(data1), Term::Op1(data2)) => {
-                    if let Op1Data {
+                (
+                    Term::Op1(Op1Data {
                         op: UnaryOp::RecordAccess(id1),
                         arg: arg1,
-                    } = &**data1
-                        && let Op1Data {
-                            op: UnaryOp::RecordAccess(id2),
-                            arg: arg2,
-                        } = &**data2
-                    {
-                        id1 == id2 && contract_eq_bounded(state, arg1, env1, arg2, env2)
-                    } else {
-                        false
-                    }
-                }
+                    }),
+                    Term::Op1(Op1Data {
+                        op: UnaryOp::RecordAccess(id2),
+                        arg: arg2,
+                    }),
+                ) => id1 == id2 && contract_eq_bounded(state, arg1, env1, arg2, env2),
                 (Term::Sealed(data1), Term::Sealed(data2)) => {
                     data1.key == data2.key
                         && contract_eq_bounded(state, &data1.inner, env1, &data2.inner, env2)
@@ -501,18 +496,17 @@ fn contract_eq_fields(
     // here as well.
     let annotations_eq = field1
         .metadata
-        .annotation
-        .iter()
-        .zip(field2.metadata.annotation.iter())
+        .iter_annots()
+        .zip(field2.metadata.iter_annots())
         .all(|(t1, t2)| {
             t1.label.type_environment == t2.label.type_environment
                 && type_eq_bounded(state, &t1.typ, env1, &t2.typ.clone(), env2)
         });
 
     // Check that "scalar" metadata (simple values) are equals
-    let scalar_metadata_eq = field1.metadata.opt == field2.metadata.opt
-        && field1.metadata.not_exported == field2.metadata.not_exported
-        && field1.metadata.priority == field2.metadata.priority;
+    let scalar_metadata_eq = field1.metadata.opt() == field2.metadata.opt()
+        && field1.metadata.not_exported() == field2.metadata.not_exported()
+        && field1.metadata.priority() == field2.metadata.priority();
 
     let value_eq = match (&field1.value, &field2.value) {
         (Some(value1), Some(value2)) => contract_eq_bounded(state, value1, env1, value2, env2),

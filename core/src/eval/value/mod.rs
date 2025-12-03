@@ -2355,7 +2355,7 @@ impl Traverse<NickelValue> for NickelValue {
                     .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 NickelValue::record(
-                    RecordData::new(fields?, record.attrs, record.sealed_tail),
+                    RecordData::new_shared_tail(fields?, record.attrs, record.sealed_tail),
                     pos_idx,
                 )
             }

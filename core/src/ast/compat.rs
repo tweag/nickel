@@ -15,7 +15,7 @@ use crate::{
     position::{PosTable, RawSpan},
     term, typ as mline_type,
 };
-use indexmap::IndexMap;
+
 use nickel_lang_parser::{
     ast::{
         self,
@@ -32,7 +32,10 @@ use nickel_lang_parser::{
     identifier::LocIdent,
     typ::{EnumRowF, RecordRowF},
 };
+
+use indexmap::IndexMap;
 use smallvec::SmallVec;
+use std::rc::Rc;
 
 /// Convert from the mainline Nickel representation to the new AST representation. This trait is
 /// mostly `From` with an additional argument for the allocator.
@@ -281,6 +284,20 @@ impl<'ast> FromMainline<'ast, term::record::FieldMetadata> for record::FieldMeta
             not_exported: metadata.not_exported,
             priority: metadata.priority.clone(),
         }
+    }
+}
+
+impl<'ast> FromMainline<'ast, term::record::SharedMetadata> for record::FieldMetadata<'ast> {
+    fn from_mainline(
+        alloc: &'ast AstAlloc,
+        pos_table: &PosTable,
+        metadata: &term::record::SharedMetadata,
+    ) -> Self {
+        metadata
+            .0
+            .as_ref()
+            .map(|metadata| (**metadata).to_ast(alloc, pos_table))
+            .unwrap_or_default()
     }
 }
 
@@ -574,7 +591,7 @@ impl<'ast> FromMainline<'ast, term::Term> for Node<'ast> {
             }
             Term::Sealed(..) => panic!("didn't expect a sealed term at the first stage"),
             Term::Annotated(data) => alloc.annotated(
-                data.annot.to_ast(alloc, pos_table),
+                (*data.annot).to_ast(alloc, pos_table),
                 data.inner.to_ast(alloc, pos_table),
             ),
             Term::Import(term::Import::Path { path, format }) => {
@@ -1062,7 +1079,8 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
         let initial = term::record::Field {
             value: field.value.as_ref().map(|v| v.to_mainline(pos_table)),
             metadata: term::record::FieldMetadata::from_ast(&field.metadata, pos_table)
-                .with_field_name(name_innermost),
+                .with_field_name(name_innermost)
+                .into(),
             pending_contracts: Vec::new(),
         };
 
@@ -1143,10 +1161,8 @@ impl<'ast> FromAst<record::FieldDef<'ast>> for (FieldName, term::record::Field) 
 
 impl<'ast> FromAst<record::FieldMetadata<'ast>> for term::record::FieldMetadata {
     fn from_ast(metadata: &record::FieldMetadata<'ast>, pos_table: &mut PosTable) -> Self {
-        let doc = metadata.doc.as_ref().map(|doc| String::from(&**doc));
-
         term::record::FieldMetadata {
-            doc,
+            doc: metadata.doc.as_ref().map(|doc| Rc::from(*doc)),
             annotation: metadata.annotation.to_mainline(pos_table),
             opt: metadata.opt,
             not_exported: metadata.not_exported,
@@ -1839,19 +1855,17 @@ fn merge_fields(
         }
     }
 
+    let metadata1 = field1.metadata.into_inner();
+    let metadata2 = field2.metadata.into_inner();
+
     let (value, priority) = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
-            Some(merge_values(id_span, t1, t2)),
-            field1.metadata.priority,
-        ),
-        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
-            (Some(t), field1.metadata.priority)
+        (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => {
+            (Some(merge_values(id_span, t1, t2)), metadata1.priority)
         }
-        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => {
-            (Some(t), field2.metadata.priority)
-        }
-        (Some(t), None) => (Some(t), field1.metadata.priority),
-        (None, Some(t)) => (Some(t), field2.metadata.priority),
+        (Some(t), _) if metadata1.priority > metadata2.priority => (Some(t), metadata1.priority),
+        (_, Some(t)) if metadata1.priority < metadata2.priority => (Some(t), metadata2.priority),
+        (Some(t), None) => (Some(t), metadata1.priority),
+        (None, Some(t)) => (Some(t), metadata2.priority),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
@@ -1864,12 +1878,13 @@ fn merge_fields(
         // [`FieldMetadata::combine`] produces subtly different behaviour from the runtime merging
         // code: we don't use [`Combine::combine`] here and replicate the merging logic instead.
         metadata: term::record::FieldMetadata {
-            doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
-            annotation: Combine::combine(field1.metadata.annotation, field2.metadata.annotation),
-            opt: field1.metadata.opt && field2.metadata.opt,
-            not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
+            doc: merge_doc(metadata1.doc, metadata2.doc),
+            annotation: Combine::combine(metadata1.annotation, metadata2.annotation),
+            opt: metadata1.opt && metadata2.opt,
+            not_exported: metadata1.not_exported || metadata2.not_exported,
             priority,
-        },
+        }
+        .into(),
         pending_contracts: Vec::new(),
     }
 }

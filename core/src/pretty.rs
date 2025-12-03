@@ -542,7 +542,10 @@ impl Allocator {
                             self,
                             self.line(),
                             "| doc ",
-                            self.chunks(&[StrChunk::Literal(doc)], StringRenderStyle::Multiline),
+                            self.chunks(
+                                &[StrChunk::Literal(doc.to_string())],
+                                StringRenderStyle::Multiline
+                            ),
                         ]
                     })
                     .unwrap_or_else(|| self.nil())
@@ -586,10 +589,13 @@ impl Allocator {
     fn field_body<'a>(&'a self, field: &Field) -> DocBuilder<'a, Self> {
         docs![
             self,
-            self.field_metadata(&field.metadata, true),
+            if let Some(metadata) = field.metadata.as_ref() {
+                self.field_metadata(metadata, true)
+            } else {
+                self.nil()
+            },
             if let Some((priority, value)) = field.value.as_ref().map(split_recursive_priority) {
-                let has_metadata =
-                    field.metadata != FieldMetadata::default() || priority.is_present();
+                let has_metadata = !field.metadata.is_empty() || priority.is_present();
 
                 docs![
                     self,
@@ -1051,21 +1057,20 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                 Some(Term::App(AppData { head: lazy_op, arg: arg_op }))
                     if matches!(lazy_op.as_term(), Some(Term::Op1(data_op)) if data_op.op == UnaryOp::IfThenElse) =>
                 {
-                    if let Some(Term::Op1(data)) = lazy_op.as_term() && let Op1Data { op: UnaryOp::IfThenElse, arg: cond } = &**data {
-                        docs![
-                            allocator,
-                            "if ",
-                            cond,
-                            " then",
-                            docs![allocator, allocator.line(), arg_op].nest(2),
-                            allocator.line(),
-                            "else",
-                            docs![allocator, allocator.line(), arg].nest(2)
-                        ]
-                    }
-                    else {
-                        unreachable!()
-                    }
+                    let Some(Term::Op1(Op1Data { op: UnaryOp::IfThenElse, arg: cond })) = lazy_op.as_term() else {
+                        unreachable!();
+                    };
+
+                    docs![
+                        allocator,
+                        "if ",
+                        cond,
+                        " then",
+                        docs![allocator, allocator.line(), arg_op].nest(2),
+                        allocator.line(),
+                        "else",
+                        docs![allocator, allocator.line(), arg].nest(2)
+                    ]
                 }
                 Some(Term::Op1(data)) if matches!(data.op, UnaryOp::BoolAnd | UnaryOp::BoolOr) => {
                     docs![

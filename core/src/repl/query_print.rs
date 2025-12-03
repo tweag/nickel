@@ -239,8 +239,11 @@ fn render_query_result<R: QueryPrinter>(
     let mut found = false;
     let metadata = &field.metadata;
 
-    if selected_attrs.contract && !metadata.annotation.contracts.is_empty() {
-        let ctrs: Vec<String> = metadata
+    if selected_attrs.contract
+        && let Some(m) = metadata.as_ref()
+        && !m.annotation.contracts.is_empty()
+    {
+        let ctrs: Vec<String> = m
             .annotation
             .contracts
             .iter()
@@ -253,12 +256,14 @@ fn render_query_result<R: QueryPrinter>(
         found = true;
     }
 
-    if selected_attrs.typ && metadata.annotation.typ.is_some() {
+    if selected_attrs.typ
+        && let Some(m) = metadata.as_ref()
+        && m.annotation.typ.is_some()
+    {
         renderer.write_metadata(
             out,
             "type",
-            &metadata
-                .annotation
+            &m.annotation
                 .typ
                 .as_ref()
                 .unwrap()
@@ -270,28 +275,24 @@ fn render_query_result<R: QueryPrinter>(
         found = true;
     }
 
-    match &field {
-        Field {
-            metadata:
-                FieldMetadata {
-                    priority: MergePriority::Bottom,
-                    ..
-                },
-            value: Some(t),
-            ..
-        } if selected_attrs.default => {
+    match (field.metadata.as_ref(), &field.value) {
+        (
+            Some(FieldMetadata {
+                priority: MergePriority::Bottom,
+                ..
+            }),
+            Some(t),
+        ) if selected_attrs.default => {
             renderer.write_metadata(out, "default", &t.pretty_print_cap(TERM_MAX_WIDTH))?;
             found = true;
         }
-        Field {
-            metadata:
-                FieldMetadata {
-                    priority: MergePriority::Numeral(n),
-                    ..
-                },
-            value: Some(t),
-            ..
-        } if selected_attrs.value => {
+        (
+            Some(FieldMetadata {
+                priority: MergePriority::Numeral(n),
+                ..
+            }),
+            Some(t),
+        ) if selected_attrs.value => {
             renderer.write_metadata(out, "priority", &format!("{n}"))?;
             renderer.write_metadata(out, "value", &t.pretty_print_cap(TERM_MAX_WIDTH))?;
             found = true;
@@ -299,8 +300,8 @@ fn render_query_result<R: QueryPrinter>(
         _ => (),
     }
 
-    match metadata.doc {
-        Some(ref s) if selected_attrs.doc => {
+    match metadata.doc() {
+        Some(s) if selected_attrs.doc => {
             renderer.write_doc(out, s)?;
             found = true;
         }
