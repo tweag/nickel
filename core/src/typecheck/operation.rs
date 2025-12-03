@@ -447,7 +447,7 @@ impl PrimOpType for PrimOp {
                 vec![mk_uniftype::str(), mk_uniftype::str()],
                 mk_uniftype::array(TypeF::String),
             ),
-            // < Standard, UrlSafe, NoPad, UrlSafeNoPad > -> Str -> Str
+            // [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> String
             PrimOp::StringBase64Encode => (
                 vec![
                     mk_uty_enum!("Standard", "UrlSafe", "NoPad", "UrlSafeNoPad"),
@@ -455,7 +455,7 @@ impl PrimOpType for PrimOp {
                 ],
                 mk_uniftype::str(),
             ),
-            // < Base64, Base64Url > -> Str -> [| 'Ok String, 'Error { message : String } |]
+            // [| 'Standard, 'UrlSafe, 'NoPad, 'UrlSafeNoPad |] -> String -> [| 'Ok String, 'Error { message : String } |]
             PrimOp::StringBase64Decode => (
                 vec![
                     mk_uty_enum!("Standard", "UrlSafe", "NoPad", "UrlSafeNoPad"),

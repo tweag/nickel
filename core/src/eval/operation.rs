@@ -2965,7 +2965,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     match decode_result {
                         Ok(decoded_string) => Ok(NickelValue::enum_variant(
                             "Ok",
-                            Some(NickelValue::string_posless(decoded_string)),
+                            Some(NickelValue::string(decoded_string, pos_op_inh)),
                             pos_op_inh,
                         )
                         .into()),
