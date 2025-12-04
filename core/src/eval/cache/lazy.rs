@@ -134,6 +134,7 @@ impl ThunkData {
 
     /// Create new revertible thunk data.
     pub fn new_rev(orig: Closure, deps: FieldDeps) -> Self {
+        increment!("Thunk::new_rev");
         ThunkData {
             inner: InnerThunkData::Revertible {
                 orig: Rc::new(orig),
@@ -307,32 +308,33 @@ impl ThunkData {
         self.state = ThunkState::Evaluated;
     }
 
-    /// Create a freshly unevaluated thunk data (minus `ident_type`) from thunk data, reverted to its
-    /// original state before the first update.
+    /// Create a freshly unevaluated thunk (minus `ident_type`) from a thunk, reverted to its
+    /// original state before the first update. We need to operate at the [Thunk] level here
+    /// (instead of [Self]) to avoid allocation in the non revertible case. Indeed, for standard
+    /// thunk data, the content is unchanged and shared with the original thunk: in that case,
+    /// `ThunkData::revert(thunk)` is the same as `thunk.clone()`.
     ///
-    /// For standard thunk data, the content is unchanged and shared with the original thunk: in
-    /// this case, `revert()` is the same as cloning the original thunk.
-    ///
-    /// For revertible thunk data, the result is independent from the original one: any update to
+    /// For revertible thunk data, the result is independent from the original one. Any update to
     /// one of the thunks doesn't affect the other.
     ///
-    /// The new thunk is unlocked, whatever the locking status of the original thunk.
-    pub fn revert(data: &RefCell<ThunkData>) -> ThunkData {
-        let data = data.borrow();
-
-        match data.inner {
-            InnerThunkData::Standard(_) => data.clone(),
+    /// The new thunk is unlocked, regardless of the locking status of the original thunk.
+    pub fn revert(thunk: &Thunk) -> Thunk {
+        match thunk.data().borrow().inner {
+            InnerThunkData::Standard(_) => thunk.clone(),
             InnerThunkData::Revertible {
                 ref orig, ref deps, ..
-            } => ThunkData {
-                inner: InnerThunkData::Revertible {
-                    orig: Rc::clone(orig),
-                    cached: None,
-                    deps: deps.clone(),
+            } => Thunk(NickelValue::thunk(
+                ThunkData {
+                    inner: InnerThunkData::Revertible {
+                        orig: Rc::clone(orig),
+                        cached: None,
+                        deps: deps.clone(),
+                    },
+                    state: ThunkState::Suspended,
+                    locked: false,
                 },
-                state: ThunkState::Suspended,
-                locked: false,
-            },
+                thunk.0.pos_idx(),
+            )),
         }
     }
 
@@ -416,13 +418,10 @@ impl Thunk {
     pub fn new_rev(closure: Closure, deps: FieldDeps, pos_idx: PosIdx) -> Self {
         match deps {
             FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure, pos_idx),
-            deps => {
-                increment!("Thunk::new_rev");
-                Thunk(NickelValue::thunk(
-                    ThunkData::new_rev(closure, deps),
-                    pos_idx,
-                ))
-            }
+            deps => Thunk(NickelValue::thunk(
+                ThunkData::new_rev(closure, deps),
+                pos_idx,
+            )),
         }
     }
 
@@ -538,10 +537,7 @@ impl Thunk {
     /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
     /// this case, `revert()` is the same as `clone()`.
     pub fn revert(&self) -> Self {
-        Thunk(NickelValue::thunk(
-            ThunkData::revert(self.data()),
-            self.0.pos_idx(),
-        ))
+        ThunkData::revert(self)
     }
 
     pub fn build_cached(&self, rec_env: &[(Ident, Thunk)]) {
