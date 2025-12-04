@@ -546,9 +546,9 @@ impl Saturate for NickelValue {
 }
 
 /// Return the dependencies of a field when represented as a `NickelValue`.
-fn field_deps<C: Cache>(_cache: &C, value: &NickelValue) -> Result<FieldDeps, EvalError> {
+fn field_deps<C: Cache>(cache: &C, value: &NickelValue) -> Result<FieldDeps, EvalError> {
     if let Some(idx) = value.as_thunk() {
-        Ok(idx.deps())
+        Ok(cache.deps(idx).unwrap_or_else(FieldDeps::empty))
     } else {
         Ok(FieldDeps::empty())
     }

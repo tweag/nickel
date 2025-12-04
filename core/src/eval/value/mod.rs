@@ -595,8 +595,7 @@ impl NickelValue {
     /// practice you often want [Thunk] instead, the latter being harder to work with.
     pub fn as_thunk(&self) -> Option<&Thunk> {
         if let Some(DataTag::Thunk) = self.data_tag() {
-            // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
-            // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+            // Safety: function safety pre-condition
             unsafe { Some(self.as_thunk_unchecked()) }
         } else {
             None
@@ -641,14 +640,18 @@ impl NickelValue {
         unsafe { transmute::<&mut NickelValue, &mut Thunk>(self) }
     }
 
-    /// Interprets this value to a thunk, without checking that the value is a block nor that the
+    /// Interprets this value as a thunk, without checking that the value is a block nor that the
     /// data tag is [DataTag::Thunk].
     ///
     /// This method is mostly intended to be used internally and from [Thunk] only. You should
     /// almost always use [Self::as_thunk] instead.
+    ///
+    /// # Safety
+    ///
+    /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
+    /// [DataTag::Thunk].
     pub(super) unsafe fn into_thunk_unchecked(self) -> Thunk {
-        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
-        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+        // Safety: this function pre-condition.
         Thunk(self)
     }
 
@@ -752,8 +755,7 @@ impl NickelValue {
                         ValueContentRef::String(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
                     DataTag::Thunk => {
-                        // Safety: `Thunk` as only one field that is a `NickelValue` and has a
-                        // `transparent` representation, guaranteeing their layout is the same.
+                        // Safety: we checked that value's tag is `DataTag::Thunk`
                         ValueContentRef::Thunk(self.as_thunk_unchecked())
                     }
                     DataTag::Term => {
@@ -812,7 +814,7 @@ impl NickelValue {
 
                 // [^thunk-copy-on-mut-ref]: We must be careful with thunks. Not only we don't need
                 // to copy-on-write, since we're handing back a `Thunk` which is just a wrapper
-                // around `self` (iinstead of a mutable reference inside the block), but we must
+                // around `self` (instead of a mutable reference inside the block), but we must
                 // actually _avoid_ making copies, which would break the sharing of thunks.
                 if header.ref_count() != 1 && header.tag != DataTag::Thunk {
                     return None;
@@ -1033,8 +1035,7 @@ impl NickelValue {
                     DataTag::String => ValueContentRefMut::String(make_mut(self)),
                     // See [^thunk-copy-on-mut-ref].
                     DataTag::Thunk => {
-                        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
-                        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+                        // Safety: we just checked that the value's tag is `Thunk`.
                         ValueContentRefMut::Thunk(self.as_thunk_mut_unchecked())
                     }
                     DataTag::Term => ValueContentRefMut::Term(make_mut(self)),

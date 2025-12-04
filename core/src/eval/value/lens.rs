@@ -162,7 +162,7 @@ impl ValueLens<bool> {
     ///
     /// # Panic
     ///
-    /// Extraction through [ValueLens::take] will panics if the inline value is neither
+    /// Extraction through [ValueLens::take] will panic if the inline value is neither
     /// [super::InlineValue::True] nor [super::InlineValue::False].
     pub(super) unsafe fn bool_lens(value: NickelValue) -> Self {
         Self {
@@ -189,11 +189,6 @@ impl ValueLens<Thunk> {
     /// # Safety
     ///
     /// `value.tag()` must be [super::DataTag::Thunk]
-    ///
-    /// # Panic
-    ///
-    /// Extraction through [ValueLens::take] will panics if the inline value is neither
-    /// [super::InlineValue::True] nor [super::InlineValue::False].
     pub(super) unsafe fn thunk_lens(value: NickelValue) -> Self {
         Self {
             value,

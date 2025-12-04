@@ -693,6 +693,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
             closure = match value.content_ref() {
                 ValueContentRef::Thunk(_) => {
+                    // unwrap(): we know that `value` is a thunk in this branch
                     self.enter_cache_index(None, value.try_into_thunk().unwrap(), pos_idx, env)?
                 }
                 ValueContentRef::Term(Term::Sealed(data)) => {
@@ -1481,8 +1482,7 @@ pub fn subst<C: Cache>(
         | ValueContent::ForeignId(_)
         | ValueContent::SealingKey(_)) => lens.restore(),
         ValueContent::Thunk(lens) => {
-            //TODO: should `Thunk` return a thunk, and not thunk data?
-            let closure = cache.get(lens.restore().try_into_thunk().unwrap());
+            let closure = cache.get(lens.take());
             subst(pos_table, cache, closure.value, initial_env, &closure.env)
         }
         ValueContent::Record(lens) => {

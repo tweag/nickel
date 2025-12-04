@@ -394,7 +394,7 @@ impl ThunkData {
 ///
 /// Since the introduction of [crate::eval::value::NickelValue], thunk data are stored inside a
 /// value block, like most other values. A pointer to those data is thus precisely a `NickelValue`.
-/// [Thunk] is thus a smart constructor for a value for which we know for sure it contains a thunk
+/// [Thunk] is a smart constructor for a value for which we know for sure it contains a thunk
 /// (which makes it possible to perform most operations bypassing checks).
 #[derive(Clone, Debug, PartialEq)]
 // CAUTION: we rely on the fact that `Thunk` has the same layout as `NickelValue` (we transmute
@@ -428,6 +428,8 @@ impl Thunk {
 
     /// Returns a reference to the inner `RefCell<ThunkData>`.
     fn data(&self) -> &RefCell<ThunkData> {
+        // Safety: it's an invariant of `Thunk` that the inner `NickelValue` is a block of type
+        // thunk.
         unsafe { self.0.as_thunk_data_unchecked() }
     }
 

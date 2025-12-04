@@ -1,5 +1,5 @@
 //! Compute the fixpoint of a recursive record.
-use super::{merge::RevertClosurize, *};
+use super::{merge::RevertClosurize, value::ValueContentRefMut, *};
 use crate::position::PosIdx;
 
 /// Updates the environment of an expression by extending it with a recursive environment. In the
@@ -9,9 +9,9 @@ use crate::position::PosIdx;
 /// This function achieve the same as [patch_field], but is somehow lower-level, as it operates on
 /// a general [crate::eval::value::NickelValue] instead of a [crate::term::record::Field]. In
 /// practice, the patched expression is either the value of a field or one of its pending contract.
-fn patch_value<C: Cache>(cache: &mut C, value: &NickelValue, rec_env: &[(Ident, CacheIndex)]) {
-    if let ValueContentRef::Thunk(thunk) = value.content_ref() {
-        cache.build_cached(&mut thunk.clone(), rec_env);
+fn patch_value<C: Cache>(cache: &mut C, value: &mut NickelValue, rec_env: &[(Ident, CacheIndex)]) {
+    if let Some(ValueContentRefMut::Thunk(thunk)) = value.content_mut() {
+        cache.build_cached(thunk, rec_env);
     } else {
         debug_assert!(value.is_constant())
     }

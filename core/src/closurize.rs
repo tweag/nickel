@@ -105,7 +105,6 @@ impl Closurize for NickelValue {
             ValueContentRef::Thunk(thunk)
                 if thunk.deps().is_empty() && matches!(btype, BindingType::Normal) =>
             {
-                // unwrap(): we know that the value is a thunk
                 self.try_into_thunk().unwrap()
             }
             ValueContentRef::Term(Term::Var(id)) if id.is_generated() => {
