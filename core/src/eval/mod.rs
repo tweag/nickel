@@ -116,9 +116,7 @@ use callstack::*;
 use stack::{
     Op1ContItem, Op2FirstContItem, OpNContItem, PrimopAppInfo, SealedCont, Stack, StrAccItem,
 };
-use value::{
-    Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef, ValueContentRefMut,
-};
+use value::{Container, EnumVariantData, NickelValue, ValueContent, ValueContentRef};
 
 use self::cache::{Cache, CacheIndex};
 
@@ -694,8 +692,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
             closure = match value.content_ref() {
-                ValueContentRef::Thunk(thunk) => {
-                    self.enter_cache_index(None, thunk.clone(), pos_idx, env)?
+                ValueContentRef::Thunk(_) => {
+                    self.enter_cache_index(None, value.try_into_thunk().unwrap(), pos_idx, env)?
                 }
                 ValueContentRef::Term(Term::Sealed(data)) => {
                     let closure = Closure {
@@ -957,10 +955,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             .iter()
                             .map(|incl| -> Result<_, ErrorKind> {
                                 let field = Field {
-                                    value: Some(NickelValue::thunk(
-                                        self.get_var(incl.ident, &env, PosIdx::NONE)?,
-                                        self.context.pos_table.push(incl.ident.pos),
-                                    )),
+                                    value: Some(
+                                        NickelValue::from(self.get_var(
+                                            incl.ident,
+                                            &env,
+                                            PosIdx::NONE,
+                                        )?)
+                                        .with_pos(&mut self.context.pos_table, incl.ident.pos),
+                                    ),
                                     metadata: incl.metadata.clone().into(),
                                     pending_contracts: Vec::new(),
                                 };
@@ -1479,7 +1481,8 @@ pub fn subst<C: Cache>(
         | ValueContent::ForeignId(_)
         | ValueContent::SealingKey(_)) => lens.restore(),
         ValueContent::Thunk(lens) => {
-            let closure = cache.get(lens.take());
+            //TODO: should `Thunk` return a thunk, and not thunk data?
+            let closure = cache.get(lens.restore().try_into_thunk().unwrap());
             subst(pos_table, cache, closure.value, initial_env, &closure.env)
         }
         ValueContent::Record(lens) => {

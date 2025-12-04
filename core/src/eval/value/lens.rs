@@ -6,6 +6,7 @@ use super::{
 
 use crate::{
     error::{EvalErrorKind, ParseError},
+    eval::cache::lazy::Thunk,
     files::FileId,
     identifier::LocIdent,
     metrics::increment,
@@ -99,7 +100,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     /// called with a reference to the content. This makes it possible to finer things than the
     /// blunt clone of [Self::extract_or_clone], such as avoiding cloning the outer `Box` wrapper
     /// of some `Term` variants when the data is shared.
-    fn with_content<F, G, R>(value: NickelValue, on_owned: F, on_ref: G) -> R
+    pub(in crate::eval) fn with_content<F, G, R>(value: NickelValue, on_owned: F, on_ref: G) -> R
     where
         F: FnOnce(T) -> R,
         G: FnOnce(&T) -> R,
@@ -137,7 +138,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     }
 
     /// Standard extractor for a value block.
-    fn extract_or_clone(value: NickelValue) -> T {
+    pub(in crate::eval) fn extract_or_clone(value: NickelValue) -> T {
         Self::with_content(value, |v| v, |data| data.clone())
     }
 }
@@ -179,6 +180,32 @@ impl ValueLens<bool> {
             InlineValue::False => false,
             _ => panic!("unexpected non-boolean inline value in the extractor of ValueLens<bool>"),
         }
+    }
+}
+
+impl ValueLens<Thunk> {
+    /// Creates a new lens extracting a thunk from a value.
+    ///
+    /// # Safety
+    ///
+    /// `value.tag()` must be [super::DataTag::Thunk]
+    ///
+    /// # Panic
+    ///
+    /// Extraction through [ValueLens::take] will panics if the inline value is neither
+    /// [super::InlineValue::True] nor [super::InlineValue::False].
+    pub(super) unsafe fn thunk_lens(value: NickelValue) -> Self {
+        Self {
+            value,
+            lens: Self::thunk_extractor,
+        }
+    }
+
+    /// Extractor for a bool value.
+    fn thunk_extractor(value: NickelValue) -> Thunk {
+        // Safety: we maintain the invariant throughout this module that if `T = Thunk`, then
+        // `self.value` must be a thunk.
+        unsafe { value.into_thunk_unchecked() }
     }
 }
 

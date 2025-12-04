@@ -1346,11 +1346,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ))
                 })?;
                 let arg_pos = arg_clos.value.pos_idx();
-                let arg = NickelValue::thunk(Thunk::new(arg_clos), arg_pos);
 
                 Ok(NickelValue::enum_variant(
                     LocIdent::new(tag).with_pos(self.context.pos_table.get(pos)),
-                    Some(arg),
+                    Some(Thunk::new(arg_clos, arg_pos).into()),
                     pos_op_inh,
                 )
                 .into())

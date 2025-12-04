@@ -1,13 +1,14 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{BlackholedError, Cache, CacheIndex, Closure};
 use crate::{
-    eval::value::NickelValue,
+    eval::value::{self, NickelValue},
     identifier::Ident,
     metrics::increment,
+    position::PosIdx,
     term::{BindingType, Term, record::FieldDeps},
 };
 use std::cell::{Ref, RefCell, RefMut};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 /// The state of a thunk.
 ///
@@ -306,7 +307,7 @@ impl ThunkData {
         self.state = ThunkState::Evaluated;
     }
 
-    /// Create a freshly unevaluated thunk (minus `ident_type`) from a thunk, reverted to its
+    /// Create a freshly unevaluated thunk data (minus `ident_type`) from thunk data, reverted to its
     /// original state before the first update.
     ///
     /// For standard thunk data, the content is unchanged and shared with the original thunk: in
@@ -316,12 +317,14 @@ impl ThunkData {
     /// one of the thunks doesn't affect the other.
     ///
     /// The new thunk is unlocked, whatever the locking status of the original thunk.
-    pub fn revert(thunk: &Rc<RefCell<ThunkData>>) -> Rc<RefCell<ThunkData>> {
-        match thunk.borrow().inner {
-            InnerThunkData::Standard(_) => Rc::clone(thunk),
+    pub fn revert(data: &RefCell<ThunkData>) -> ThunkData {
+        let data = data.borrow();
+
+        match data.inner {
+            InnerThunkData::Standard(_) => data.clone(),
             InnerThunkData::Revertible {
                 ref orig, ref deps, ..
-            } => Rc::new(RefCell::new(ThunkData {
+            } => ThunkData {
                 inner: InnerThunkData::Revertible {
                     orig: Rc::clone(orig),
                     cached: None,
@@ -329,7 +332,7 @@ impl ThunkData {
                 },
                 state: ThunkState::Suspended,
                 locked: false,
-            })),
+            },
         }
     }
 
@@ -386,41 +389,55 @@ impl ThunkData {
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
 /// expression. Those aspects are handled and discussed in more detail in
 /// [InnerThunkData].
+///
+/// # Representation
+///
+/// Since the introduction of [crate::eval::value::NickelValue], thunk data are stored inside a
+/// value block, like most other values. A pointer to those data is thus precisely a `NickelValue`.
+/// [Thunk] is thus a smart constructor for a value for which we know for sure it contains a thunk
+/// (which makes it possible to perform most operations bypassing checks).
 #[derive(Clone, Debug, PartialEq)]
-pub struct Thunk {
-    data: Rc<RefCell<ThunkData>>,
-}
+// CAUTION: we rely on the fact that `Thunk` has the same layout as `NickelValue` (we transmute
+// them freely). It's useful to allow zero-cost conversion between `&NickelValue` and `&Thunk`. Do
+// not change the representation of `Thunk` lightly. Doing so without properly adapting the rest of
+// the codebase will incur Undefined Behavior.
+#[repr(transparent)]
+pub struct Thunk(pub(in crate::eval) NickelValue);
 
 impl Thunk {
     /// Create a new standard thunk.
-    pub fn new(closure: Closure) -> Self {
+    pub fn new(closure: Closure, pos_idx: PosIdx) -> Self {
         increment!("Thunk::new");
-        Thunk {
-            data: Rc::new(RefCell::new(ThunkData::new(closure))),
-        }
+        Thunk(NickelValue::thunk(ThunkData::new(closure), pos_idx))
     }
 
     /// Create a new revertible thunk. If the dependencies are empty, this function acts as
     /// [Thunk::new] and create a standard (non-revertible) thunk.
-    pub fn new_rev(closure: Closure, deps: FieldDeps) -> Self {
+    pub fn new_rev(closure: Closure, deps: FieldDeps, pos_idx: PosIdx) -> Self {
         match deps {
-            FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure),
+            FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure, pos_idx),
             deps => {
                 increment!("Thunk::new_rev");
-                Thunk {
-                    data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
-                }
+                Thunk(NickelValue::thunk(
+                    ThunkData::new_rev(closure, deps),
+                    pos_idx,
+                ))
             }
         }
     }
 
+    /// Returns a reference to the inner `RefCell<ThunkData>`.
+    fn data(&self) -> &RefCell<ThunkData> {
+        unsafe { self.0.as_thunk_data_unchecked() }
+    }
+
     pub fn state(&self) -> ThunkState {
-        self.data.borrow().state
+        self.data().borrow().state
     }
 
     /// Set the state to evaluated.
     pub fn set_evaluated(&self) {
-        self.data.borrow_mut().state = ThunkState::Evaluated;
+        self.data().borrow_mut().state = ThunkState::Evaluated;
     }
 
     /// Lock a thunk. This flips a dedicated bit in the thunk's state. Returns `true` if the
@@ -431,7 +448,7 @@ impl Thunk {
     /// such as `%deep_seq%`, `%force%` or [crate::program::Program::eval_record_spine], where the
     /// normal thunk update workflow isn't adapted.
     pub fn lock(&self) -> bool {
-        let mut data_ref = self.data.borrow_mut();
+        let mut data_ref = self.data().borrow_mut();
 
         if data_ref.locked {
             return false;
@@ -444,7 +461,7 @@ impl Thunk {
     /// Unlock a thunk previously locked (see [Self::lock]). If the thunk wasn't locked, this is a
     /// no-op. Returns `true` if the thunk was previously locked, `false` otherwise.
     pub fn unlock(&self) -> bool {
-        let mut data_ref = self.data.borrow_mut();
+        let mut data_ref = self.data().borrow_mut();
 
         let was_locked = data_ref.locked;
         data_ref.locked = false;
@@ -455,7 +472,7 @@ impl Thunk {
     /// Generate an update frame from this thunk and set the state to `Blackholed`. Return an
     /// error if the thunk was already black-holed.
     pub fn mk_update_frame(&mut self) -> Result<ThunkUpdateFrame, BlackholedError> {
-        let mut data_ref = self.data.borrow_mut();
+        let mut data_ref = self.data().borrow_mut();
 
         if data_ref.state == ThunkState::Blackholed {
             return Err(BlackholedError);
@@ -463,19 +480,17 @@ impl Thunk {
 
         data_ref.state = ThunkState::Blackholed;
 
-        Ok(ThunkUpdateFrame {
-            data: Rc::downgrade(&self.data),
-        })
+        Ok(self.clone())
     }
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
-        Ref::map(self.data.borrow(), ThunkData::closure)
+        Ref::map(self.data().borrow(), ThunkData::closure)
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
-        RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
+        RefMut::map(self.data().borrow_mut(), |data| data.closure_mut())
     }
 
     /// Immutably borrow the original expression stored in a thunk, even if it's a revertible
@@ -498,34 +513,37 @@ impl Thunk {
     /// which case revertible thunks wouldn't be needed anymore and could be replaced by a plain
     /// function.
     pub(crate) fn borrow_orig(&self) -> Ref<'_, Closure> {
-        Ref::map(self.data.borrow(), ThunkData::closure_or_orig)
+        Ref::map(self.data().borrow(), ThunkData::closure_or_orig)
     }
 
     /// Get an owned clone of the inner closure.
     pub fn get_owned(&self) -> Closure {
-        self.data.borrow().closure().clone()
+        self.data().borrow().closure().clone()
     }
 
     /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
     /// reference to the inner closure.
     pub fn into_closure(self) -> Closure {
-        match Rc::try_unwrap(self.data) {
-            Ok(inner) => inner.into_inner().into_closure(),
-            Err(rc) => rc.borrow().closure().clone(),
-        }
+        // We reuse the code of lenses here, which is precisely what we need
+        value::lens::ValueLens::<value::ThunkData>::with_content(
+            self.0,
+            |inner| inner.into_inner().into_closure(),
+            |cell| cell.borrow().closure().clone(),
+        )
     }
 
     /// Create a fresh unevaluated thunk from `self`, reverted to its original state before the
     /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
     /// this case, `revert()` is the same as `clone()`.
     pub fn revert(&self) -> Self {
-        Thunk {
-            data: ThunkData::revert(&self.data),
-        }
+        Thunk(NickelValue::thunk(
+            ThunkData::revert(self.data()),
+            self.0.pos_idx(),
+        ))
     }
 
     pub fn build_cached(&self, rec_env: &[(Ident, Thunk)]) {
-        self.data.borrow_mut().init_cached(rec_env)
+        self.data().borrow_mut().init_cached(rec_env)
     }
 
     /// Revert a thunk, abstract over its dependencies to get back a function, and apply the
@@ -580,27 +598,25 @@ impl Thunk {
     /// - returns the term `<closure@thunk1> bar foo`
     pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(self, fields: I) -> NickelValue {
         let deps = self.deps();
-        let inner = Rc::try_unwrap(self.data)
-            .map(RefCell::into_inner)
-            .unwrap_or_else(|rc| rc.borrow().clone());
+        let pos_idx = self.0.pos_idx();
+        let inner =
+            value::lens::ValueLens::<value::ThunkData>::extract_or_clone(self.0).into_inner();
 
         let mut deps_filter: Box<dyn FnMut(&Ident) -> bool> = match deps {
             FieldDeps::Known(deps) => Box::new(move |id: &Ident| deps.contains(id)),
             FieldDeps::Unknown => Box::new(|_: &Ident| true),
         };
 
-        let thunk_as_function = Thunk {
-            data: Rc::new(RefCell::new(
-                inner.revthunk_as_explicit_fun(fields.clone().filter(&mut deps_filter)),
-            )),
-        };
+        let thunk_as_function = NickelValue::thunk(
+            inner.revthunk_as_explicit_fun(fields.clone().filter(&mut deps_filter)),
+            pos_idx,
+        );
 
-        let as_function_closurized = NickelValue::thunk_posless(thunk_as_function);
         let args = fields
             .filter(deps_filter)
             .map(|id| NickelValue::from(Term::Var(id.into())));
 
-        args.fold(as_function_closurized, |partial_app, arg| {
+        args.fold(thunk_as_function, |partial_app, arg| {
             NickelValue::from(Term::app(partial_app, arg))
         })
     }
@@ -612,9 +628,10 @@ impl Thunk {
     where
         F: FnMut(&Closure) -> Closure,
     {
-        Thunk {
-            data: Rc::new(RefCell::new(self.data.borrow().map(f))),
-        }
+        Thunk(NickelValue::thunk(
+            self.data().borrow().map(f),
+            self.0.pos_idx(),
+        ))
     }
 
     /// Determine if a thunk is worth being put on the stack for future update.
@@ -628,64 +645,45 @@ impl Thunk {
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
     /// [`crate::transform::free_vars`].
     pub fn deps(&self) -> FieldDeps {
-        self.data.borrow().deps()
+        self.data().borrow().deps()
     }
 
     /// Check for physical equality between two thunks. This method is used for fast equality
     /// checking, as if two thunks are physically equal, they must be equal as Nickel values.
     pub fn ptr_eq(this: &Thunk, that: &Thunk) -> bool {
-        Rc::ptr_eq(&this.data, &that.data)
+        NickelValue::phys_eq(&this.0, &that.0)
     }
+}
 
-    /// Return a unique identifier for this thunk used for fast equality checking or other
-    /// optimizations. If two thunks have the same UID, they store the same expression. The
-    /// converse isn't true: two thunks can be equal as expressions but have different UID.
-    ///
-    /// In practice, the UID is currently the underlying `Rc` pointer value.
-    pub fn uid(&self) -> usize {
-        self.data.as_ptr() as usize
+impl From<Thunk> for NickelValue {
+    fn from(thunk: Thunk) -> Self {
+        thunk.0
     }
 }
 
 impl std::fmt::Pointer for Thunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Pointer::fmt(&self.data, f)
+        std::fmt::Pointer::fmt(&self.0, f)
     }
 }
 
 /// A thunk update frame.
 ///
 /// A thunk update frame is put on the stack whenever a variable is entered, such that once this
-/// variable is evaluated, the corresponding thunk can be updated. It is similar to a thunk but it
-/// holds a weak reference to the inner closure, to avoid unnecessarily keeping the underlying
-/// closure alive.
-#[derive(Clone, Debug)]
-pub struct ThunkUpdateFrame {
-    data: Weak<RefCell<ThunkData>>,
-}
+/// variable is evaluated, the corresponding thunk can be updated. It is currently exactly the same
+/// a thunk.
+pub type ThunkUpdateFrame = Thunk;
 
 impl ThunkUpdateFrame {
     /// Update the corresponding thunk with a closure. Set the state to `Evaluated`
-    ///
-    /// # Return
-    ///
-    /// - `true` if the thunk was successfully updated
-    /// - `false` if the corresponding closure has been dropped since
-    pub fn update(self, closure: Closure) -> bool {
-        if let Some(data) = Weak::upgrade(&self.data) {
-            data.borrow_mut().update(closure);
-            true
-        } else {
-            false
-        }
+    pub fn update(self, closure: Closure) {
+        self.data().borrow_mut().update(closure);
     }
 
     /// Reset the state of the thunk to Suspended
-    /// Mainly used to reset the state of the vm between REPL runs
-    pub fn reset_state(&mut self) {
-        if let Some(data) = Weak::upgrade(&self.data) {
-            data.borrow_mut().state = ThunkState::Suspended;
-        }
+    /// Mainly used to reset the state of the VM between REPL runs
+    pub fn reset_state(&self) {
+        self.data().borrow_mut().state = ThunkState::Suspended;
     }
 }
 
@@ -722,9 +720,11 @@ impl Cache for CBNCache {
     }
 
     fn add(&mut self, clos: Closure, bty: BindingType) -> CacheIndex {
+        let pos_idx = clos.value.pos_idx();
+
         match bty {
-            BindingType::Normal => Thunk::new(clos),
-            BindingType::Revertible(deps) => Thunk::new_rev(clos, deps),
+            BindingType::Normal => Thunk::new(clos, pos_idx),
+            BindingType::Revertible(deps) => Thunk::new_rev(clos, deps, pos_idx),
         }
     }
 

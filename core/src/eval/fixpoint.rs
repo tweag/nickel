@@ -9,10 +9,9 @@ use crate::position::PosIdx;
 /// This function achieve the same as [patch_field], but is somehow lower-level, as it operates on
 /// a general [crate::eval::value::NickelValue] instead of a [crate::term::record::Field]. In
 /// practice, the patched expression is either the value of a field or one of its pending contract.
-fn patch_value<C: Cache>(cache: &mut C, value: &mut NickelValue, rec_env: &[(Ident, CacheIndex)]) {
-    if let ValueContentRefMut::Thunk(idx) = value.content_make_mut() {
-        // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
-        cache.build_cached(idx, rec_env);
+fn patch_value<C: Cache>(cache: &mut C, value: &NickelValue, rec_env: &[(Ident, CacheIndex)]) {
+    if let ValueContentRef::Thunk(thunk) = value.content_ref() {
+        cache.build_cached(&mut thunk.clone(), rec_env);
     } else {
         debug_assert!(value.is_constant())
     }
@@ -49,9 +48,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
-                let idx = if let Some(idx) = value.as_thunk() {
-                    idx.clone()
-                } else {
+                let idx = value.as_thunk().cloned().unwrap_or_else(|| {
                     // If we are in this branch, `value` must be a constant after closurization
                     // (the evaluation of a recursive record starts by closurizing all fields and
                     // contracts).
@@ -60,11 +57,11 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     let closure: Closure = value.clone().into();
 
                     cache.add(closure, BindingType::Normal)
-                };
+                });
 
                 // We now need to wrap the binding in a value with contracts applied.
                 let with_ctr_applied = RuntimeContract::apply_all(
-                    NickelValue::thunk(idx, value.pos_idx()),
+                    idx.into(),
                     field.pending_contracts.iter().cloned(),
                     value.pos_idx(),
                 );

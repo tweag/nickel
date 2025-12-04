@@ -99,15 +99,14 @@ impl Closurize for NickelValue {
         // ```
         //
         // Then, evaluating `foo` would unduly raise an unbound identifier error.
-        let pos_idx = self.pos_idx();
-
         let idx = match self.content_ref() {
             // If we just need a normal closure, and we find a normal closure inside the thunk, we
             // reuse it
             ValueContentRef::Thunk(thunk)
                 if thunk.deps().is_empty() && matches!(btype, BindingType::Normal) =>
             {
-                thunk.clone()
+                // unwrap(): we know that the value is a thunk
+                self.try_into_thunk().unwrap()
             }
             ValueContentRef::Term(Term::Var(id)) if id.is_generated() => {
                 let id = *id;
@@ -133,7 +132,7 @@ impl Closurize for NickelValue {
             }
         };
 
-        NickelValue::thunk(idx, pos_idx)
+        idx.into()
     }
 }
 

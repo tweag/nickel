@@ -5,7 +5,6 @@
 //! [RFC007](https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md) for more
 //! details.
 use crate::{
-    eval::cache::CacheIndex,
     identifier::LocIdent,
     impl_display_from_pretty,
     label::Label,
@@ -24,12 +23,14 @@ use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
     borrow::ToOwned,
+    cell::RefCell,
     convert::Infallible,
     fmt,
     mem::{ManuallyDrop, size_of, transmute},
     ptr::{self, NonNull},
 };
 
+pub use super::cache::lazy::{self, Thunk};
 pub use crate::term::record::RecordData;
 
 pub mod lens;
@@ -128,6 +129,16 @@ impl fmt::Debug for NickelValue {
         }?;
 
         write!(f, "}}")
+    }
+}
+
+impl std::fmt::Pointer for NickelValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_inline() {
+            write!(f, "<inline>")
+        } else {
+            std::fmt::Pointer::fmt(&(self.data as *const ()), f)
+        }
     }
 }
 
@@ -415,14 +426,14 @@ impl NickelValue {
     }
 
     /// Allocates a new thunk value.
-    pub fn thunk(value: CacheIndex, pos_idx: PosIdx) -> Self {
-        ValueBlockRc::encode(value, pos_idx).into()
+    pub fn thunk(data: lazy::ThunkData, pos_idx: PosIdx) -> Self {
+        ValueBlockRc::encode(RefCell::new(data), pos_idx).into()
     }
 
     /// Allocates a new thunk value without any position set. Equivalent to `Self::thunk(value,
     /// PosIdx::NONE)`.
-    pub fn thunk_posless(value: CacheIndex) -> Self {
-        Self::thunk(value, PosIdx::NONE)
+    pub fn thunk_posless(data: lazy::ThunkData) -> Self {
+        Self::thunk(data, PosIdx::NONE)
     }
 
     /// Allocates a new term value.
@@ -564,10 +575,81 @@ impl NickelValue {
         }
     }
 
-    /// Returns a reference to the inner thunk stored in this value if `self` is a value block with
-    /// tag thunk, or `None` otherwise.
-    pub fn as_thunk(&self) -> Option<&ThunkData> {
-        self.as_value_data()
+    /// Returns a reference to the inner thunk data stored in this value if `self` is a value block
+    /// with tag record or an inline empty record. Returns `None` otherwise.
+    ///
+    /// # Safety
+    ///
+    /// `self` must be a thunk value block, that is `self.data_tag()` must be [DataTag::Thunk].
+    pub unsafe fn as_thunk_data_unchecked(&self) -> &ThunkData {
+        // Safety: function safety pre-condition
+        unsafe {
+            ValueBlockRc::decode_from_raw_unchecked(NonNull::new_unchecked(self.data as *mut u8))
+        }
+    }
+
+    /// Returns `&self` seen as a thunk if `self` is a value block with tag thunk, or
+    /// `None` otherwise.
+    ///
+    /// While it would be more in line with other `as_xxx` functions to return [ThunkData], in
+    /// practice you often want [Thunk] instead, the latter being harder to work with.
+    pub fn as_thunk(&self) -> Option<&Thunk> {
+        if let Some(DataTag::Thunk) = self.data_tag() {
+            // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+            // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+            unsafe { Some(self.as_thunk_unchecked()) }
+        } else {
+            None
+        }
+    }
+
+    /// Returns the same value but wrapped as a [crate::eval::cache::lazy::Thunk] if `self` is a
+    /// value block with tag thunk, or `Err(self)` otherwise.
+    pub fn try_into_thunk(self) -> Result<Thunk, NickelValue> {
+        if let Some(DataTag::Thunk) = self.data_tag() {
+            Ok(Thunk(self))
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Same as [Self::as_thunk], but doesn't check that the value is a block nor that the data tag
+    /// is [DataTag::Thunk].
+    ///
+    /// This method is mostly intended to be used internally and from [Thunk] only. You should
+    /// almost always use [Self::as_thunk] instead.
+    ///
+    /// # Safety
+    ///
+    /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
+    /// [DataTag::Thunk].
+    pub(super) unsafe fn as_thunk_unchecked(&self) -> &Thunk {
+        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+        unsafe { transmute::<&NickelValue, &Thunk>(self) }
+    }
+
+    /// Mutable version of [Self::as_thunk_unchecked].
+    ///
+    /// # Safety
+    ///
+    /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
+    /// [DataTag::Thunk].
+    pub(super) unsafe fn as_thunk_mut_unchecked(&mut self) -> &mut Thunk {
+        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+        unsafe { transmute::<&mut NickelValue, &mut Thunk>(self) }
+    }
+
+    /// Interprets this value to a thunk, without checking that the value is a block nor that the
+    /// data tag is [DataTag::Thunk].
+    ///
+    /// This method is mostly intended to be used internally and from [Thunk] only. You should
+    /// almost always use [Self::as_thunk] instead.
+    pub(super) unsafe fn into_thunk_unchecked(self) -> Thunk {
+        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+        Thunk(self)
     }
 
     /// Returns a reference to the inner term stored in this value if `self` is a value block with
@@ -670,7 +752,9 @@ impl NickelValue {
                         ValueContentRef::String(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
                     }
                     DataTag::Thunk => {
-                        ValueContentRef::Thunk(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        // Safety: `Thunk` as only one field that is a `NickelValue` and has a
+                        // `transparent` representation, guaranteeing their layout is the same.
+                        ValueContentRef::Thunk(self.as_thunk_unchecked())
                     }
                     DataTag::Term => {
                         ValueContentRef::Term(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
@@ -711,6 +795,13 @@ impl NickelValue {
     /// Returns a mutable typed reference to the content of the value. Returns `None` if the
     /// underlying value block has a reference count greater than one. See [Self::content_make_mut]
     /// in this case.
+    ///
+    /// # Thunks
+    ///
+    /// [ValueContentRefMut::Thunk] is special in that it returns a wrapper around `self`, and not
+    /// a reference into the block. It's the only case that doesn't actually require to
+    /// copy-on-write, and thus this method always return `Some` for thunks even if the block is
+    /// shared.
     pub fn content_mut(&mut self) -> Option<ValueContentRefMut<'_>> {
         match self.tag() {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
@@ -719,7 +810,11 @@ impl NickelValue {
                 let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
                 let header = ValueBlockRc::header_from_raw(as_ptr);
 
-                if header.ref_count() != 1 {
+                // [^thunk-copy-on-mut-ref]: We must be careful with thunks. Not only we don't need
+                // to copy-on-write, since we're handing back a `Thunk` which is just a wrapper
+                // around `self` (iinstead of a mutable reference inside the block), but we must
+                // actually _avoid_ making copies, which would break the sharing of thunks.
+                if header.ref_count() != 1 && header.tag != DataTag::Thunk {
                     return None;
                 }
 
@@ -741,9 +836,9 @@ impl NickelValue {
                     DataTag::String => ValueContentRefMut::String(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
                     ),
-                    DataTag::Thunk => ValueContentRefMut::Thunk(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
-                    ),
+                    // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+                    // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+                    DataTag::Thunk => ValueContentRefMut::Thunk(self.as_thunk_mut_unchecked()),
                     DataTag::Term => ValueContentRefMut::Term(
                         ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
                     ),
@@ -800,7 +895,7 @@ impl NickelValue {
                         DataTag::Array => ValueContent::Array(ValueLens::container_lens(self)),
                         DataTag::Record => ValueContent::Record(ValueLens::container_lens(self)),
                         DataTag::String => ValueContent::String(ValueLens::content_lens(self)),
-                        DataTag::Thunk => ValueContent::Thunk(ValueLens::content_lens(self)),
+                        DataTag::Thunk => ValueContent::Thunk(ValueLens::thunk_lens(self)),
                         DataTag::Term => {
                             let term: &TermData = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
 
@@ -896,7 +991,8 @@ impl NickelValue {
     /// copy-on-write, same as [std::rc::Rc::make_mut] and [ValueBlockRc::make_mut]: if the
     /// underlying value block has a reference count greater than one, `self` is assigned to a fresh
     /// copy which is guaranteed to be 1-reference counted, and a mutable reference to the content
-    /// of this copy is returned.
+    /// of this copy is returned. Thunks are exception, and will never be copied; see
+    /// [Self::content_mut].
     pub fn content_make_mut(&mut self) -> ValueContentRefMut<'_> {
         // Safety: `value.tag()` must be `Pointer` and `value.data_tag()` must be equal to `T::Tag`
         unsafe fn make_mut<T: ValueBlockData + Clone>(value: &mut NickelValue) -> &mut T {
@@ -935,7 +1031,12 @@ impl NickelValue {
                     DataTag::Array => ValueContentRefMut::Array(Container::Alloc(make_mut(self))),
                     DataTag::Record => ValueContentRefMut::Record(Container::Alloc(make_mut(self))),
                     DataTag::String => ValueContentRefMut::String(make_mut(self)),
-                    DataTag::Thunk => ValueContentRefMut::Thunk(make_mut(self)),
+                    // See [^thunk-copy-on-mut-ref].
+                    DataTag::Thunk => {
+                        // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
+                        // `transparent` representation, guaranteeing the same layout as `NickelValue`.
+                        ValueContentRefMut::Thunk(self.as_thunk_mut_unchecked())
+                    }
                     DataTag::Term => ValueContentRefMut::Term(make_mut(self)),
                     DataTag::Label => ValueContentRefMut::Label(make_mut(self)),
                     DataTag::EnumVariant => ValueContentRefMut::EnumVariant(make_mut(self)),
@@ -1417,7 +1518,7 @@ pub enum DataTag {
 impl DataTag {
     /// Returns the offset of the data in a value block from the start pointer (the header). Calls
     /// to [ValueBlockRc::data_offset] under the hood instantiated with the right type.
-    fn data_offset(&self) -> usize {
+    const fn data_offset(&self) -> usize {
         match self {
             DataTag::Number => ValueBlockRc::data_offset::<NumberData>(),
             DataTag::String => ValueBlockRc::data_offset::<StringData>(),
@@ -1437,7 +1538,7 @@ impl DataTag {
     /// Returns the layout to be used for (de)allocation of a whole value block for a given type of
     /// data. Calls to [ValueBlockRc::block_layout] under the hood instantiated with the right
     /// type.
-    fn block_layout(&self) -> Layout {
+    const fn block_layout(&self) -> Layout {
         match self {
             DataTag::Number => ValueBlockRc::block_layout::<NumberData>(),
             DataTag::String => ValueBlockRc::block_layout::<StringData>(),
@@ -1454,7 +1555,7 @@ impl DataTag {
         }
     }
 
-    /// The highest possible value for a [ContentTag].
+    /// The highest possible value (included) for [Self].
     const MAX: u8 = DataTag::Type as u8;
 }
 
@@ -1469,7 +1570,7 @@ impl TryFrom<u8> for DataTag {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value <= DataTag::MAX {
-            // Safety: `#[repr(u8)]` on `ContentTag` guarantees that the enum is safe to transmute to
+            // Safety: `#[repr(u8)]` on `DataTag` guarantees that the enum is safe to transmute to
             // and from `u8`, as long as we are in the range of valid tags.
             Ok(unsafe { transmute::<u8, DataTag>(value) })
         } else {
@@ -1589,8 +1690,7 @@ pub struct ArrayData {
     pub pending_contracts: Vec<RuntimeContract>,
 }
 
-pub type ThunkData = CacheIndex;
-
+pub type ThunkData = RefCell<lazy::ThunkData>;
 pub type TermData = Term;
 pub type LabelData = Label;
 
@@ -1678,7 +1778,7 @@ impl ValueBlockData for TypeData {
 /// -------------------+---------+---+
 /// ```
 ///
-/// The base address (self.0) is `max(align_of::<ValueBlockHeader>(), align_of::<T>())`-aligned.
+/// The base address (`self.0`) is `max(align_of::<ValueBlockHeader>(), align_of::<T>())`-aligned.
 /// The padding is determined statically and is only necessary if `size_of::<ValueBlockHeader>()`
 /// isn't a multiple of the total alignment. Currently, for example, there is no padding on x86_64
 /// in practice. It might happen if the alignment of `T` grows larger than the size of the header.
@@ -2223,7 +2323,7 @@ pub enum ValueContentRef<'a> {
     Array(Container<&'a ArrayData>),
     Record(Container<&'a RecordData>),
     String(&'a StringData),
-    Thunk(&'a ThunkData),
+    Thunk(&'a Thunk),
     Term(&'a TermData),
     Label(&'a LabelData),
     EnumVariant(&'a EnumVariantData),
@@ -2251,7 +2351,7 @@ pub enum ValueContentRefMut<'a> {
     Array(Container<&'a mut ArrayData>),
     Record(Container<&'a mut RecordData>),
     String(&'a mut StringData),
-    Thunk(&'a mut ThunkData),
+    Thunk(&'a mut Thunk),
     Term(&'a mut TermData),
     Label(&'a mut LabelData),
     EnumVariant(&'a mut EnumVariantData),
@@ -2281,7 +2381,7 @@ pub enum ValueContent {
     Array(lens::ValueLens<Container<ArrayData>>),
     Record(lens::ValueLens<Container<RecordData>>),
     String(lens::ValueLens<StringData>),
-    Thunk(lens::ValueLens<ThunkData>),
+    Thunk(lens::ValueLens<Thunk>),
     Term(lens::TermContent),
     Label(lens::ValueLens<LabelData>),
     EnumVariant(lens::ValueLens<EnumVariantData>),
