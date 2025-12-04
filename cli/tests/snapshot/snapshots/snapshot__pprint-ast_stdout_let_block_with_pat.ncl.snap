@@ -2,4 +2,4 @@
 source: cli/tests/snapshot/main.rs
 expression: out
 ---
-let a = 1, d @ { b, c, } = { b = "b", c = 2, } in a + d.c
+let a = 1, d @ { b, c, } = { b = "b", c = 2 } in a + d.c

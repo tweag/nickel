@@ -1166,27 +1166,29 @@ impl<EC: EvalCache> Program<EC> {
     ) -> Result<(), Error> {
         use crate::{pretty::*, transform::transform};
 
-        let allocator = Allocator::default();
-
         let ast_alloc = AstAlloc::new();
         let ast = self
             .vm_ctxt
             .import_resolver
             .sources
             .parse_nickel(&ast_alloc, self.main_id)?;
-        let rt = measure_runtime!(
-            "runtime:ast_conversion",
-            ast.to_mainline(&mut self.vm_ctxt.pos_table)
-        );
-        let rt = if apply_transforms {
-            transform(&mut self.vm_ctxt.pos_table, rt, None)
-                .map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))?
+        if apply_transforms {
+            let allocator = Allocator::default();
+            let rt = measure_runtime!(
+                "runtime:ast_conversion",
+                ast.to_mainline(&mut self.vm_ctxt.pos_table)
+            );
+            let rt = transform(&mut self.vm_ctxt.pos_table, rt, None)
+                .map_err(|uvar_err| Error::ParseErrors(ParseErrors::from(uvar_err)))?;
+            let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+            doc.render(80, out).map_err(IOError::from)?;
+            writeln!(out).map_err(IOError::from)?;
         } else {
-            rt
-        };
-        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
-        doc.render(80, out).map_err(IOError::from)?;
-        writeln!(out).map_err(IOError::from)?;
+            let allocator = crate::ast::pretty::Allocator::default();
+            let doc: DocBuilder<_, ()> = ast.pretty(&allocator);
+            doc.render(80, out).map_err(IOError::from)?;
+            writeln!(out).map_err(IOError::from)?;
+        }
 
         Ok(())
     }

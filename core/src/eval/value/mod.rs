@@ -809,13 +809,7 @@ impl NickelValue {
                                     TermContent::StrChunks(ValueLens::term_str_chunks_lens(self))
                                 }
                                 Term::Fun(..) => TermContent::Fun(ValueLens::term_fun_lens(self)),
-                                Term::FunPattern(..) => {
-                                    TermContent::FunPattern(ValueLens::term_fun_pat_lens(self))
-                                }
                                 Term::Let(..) => TermContent::Let(ValueLens::term_let_lens(self)),
-                                Term::LetPattern(..) => {
-                                    TermContent::LetPattern(ValueLens::term_let_pat_lens(self))
-                                }
                                 Term::App(..) => TermContent::App(ValueLens::term_app_lens(self)),
                                 Term::Var(..) => TermContent::Var(ValueLens::term_var_lens(self)),
                                 Term::RecRecord(..) => {
@@ -823,9 +817,6 @@ impl NickelValue {
                                 }
                                 Term::Closurize(_) => {
                                     TermContent::Closurize(ValueLens::term_closurize_lens(self))
-                                }
-                                Term::Match(_) => {
-                                    TermContent::Match(ValueLens::term_match_lens(self))
                                 }
                                 Term::Op1(..) => TermContent::Op1(ValueLens::term_op1_lens(self)),
                                 Term::Op2(..) => TermContent::Op2(ValueLens::term_op2_lens(self)),
@@ -1026,12 +1017,10 @@ impl NickelValue {
             ValueContentRef::Term(term) => match term {
                 Term::Closurize(v) => v.type_of(),
                 Term::RecRecord(..) => Some("Record"),
-                Term::Fun(..) | Term::FunPattern(..) => Some("Function"),
-                Term::Match { .. } => Some("MatchExpression"),
+                Term::Fun(..) => Some("Function"),
                 Term::Sealed(..) => Some("Sealed"),
                 Term::Annotated(..) => Some("Annotated"),
                 Term::Let(..)
-                | Term::LetPattern(..)
                 | Term::App(_)
                 | Term::Var(_)
                 | Term::Op1(_)

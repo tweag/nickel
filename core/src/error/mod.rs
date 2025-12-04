@@ -30,7 +30,7 @@ use crate::{
     position::{PosIdx, PosTable, RawSpan, TermPos},
     repl,
     serialize::{ExportFormat, NickelPointer, NickelPointerElem},
-    term::{Number, pattern::Pattern, record::FieldMetadata},
+    term::{Number, record::FieldMetadata},
     typ::{TypeF, VarKindDiscriminant},
     typecheck::error::RowKind,
 };
@@ -293,8 +293,8 @@ pub enum EvalErrorKind {
     FailedDestructuring {
         /// The original term matched.
         value: NickelValue,
-        /// The pattern that failed to match.
-        pattern: Pattern,
+        /// The position of the pattern that failed to match.
+        pattern_pos: PosIdx,
     },
     /// Tried to query a field of something that wasn't a record.
     QueryNonRecord {
@@ -1428,10 +1428,10 @@ impl IntoDiagnostics for EvalErrorData {
                         .with_labels(labels),
                 ]
             }
-            EvalErrorKind::FailedDestructuring { value, pattern } => {
+            EvalErrorKind::FailedDestructuring { value, pattern_pos } => {
                 let mut labels = Vec::new();
 
-                if let Some(span) = pos_table.get(pattern.pos).into_opt() {
+                if let Some(span) = pos_table.get(pattern_pos).into_opt() {
                     labels.push(primary(&span).with_message("this pattern"));
                 }
 

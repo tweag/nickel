@@ -8,7 +8,6 @@ use crate::{
     parser::lexer::KEYWORDS,
     term::{
         self,
-        pattern::*,
         record::{Field, FieldMetadata, Include, RecordData},
         *,
     },
@@ -157,12 +156,7 @@ fn needs_parens_in_type_pos(typ: &Type) -> bool {
     if let TypeF::Contract(term) = &typ.typ {
         match term.content_ref() {
             ValueContentRef::Term(
-                Term::Fun(..)
-                | Term::FunPattern(..)
-                | Term::Let(..)
-                | Term::LetPattern(..)
-                | Term::Import { .. }
-                | Term::ResolvedImport(..),
+                Term::Fun(..) | Term::Let(..) | Term::Import { .. } | Term::ResolvedImport(..),
             )
             | ValueContentRef::CustomContract(_) => true,
             ValueContentRef::Term(Term::Op1(data)) => matches!(data.op, UnaryOp::IfThenElse),
@@ -494,23 +488,9 @@ impl Allocator {
     ) -> DocBuilder<'a, Self> {
         let mut builder = docs![self, "fun", self.line(), first_param];
 
-        loop {
-            match body.as_term() {
-                Some(Term::Fun(data)) => {
-                    builder = docs![self, builder, self.line(), self.as_string(data.arg)];
-                    body = &data.body;
-                }
-                Some(Term::FunPattern(data)) => {
-                    builder = docs![
-                        self,
-                        builder,
-                        self.line(),
-                        self.pat_with_parens(&data.pattern)
-                    ];
-                    body = &data.body;
-                }
-                _ => break,
-            }
+        while let Some(Term::Fun(data)) = body.as_term() {
+            builder = docs![self, builder, self.line(), self.as_string(data.arg)];
+            body = &data.body;
         }
 
         docs![
@@ -651,22 +631,6 @@ impl Allocator {
     fn type_part<'a>(&'a self, typ: &Type) -> DocBuilder<'a, Self> {
         typ.pretty(self).parens_if(needs_parens_in_type_pos(typ))
     }
-
-    /// Pretty printing of a restricted patterns that requires enum variant patterns and or
-    /// patterns to be parenthesized (typically function pattern arguments). The only difference
-    /// with a general pattern is that for a function, a top-level enum variant pattern with an
-    /// enum tag as an argument such as `'Foo 'Bar` must be parenthesized, because `fun 'Foo 'Bar
-    /// => ...` is parsed as a function of two arguments, which are bare enum tags `'Foo` and
-    /// `'Bar`. We must print `fun ('Foo 'Bar) => ..` instead.
-    fn pat_with_parens<'a>(&'a self, pattern: &Pattern) -> DocBuilder<'a, Self> {
-        pattern.pretty(self).parens_if(matches!(
-            pattern.data,
-            PatternData::Enum(EnumPattern {
-                pattern: Some(_),
-                ..
-            }) | PatternData::Or(_)
-        ))
-    }
 }
 
 trait NickelDocBuilderExt {
@@ -783,165 +747,6 @@ impl<'a> Pretty<'a, Allocator> for &NAryOp {
     }
 }
 
-impl<'a> Pretty<'a, Allocator> for &Pattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let alias_prefix = if let Some(alias) = self.alias {
-            docs![
-                allocator,
-                alias.to_string(),
-                allocator.space(),
-                "@",
-                allocator.space()
-            ]
-        } else {
-            allocator.nil()
-        };
-
-        docs![allocator, alias_prefix, &self.data]
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &PatternData {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        match self {
-            PatternData::Wildcard => allocator.text("_"),
-            PatternData::Any(id) => allocator.as_string(id),
-            PatternData::Record(rp) => rp.pretty(allocator),
-            PatternData::Array(ap) => ap.pretty(allocator),
-            PatternData::Enum(evp) => evp.pretty(allocator),
-            PatternData::Constant(cp) => cp.pretty(allocator),
-            PatternData::Or(op) => op.pretty(allocator),
-        }
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ConstantPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        self.data.pretty(allocator)
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ConstantPatternData {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        match self {
-            ConstantPatternData::Bool(b) => allocator.as_string(b),
-            ConstantPatternData::Number(n) => allocator.as_string(format!("{}", n.to_sci())),
-            ConstantPatternData::String(s) => allocator.escaped_string(s).double_quotes(),
-            ConstantPatternData::Null => allocator.text("null"),
-        }
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &EnumPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            "'",
-            enum_tag_quoted(&self.tag),
-            if let Some(ref arg_pat) = self.pattern {
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.pat_with_parens(arg_pat)
-                ]
-            } else {
-                allocator.nil()
-            }
-        ]
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &RecordPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let RecordPattern {
-            patterns: matches,
-            tail,
-            ..
-        } = self;
-        docs![
-            allocator,
-            allocator.line(),
-            allocator.intersperse(
-                matches.iter().map(|field_pat| {
-                    docs![
-                        allocator,
-                        field_pat.matched_id.to_string(),
-                        allocator.field_metadata(
-                            &FieldMetadata {
-                                annotation: field_pat.annotation.clone(),
-                                ..Default::default()
-                            },
-                            false
-                        ),
-                        if let Some(default) = field_pat.default.as_ref() {
-                            docs![allocator, allocator.line(), "? ", allocator.atom(default),]
-                        } else {
-                            allocator.nil()
-                        },
-                        match &field_pat.pattern.data {
-                            PatternData::Any(id) if *id == field_pat.matched_id => allocator.nil(),
-                            _ => docs![allocator, allocator.line(), "= ", &field_pat.pattern],
-                        },
-                        ","
-                    ]
-                    .nest(2)
-                }),
-                allocator.line()
-            ),
-            match tail {
-                TailPattern::Empty => allocator.nil(),
-                TailPattern::Open => docs![allocator, allocator.line(), ".."],
-                TailPattern::Capture(id) =>
-                    docs![allocator, allocator.line(), "..", id.ident().to_string()],
-            },
-        ]
-        .nest(2)
-        .append(allocator.line())
-        .braces()
-        .group()
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &ArrayPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            allocator.intersperse(
-                self.patterns.iter(),
-                docs![allocator, ",", allocator.line()],
-            ),
-            if !self.patterns.is_empty() && self.is_open() {
-                docs![allocator, ",", allocator.line()]
-            } else {
-                allocator.nil()
-            },
-            match self.tail {
-                TailPattern::Empty => allocator.nil(),
-                TailPattern::Open => allocator.text(".."),
-                TailPattern::Capture(id) => docs![allocator, "..", id.ident().to_string()],
-            },
-        ]
-        .nest(2)
-        .brackets()
-        .group()
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &OrPattern {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        docs![
-            allocator,
-            allocator.intersperse(
-                self.patterns
-                    .iter()
-                    .map(|pat| allocator.pat_with_parens(pat)),
-                docs![allocator, allocator.line(), "or", allocator.space()],
-            ),
-        ]
-        .group()
-    }
-}
-
 impl<'a> Pretty<'a, Allocator> for &NickelValue {
     fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
         match self.content_ref() {
@@ -1004,9 +809,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
         match self {
             Term::StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Term::Fun(data) => allocator.function(allocator.as_string(data.arg), &data.body),
-            Term::FunPattern(data) => {
-                allocator.function(allocator.pat_with_parens(&data.pattern), &data.body)
-            }
             Term::Let(data) => docs![
                 allocator,
                 "let",
@@ -1020,29 +822,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                     data.bindings
                         .iter()
                         .map(|(k, v)| allocator.binding(*k, v.clone())),
-                    docs![allocator, ",", allocator.line()]
-                ),
-                allocator.line(),
-                "in",
-            ]
-            .nest(2)
-            .group()
-            .append(allocator.line())
-            .append(data.body.pretty(allocator).nest(2))
-            .group(),
-            Term::LetPattern(data) => docs![
-                allocator,
-                "let",
-                allocator.space(),
-                if data.attrs.rec {
-                    docs![allocator, "rec", allocator.space()]
-                } else {
-                    allocator.nil()
-                },
-                allocator.intersperse(
-                    data.bindings
-                        .iter()
-                        .map(|(k, v)| allocator.binding(k, v.clone())),
                     docs![allocator, ",", allocator.line()]
                 ),
                 allocator.line(),
@@ -1101,26 +880,6 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             Term::RecRecord(data) => {
                 allocator.record(&data.record, &data.includes, &data.dyn_fields)
             }
-            Term::Match(data) => docs![
-                allocator,
-                "match ",
-                docs![
-                    allocator,
-                    allocator.line(),
-                    allocator.intersperse(
-                        data.branches.iter().map(|branch| docs![
-                            allocator,
-                            branch.pretty(allocator),
-                            ","
-                        ]),
-                        allocator.line(),
-                    ),
-                ]
-                .nest(2)
-                .append(allocator.line())
-                .braces()
-            ]
-            .group(),
             Term::Op1(data) => {
                 match &data.op {
                     UnaryOp::RecordAccess(id) => docs![allocator, allocator.atom(&data.arg), ".", ident_quoted(id)],
@@ -1401,25 +1160,6 @@ impl<'a> Pretty<'a, Allocator> for &Type {
             .group(),
             Wildcard(_) => allocator.text("_"),
         }
-    }
-}
-
-impl<'a> Pretty<'a, Allocator> for &MatchBranch {
-    fn pretty(self, allocator: &'a Allocator) -> DocBuilder<'a, Allocator> {
-        let guard = if let Some(guard) = &self.guard {
-            docs![allocator, allocator.line(), "if", allocator.space(), guard]
-        } else {
-            allocator.nil()
-        };
-
-        docs![
-            allocator,
-            &self.pattern,
-            guard,
-            allocator.space(),
-            "=>",
-            docs![allocator, allocator.line(), self.body.pretty(allocator),].nest(2),
-        ]
     }
 }
 
@@ -1733,23 +1473,6 @@ mod tests {
     }
 
     #[test]
-    fn pretty_match() {
-        assert_long_short_term(
-            "match { 'A => a, 'B => b, 'C => c, }",
-            indoc! {"
-                match {
-                  'A =>
-                    a,
-                  'B =>
-                    b,
-                  'C =>
-                    c,
-                }"
-            },
-        );
-    }
-
-    #[test]
     fn pretty_record() {
         assert_long_short_term("{}", "{}");
         assert_long_short_term(
@@ -1875,57 +1598,6 @@ mod tests {
     }
 
     #[test]
-    fn pretty_let_pattern() {
-        assert_long_short_term(
-            "let foo @ { a | Bool ? true = a', b ? false, } = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      | Bool
-                      ? true
-                      = a',
-                    b
-                      ? false,
-                  }
-                  = c
-                  in
-                {}"
-            },
-        );
-        assert_long_short_term(
-            "let foo @ { a = a', b = e @ { foo, .. }, } = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      = a',
-                    b
-                      = e @ {
-                        foo,
-                        ..
-                      },
-                  }
-                  = c
-                  in
-                {}"
-            },
-        );
-        assert_long_short_term(
-            "let foo @ { a = a', b, } | String = c in {}",
-            indoc! {"
-                let foo @ {
-                    a
-                      = a',
-                    b,
-                  }
-                  | String
-                  = c
-                  in
-                {}"
-            },
-        );
-    }
-
-    #[test]
     fn pretty_fun() {
         assert_long_short_term(
             "fun x y z => x y z",
@@ -1934,24 +1606,6 @@ mod tests {
                   x
                   y
                   z
-                  =>
-                  x
-                    y
-                    z"
-            },
-        );
-        assert_long_short_term(
-            "fun x @ { foo, bar ? true, } y @ { baz, } => x y z",
-            indoc! {"
-                fun
-                  x @ {
-                    foo,
-                    bar
-                      ? true,
-                  }
-                  y @ {
-                    baz,
-                  }
                   =>
                   x
                     y

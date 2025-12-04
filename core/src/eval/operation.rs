@@ -1369,7 +1369,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             )
             .into()),
             UnaryOp::ContractCustom => {
-                let contract = if let Some(Term::Fun(..) | Term::Match(_)) = value.as_term() {
+                let contract = if matches!(value.as_term(), Some(Term::Fun(..))) {
                     value.closurize(&mut self.context.cache, env)
                 } else {
                     return mk_type_error!("Function or MatchExpression");
@@ -1954,7 +1954,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // We convert the contract (which can be a custom contract, a record, a naked
                 // function, etc.) to a form that can be applied to a label and a value.
                 let functoid = match value1.content_ref() {
-                    ValueContentRef::Term(Term::Fun(..) | Term::Match { .. }) => {
+                    ValueContentRef::Term(Term::Fun(..)) => {
                         // Warn on naked function contracts, but not if they came from the
                         // stdlib. Some stdlib functions return naked function contracts.
                         if let Some(pos) = self.context.pos_table.get(pos1).as_opt_ref() {
@@ -3770,7 +3770,7 @@ fn type_tag(v: &NickelValue) -> &'static str {
         ValueContentRef::String(_) => "String",
         ValueContentRef::Term(term) => match term {
             Term::RecRecord(..) => "Record",
-            Term::Fun(..) | Term::Match { .. } => "Function",
+            Term::Fun(..) => "Function",
             _ => "Other",
         },
         ValueContentRef::Label(_) => "Label",
@@ -4046,14 +4046,13 @@ fn eq<C: Cache>(
         // Function-like terms and foreign ids can't be compared together.
         (ValueContentRef::ForeignId(_), ValueContentRef::ForeignId(_))
         | (ValueContentRef::CustomContract(_), ValueContentRef::CustomContract(_))
-        | (
-            ValueContentRef::Term(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..)),
-            ValueContentRef::Term(Term::Fun(..) | Term::Match(_) | Term::FunPattern(..)),
-        ) => Err(Box::new(EvalErrorKind::IncomparableValues {
-            eq_pos: pos_op,
-            left: value1,
-            right: value2,
-        })),
+        | (ValueContentRef::Term(Term::Fun(..)), ValueContentRef::Term(Term::Fun(..))) => {
+            Err(Box::new(EvalErrorKind::IncomparableValues {
+                eq_pos: pos_op,
+                left: value1,
+                right: value2,
+            }))
+        }
         (_, _) => Ok(EqResult::Bool(false)),
     }
 }

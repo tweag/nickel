@@ -5,10 +5,8 @@ pub mod pattern;
 pub mod record;
 pub mod string;
 
-use pattern::Pattern;
 use record::{Field, FieldDeps, Include, RecordData, RecordDeps, SharedMetadata};
 use smallvec::SmallVec;
-use string::NickelString;
 
 use crate::{
     cache::InputFormat,
@@ -55,12 +53,6 @@ use std::{ffi::OsString, fmt, ops::Deref, rc::Rc};
 pub type ForeignIdPayload = u64;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunPatternData {
-    pub pattern: Pattern,
-    pub body: NickelValue,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct FunData {
     pub arg: LocIdent,
     pub body: NickelValue,
@@ -69,13 +61,6 @@ pub struct FunData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LetData {
     pub bindings: SmallVec<[(LocIdent, NickelValue); 4]>,
-    pub body: NickelValue,
-    pub attrs: LetAttrs,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct LetPatternData {
-    pub bindings: SmallVec<[(Pattern, NickelValue); 1]>,
     pub body: NickelValue,
     pub attrs: LetAttrs,
 }
@@ -174,14 +159,9 @@ pub enum Term {
     /// proceeds with the valuation of the body.
     Fun(FunData),
 
-    /// A destructuring function.
-    FunPattern(Box<FunPatternData>),
-
     /// A let binding. Adds the binding to the environment and proceeds with the evaluation of the
     /// body.
     Let(Box<LetData>),
-    /// A destructuring let-binding.
-    LetPattern(Box<LetPatternData>),
 
     /// An application. Push the argument on the stack and proceed with the evaluation of the head.
     App(AppData),
@@ -196,10 +176,6 @@ pub enum Term {
     /// A container value (array or record) that has yet to be closurized. This will closurize each
     /// elements of the container in the current environment.
     Closurize(NickelValue),
-
-    /// A match expression. Corresponds only to the case branches: this expression is still to be
-    /// applied to an argument to match on.
-    Match(MatchData),
 
     /// A primitive unary operator.
     Op1(Op1Data),
@@ -476,26 +452,6 @@ impl From<LetMetadata> for record::FieldMetadata {
     }
 }
 
-/// A branch of a match expression.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MatchBranch {
-    /// The pattern on the left hand side of `=>`.
-    pub pattern: Pattern,
-    /// A potential guard, which is an additional side-condition defined as `if cond`. The value
-    /// stored in this field is the boolean condition itself.
-    pub guard: Option<NickelValue>,
-    /// The body of the branch, on the right hand side of `=>`.
-    pub body: NickelValue,
-}
-
-/// Content of a match expression.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MatchData {
-    /// Branches of the match expression, where the first component is the pattern on the left hand
-    /// side of `=>` and the second component is the body of the branch.
-    pub branches: Vec<MatchBranch>,
-}
-
 /// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LabeledType {
@@ -761,14 +717,10 @@ impl Term {
         match self {
             Term::Closurize(value) => value.type_of(),
             Term::RecRecord(..) => Some("Record"),
-            Term::Fun(_) | Term::FunPattern(_) => Some("Function"),
-            // We could print a separate type for predicates. For the time being, we just consider
-            // it to be the function resulting of `$predicate_to_ctr pred`.
-            Term::Match { .. } => Some("MatchExpression"),
+            Term::Fun(_) => Some("Function"),
             Term::Sealed(..) => Some("Sealed"),
             Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
-            | Term::LetPattern(..)
             | Term::App(_)
             | Term::Var(_)
             | Term::Op1(_)
@@ -786,13 +738,9 @@ impl Term {
     /// normal form isn't evaluated further by the virtual machine.
     pub fn is_whnf(&self) -> bool {
         match self {
-            Term::Fun(..)
-            // Match expressions are function
-            | Term::Match {..} => true,
+            Term::Fun(..) => true,
             Term::Closurize(_)
             | Term::Let(..)
-            | Term::LetPattern(..)
-            | Term::FunPattern(..)
             | Term::App(..)
             | Term::Var(_)
             | Term::Op1(..)
@@ -835,10 +783,7 @@ impl Term {
             Term::Op2(data) => matches!(&data.op, BinaryOp::RecordGet),
             // A number with a minus sign as a prefix isn't a proper atom
             Term::Let(..)
-            | Term::Match { .. }
-            | Term::LetPattern(..)
             | Term::Fun(..)
-            | Term::FunPattern(..)
             | Term::App(..)
             | Term::OpN(..)
             | Term::Sealed(..)
@@ -864,29 +809,12 @@ impl Term {
         Term::Fun(FunData { arg, body })
     }
 
-    /// Builds a term representing a function that patterns match on its argument.
-    pub fn fun_pattern(pattern: Pattern, body: NickelValue) -> Self {
-        Term::FunPattern(Box::new(FunPatternData { pattern, body }))
-    }
-
     pub fn let_in(
         bindings: SmallVec<[(LocIdent, NickelValue); 4]>,
         body: NickelValue,
         attrs: LetAttrs,
     ) -> Self {
         Term::Let(Box::new(LetData {
-            bindings,
-            body,
-            attrs,
-        }))
-    }
-
-    pub fn let_pattern(
-        bindings: SmallVec<[(Pattern, NickelValue); 1]>,
-        body: NickelValue,
-        attrs: LetAttrs,
-    ) -> Self {
-        Term::LetPattern(Box::new(LetPatternData {
             bindings,
             body,
             attrs,
@@ -1772,10 +1700,6 @@ impl Traverse<NickelValue> for Term {
                 arg: data.arg,
                 body: data.body.traverse(f, order)?,
             }),
-            Term::FunPattern(mut data) => {
-                data.body = data.body.traverse(f, order)?;
-                Term::FunPattern(data)
-            }
             Term::Let(mut data) => {
                 data.bindings = data
                     .bindings
@@ -1786,49 +1710,10 @@ impl Traverse<NickelValue> for Term {
 
                 Term::Let(data)
             }
-            Term::LetPattern(mut data) => {
-                data.bindings = data
-                    .bindings
-                    .into_iter()
-                    .map(|(key, val)| Ok((key, val.traverse(f, order)?)))
-                    .collect::<Result<_, E>>()?;
-                data.body = data.body.traverse(f, order)?;
-
-                Term::LetPattern(data)
-            }
             Term::App(mut data) => {
                 data.head = data.head.traverse(f, order)?;
                 data.arg = data.arg.traverse(f, order)?;
                 Term::App(data)
-            }
-            Term::Match(data) => {
-                // The annotation on `map_res` use Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let branches: Result<Vec<MatchBranch>, E> = data
-                    .branches
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(
-                        |MatchBranch {
-                             pattern,
-                             guard,
-                             body,
-                         }| {
-                            let guard = guard.map(|cond| cond.traverse(f, order)).transpose()?;
-                            let body = body.traverse(f, order)?;
-
-                            Ok(MatchBranch {
-                                pattern,
-                                guard,
-                                body,
-                            })
-                        },
-                    )
-                    .collect();
-
-                Term::Match(MatchData {
-                    branches: branches?,
-                })
             }
             Term::Op1(mut data) => {
                 data.arg = data.arg.traverse(f, order)?;
@@ -1933,16 +1818,10 @@ impl Traverse<NickelValue> for Term {
             Term::Op1(data) => data.arg.traverse_ref(f, state),
             Term::Sealed(data) => data.inner.traverse_ref(f, state),
             Term::Fun(FunData { arg: _, body: t }) | Term::Closurize(t) => t.traverse_ref(f, state),
-            Term::FunPattern(data) => data.body.traverse_ref(f, state),
             Term::Let(data) => data
                 .bindings
                 .iter()
                 .find_map(|(_id, t)| t.traverse_ref(f, state))
-                .or_else(|| data.body.traverse_ref(f, state)),
-            Term::LetPattern(data) => data
-                .bindings
-                .iter()
-                .find_map(|(_pat, t)| t.traverse_ref(f, state))
                 .or_else(|| data.body.traverse_ref(f, state)),
             Term::Op2(data) => data
                 .arg1
@@ -1963,19 +1842,6 @@ impl Traverse<NickelValue> for Term {
                             .or_else(|| field.traverse_ref(f, state))
                     })
                 }),
-            Term::Match(data) => data.branches.iter().find_map(
-                |MatchBranch {
-                     pattern: _,
-                     guard,
-                     body,
-                 }| {
-                    if let Some(cond) = guard.as_ref() {
-                        cond.traverse_ref(f, state)?;
-                    }
-
-                    body.traverse_ref(f, state)
-                },
-            ),
             Term::OpN(data) => data.args.iter().find_map(|t| t.traverse_ref(f, state)),
             Term::Annotated(data) => data
                 .inner
@@ -2143,41 +2009,6 @@ pub mod make {
         I: Into<LocIdent>,
     {
         let_in(true, std::iter::once((id, t1)), t2)
-    }
-
-    pub fn let_one_pat<D, T1, T2>(pat: D, t1: T1, t2: T2) -> NickelValue
-    where
-        T1: Into<NickelValue>,
-        T2: Into<NickelValue>,
-        D: Into<Pattern>,
-    {
-        Term::let_pattern(
-            std::iter::once((pat.into(), t1.into())).collect(),
-            t2.into(),
-            LetAttrs::default(),
-        )
-        .into()
-    }
-
-    pub fn let_pat_in<D, T1, T2, Iter>(rec: bool, bindings: Iter, body: T2) -> NickelValue
-    where
-        T1: Into<NickelValue>,
-        T2: Into<NickelValue>,
-        D: Into<Pattern>,
-        Iter: IntoIterator<Item = (D, T1)>,
-    {
-        Term::let_pattern(
-            bindings
-                .into_iter()
-                .map(|(pat, t)| (pat.into(), t.into()))
-                .collect(),
-            body.into(),
-            LetAttrs {
-                binding_type: BindingType::Normal,
-                rec,
-            },
-        )
-        .into()
     }
 
     pub fn if_then_else<T1, T2, T3>(cond: T1, t1: T2, t2: T3) -> NickelValue

@@ -384,29 +384,6 @@ fn substitution() {
         )
         .unwrap()
     );
-
-    let t = parse_with_table(
-        &mut pos_table,
-        "match{'x => [1, glob1], 'y => loc2, 'z => {id = true, other = glob3}} loc1",
-    )
-    .unwrap();
-
-    // parse() removes the position information from terms, but it currently doesn't remove it from
-    // patterns. For the time being, instead of comparing the rich terms directly, we compare their
-    // pretty printing, which should be enough for this test.
-    assert_eq!(
-        subst(&pos_table, &eval_cache, t, &initial_env, &env).to_string(),
-        parse_with_table(
-            &mut pos_table,
-            "match {\
-                'x => [1, 1], \
-                'y => (if false then 1 else \"Glob2\"), \
-                'z => {id = true, other = false}\
-            } true"
-        )
-        .unwrap()
-        .to_string()
-    );
 }
 
 #[test]

@@ -87,9 +87,8 @@ use crate::{
     position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
-        BinaryOp, BindingType, FunData, Import, MatchBranch, MatchData, RecordOpKind,
-        RuntimeContract, StrChunk, Term, UnaryOp, make as mk_term,
-        pattern::compile::Compile,
+        BinaryOp, BindingType, FunData, Import, RecordOpKind, RuntimeContract, StrChunk, Term,
+        UnaryOp, make as mk_term,
         record::{Field, RecordData},
         string::NickelString,
     },
@@ -1140,37 +1139,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                         break Ok(Closure { value, env });
                     }
                 }
-                // A match expression acts as a function (in Nickel, a match expression corresponds
-                // to the cases, and doesn't include the examined value).
-                //
-                // The behavior is the same as for a function: we look for an argument on the
-                // stack, and proceed to the evaluation of the match, or stop here otherwise. If
-                // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
-                // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
-                // argument `arg` and doing the actual matching operation.
-                ValueContentRef::Term(Term::Match(data)) if !has_cont_on_stack => {
-                    if let Some((arg, _)) = self.stack.pop_arg(&self.context.cache) {
-                        Closure {
-                            value: data.clone().compile(
-                                &mut self.context.pos_table,
-                                arg.value.closurize(&mut self.context.cache, arg.env),
-                                pos_idx,
-                            ),
-                            env,
-                        }
-                    } else {
-                        break Ok(Closure {
-                            value: NickelValue::term(Term::Match(data.clone()), pos_idx),
-                            env,
-                        });
-                    }
-                }
-                ValueContentRef::Term(Term::FunPattern(..) | Term::LetPattern(..)) => {
-                    break Err(Box::new(EvalErrorKind::InternalError(
-                        "unexpected let-pattern or fun-pattern during evaluation".to_owned(),
-                        pos_idx,
-                    )));
-                }
                 // At this point, we've evaluated the current term to a weak head normal form.
                 _ => {
                     let evaluated = Closure { value, env };
@@ -1539,30 +1507,12 @@ pub fn subst<C: Cache>(
 
                     NickelValue::term(Term::Let(data), pos_idx)
                 }
-                lens @ (TermContent::LetPattern(..) | TermContent::FunPattern(..)) => panic!(
-                    "Pattern {:?} has not been transformed before evaluation", lens.restore()
-                ),
                 TermContent::App(lens) => {
                     let mut data = lens.take();
                     data.head = subst(pos_table, cache, data.head, initial_env, env);
                     data.arg = subst(pos_table, cache, data.arg, initial_env, env);
 
                     NickelValue::term(Term::App(data), pos_idx)
-                }
-                TermContent::Match(lens) => {
-                    let data = lens.take();
-                    let branches = data.branches
-                        .into_iter()
-                        .map(|MatchBranch { pattern, guard, body} | {
-                            MatchBranch {
-                                pattern,
-                                guard: guard.map(|cond| subst(pos_table, cache, cond, initial_env, env)),
-                                body: subst(pos_table, cache, body, initial_env, env),
-                            }
-                        })
-                        .collect();
-
-                    NickelValue::term(Term::Match(MatchData { branches }), pos_idx)
                 }
                 TermContent::Op1(lens) => {
                     let mut data = lens.take();

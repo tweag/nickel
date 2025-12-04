@@ -7,7 +7,6 @@ use crate::{
     typ::UnboundTypeVariableError,
 };
 
-pub mod desugar_destructuring;
 pub mod free_vars;
 pub mod gen_pending_contracts;
 pub mod import_resolution;
@@ -40,13 +39,11 @@ pub fn transform_no_free_vars(
 ) -> Result<NickelValue, UnboundTypeVariableError> {
     let value = value.traverse(
         &mut |mut value: NickelValue| -> Result<NickelValue, UnboundTypeVariableError> {
-            // Start by substituting any wildcard with its inferred type
+            // Substitute any wildcard with its inferred type
             if let Some(wildcards) = wildcards {
                 value = substitute_wildcards::transform_one(value, wildcards);
             }
-            // We desugar destructuring before other transformations, as this step generates new
-            // record contracts and terms that must be themselves transformed.
-            Ok(desugar_destructuring::transform_one(pos_table, value))
+            Ok(value)
         },
         TraverseOrder::TopDown,
     )?;
