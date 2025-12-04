@@ -1129,8 +1129,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 ValueContentRef::Term(Term::Fun(FunData { arg, body })) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.context.cache)
                     {
-                        // FIXME: back when Match was compiled at eval time, it didn't modify the
-                        // call stack. Should we replicate that?
                         self.call_stack.enter_fun(&self.context.pos_table, pos_app);
                         env.insert(arg.ident(), idx);
                         Closure {
