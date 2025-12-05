@@ -406,7 +406,6 @@ impl RuntimeContract {
     ) -> Vec<RuntimeContract> {
         let len1 = contracts1.len();
         let mut result = contracts1;
-        result.reserve(contracts2.len());
 
         for ctr2 in contracts2 {
             let is_duplicate = result[..len1].iter().any(|ctr1| {
@@ -672,7 +671,6 @@ impl TypeAnnotation {
     pub fn combine_dedup(left: Self, right: Self) -> Self {
         let len1 = left.contracts.len();
         let mut contracts = left.contracts;
-        contracts.reserve(right.contracts.len() + 1);
 
         let typ = match (left.typ, right.typ) {
             (left_ty @ Some(_), Some(right_ty)) => {
