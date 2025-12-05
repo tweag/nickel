@@ -1858,11 +1858,10 @@ impl ValueBlockRc {
     ///
     /// # Safety
     ///
-    /// Same conditions as for [ValueBlockRc::from_raw].
+    /// `ptr` must be a valid, non-null pointer to a value block.
     #[inline]
     pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
-        // Safety: if the pointer is coming from a call to `into_raw` (precondition), it can't be
-        // nulll (invariant of `ValueBlockRc`)
+        // Safety: function pre-condition
         unsafe { ValueBlockRc(NonNull::new_unchecked(ptr)) }
     }
 
