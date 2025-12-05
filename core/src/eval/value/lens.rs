@@ -1,7 +1,6 @@
 //! Lenses are a way to lazily and conditionally extract owned data from a Nickel value.
 use super::{
-    Container, InlineValue, NickelValue, RefCount, TermData, ValueBlockData, ValueBlockHeader,
-    ValueBlockRc,
+    Container, InlineValue, NickelValue, TermData, ValueBlockData, ValueBlockHeader, ValueBlockRc,
 };
 
 use crate::{
@@ -116,10 +115,10 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
         // followed by a `U` at the right offset.
         unsafe {
             let ptr = NonNull::new_unchecked(value.data as *mut u8);
-            let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count;
+            let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count();
             let ptr_content = ptr.add(ValueBlockRc::data_offset::<T>()).cast::<T>();
 
-            if ref_count == RefCount::ONE {
+            if ref_count == 1 {
                 increment!("value::lens::take::no clone");
                 // Since we "move" the original content, we don't want to run the destructor (if
                 // `T` owns e.g. a `HashMap`, it would otherwise be de-allocated when `value` goes
