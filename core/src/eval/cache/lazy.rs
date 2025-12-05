@@ -124,6 +124,7 @@ const REVTHUNK_NO_CACHED_VALUE_MSG: &str =
 
 impl ThunkData {
     /// Create new standard thunk data.
+    #[inline]
     pub fn new(closure: Closure) -> Self {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
@@ -133,6 +134,7 @@ impl ThunkData {
     }
 
     /// Create new revertible thunk data.
+    #[inline]
     pub fn new_rev(orig: Closure, deps: FieldDeps) -> Self {
         increment!("Thunk::new_rev");
         ThunkData {
@@ -408,6 +410,7 @@ pub struct Thunk(pub(in crate::eval) NickelValue);
 
 impl Thunk {
     /// Create a new standard thunk.
+    #[inline]
     pub fn new(closure: Closure, pos_idx: PosIdx) -> Self {
         increment!("Thunk::new");
         Thunk(NickelValue::thunk(ThunkData::new(closure), pos_idx))
@@ -415,6 +418,7 @@ impl Thunk {
 
     /// Create a new revertible thunk. If the dependencies are empty, this function acts as
     /// [Thunk::new] and create a standard (non-revertible) thunk.
+    #[inline]
     pub fn new_rev(closure: Closure, deps: FieldDeps, pos_idx: PosIdx) -> Self {
         match deps {
             FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure, pos_idx),
@@ -426,17 +430,20 @@ impl Thunk {
     }
 
     /// Returns a reference to the inner `RefCell<ThunkData>`.
+    #[inline]
     fn data(&self) -> &RefCell<ThunkData> {
         // Safety: it's an invariant of `Thunk` that the inner `NickelValue` is a block of type
         // thunk.
         unsafe { self.0.as_thunk_data_unchecked() }
     }
 
+    #[inline]
     pub fn state(&self) -> ThunkState {
         self.data().borrow().state
     }
 
     /// Set the state to evaluated.
+    #[inline]
     pub fn set_evaluated(&self) {
         self.data().borrow_mut().state = ThunkState::Evaluated;
     }
@@ -448,6 +455,7 @@ impl Thunk {
     /// Locking is used to prevent infinite loops for some step-by-step variants of deep evaluation
     /// such as `%deep_seq%`, `%force%` or [crate::program::Program::eval_record_spine], where the
     /// normal thunk update workflow isn't adapted.
+    #[inline]
     pub fn lock(&self) -> bool {
         let mut data_ref = self.data().borrow_mut();
 
@@ -461,6 +469,7 @@ impl Thunk {
 
     /// Unlock a thunk previously locked (see [Self::lock]). If the thunk wasn't locked, this is a
     /// no-op. Returns `true` if the thunk was previously locked, `false` otherwise.
+    #[inline]
     pub fn unlock(&self) -> bool {
         let mut data_ref = self.data().borrow_mut();
 
@@ -485,11 +494,13 @@ impl Thunk {
     }
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
+    #[inline]
     pub fn borrow(&self) -> Ref<'_, Closure> {
         Ref::map(self.data().borrow(), ThunkData::closure)
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
+    #[inline]
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
         RefMut::map(self.data().borrow_mut(), |data| data.closure_mut())
     }
@@ -513,17 +524,20 @@ impl Thunk {
     /// to have a proper incremental evaluation cache which performs (incremental) memoization, in
     /// which case revertible thunks wouldn't be needed anymore and could be replaced by a plain
     /// function.
+    #[inline]
     pub(crate) fn borrow_orig(&self) -> Ref<'_, Closure> {
         Ref::map(self.data().borrow(), ThunkData::closure_or_orig)
     }
 
     /// Get an owned clone of the inner closure.
+    #[inline]
     pub fn get_owned(&self) -> Closure {
         self.data().borrow().closure().clone()
     }
 
     /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
     /// reference to the inner closure.
+    #[inline]
     pub fn into_closure(self) -> Closure {
         // We reuse the code of lenses here, which is precisely what we need
         value::lens::ValueLens::<value::ThunkData>::with_content(
@@ -536,10 +550,12 @@ impl Thunk {
     /// Create a fresh unevaluated thunk from `self`, reverted to its original state before the
     /// first update. For a standard thunk, the content is unchanged and the state is conserved: in
     /// this case, `revert()` is the same as `clone()`.
+    #[inline]
     pub fn revert(&self) -> Self {
         ThunkData::revert(self)
     }
 
+    #[inline]
     pub fn build_cached(&self, rec_env: &[(Ident, Thunk)]) {
         self.data().borrow_mut().init_cached(rec_env)
     }
@@ -636,18 +652,21 @@ impl Thunk {
     ///
     /// Typically, expressions in weak head normal form won't evaluate further and their update can
     /// be skipped.
+    #[inline]
     pub fn should_update(&self) -> bool {
         !self.borrow().value.is_whnf()
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
     /// [`crate::transform::free_vars`].
+    #[inline]
     pub fn deps(&self) -> FieldDeps {
         self.data().borrow().deps()
     }
 
     /// Check for physical equality between two thunks. This method is used for fast equality
     /// checking, as if two thunks are physically equal, they must be equal as Nickel values.
+    #[inline]
     pub fn ptr_eq(this: &Thunk, that: &Thunk) -> bool {
         NickelValue::phys_eq(&this.0, &that.0)
     }
@@ -674,12 +693,14 @@ pub type ThunkUpdateFrame = Thunk;
 
 impl ThunkUpdateFrame {
     /// Update the corresponding thunk with a closure. Set the state to `Evaluated`
+    #[inline]
     pub fn update(self, closure: Closure) {
         self.data().borrow_mut().update(closure);
     }
 
     /// Reset the state of the thunk to Suspended
     /// Mainly used to reset the state of the VM between REPL runs
+    #[inline]
     pub fn reset_state(&self) {
         self.data().borrow_mut().state = ThunkState::Suspended;
     }
@@ -692,6 +713,7 @@ pub struct CBNCache {}
 impl Cache for CBNCache {
     type UpdateIndex = ThunkUpdateFrame;
 
+    #[inline]
     fn get(&self, idx: CacheIndex) -> Closure {
         idx.get_owned()
     }
@@ -726,26 +748,32 @@ impl Cache for CBNCache {
         }
     }
 
+    #[inline]
     fn patch<F: FnOnce(&mut Closure)>(&mut self, mut idx: CacheIndex, f: F) {
         f(&mut idx.borrow_mut());
     }
 
+    #[inline]
     fn get_then<T, F: FnOnce(&Closure) -> T>(&self, idx: CacheIndex, f: F) -> T {
         f(&idx.borrow())
     }
 
+    #[inline]
     fn update(&mut self, clos: Closure, uidx: Self::UpdateIndex) {
         uidx.update(clos);
     }
 
+    #[inline]
     fn new() -> Self {
         CBNCache {}
     }
 
+    #[inline]
     fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
         idx.reset_state();
     }
 
+    #[inline]
     fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
         &mut self,
         idx: &CacheIndex,
@@ -754,10 +782,12 @@ impl Cache for CBNCache {
         idx.map(|v| f(self, v))
     }
 
+    #[inline]
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         idx.build_cached(rec_env)
     }
 
+    #[inline]
     fn saturate<'a, I: DoubleEndedIterator<Item = Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
@@ -766,14 +796,17 @@ impl Cache for CBNCache {
         idx.saturate(fields)
     }
 
+    #[inline]
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
         Some(idx.deps())
     }
 
+    #[inline]
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
         idx.revert()
     }
 
+    #[inline]
     fn make_update_index(
         &mut self,
         idx: &mut CacheIndex,
