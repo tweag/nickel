@@ -41,11 +41,13 @@ pub struct ValueLens<T> {
 
 impl<T> ValueLens<T> {
     /// Do not access the content and restore the original value unchanged.
+    #[inline]
     pub fn restore(self) -> NickelValue {
         self.value
     }
 
     /// Peeks at the underlying value, without consuming the lens.
+    #[inline]
     pub fn value(&self) -> &NickelValue {
         &self.value
     }
@@ -53,6 +55,7 @@ impl<T> ValueLens<T> {
     /// Consumes the value and return the content of the block. If the block is unique, it is
     /// consumed. If the block is shared, the content is cloned. [Self::take] behaves very much
     /// like [std::rc::Rc::unwrap_or_clone].
+    #[inline]
     pub fn take(self) -> T {
         (self.lens)(self.value)
     }
@@ -88,6 +91,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     /// # Safety
     ///
     /// `value` must be a value block with tag [T::TAG].
+    #[inline]
     pub(super) unsafe fn content_lens(value: NickelValue) -> Self {
         ValueLens {
             value,
@@ -138,6 +142,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
     }
 
     /// Standard extractor for a value block.
+    #[inline]
     pub(in crate::eval) fn extract_or_clone(value: NickelValue) -> T {
         Self::with_content(value, |v| v, |data| data.clone())
     }
@@ -145,6 +150,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
 
 impl ValueLens<()> {
     /// Creates a new lens extracting a null from a value.
+    #[inline]
     pub(super) fn null_lens(value: NickelValue) -> Self {
         Self {
             value,
@@ -164,6 +170,7 @@ impl ValueLens<bool> {
     ///
     /// Extraction through [ValueLens::take] will panic if the inline value is neither
     /// [super::InlineValue::True] nor [super::InlineValue::False].
+    #[inline]
     pub(super) unsafe fn bool_lens(value: NickelValue) -> Self {
         Self {
             value,
@@ -383,6 +390,7 @@ macro_rules! impl_term_boxed_lens {
             //
             // `value` must be a value block with tag `DataTag::Term`, and the inner term must
             // match `Term::$term_cons`.
+            #[inline]
             pub(super) unsafe fn $lens_cons(value: NickelValue) -> Self {
                 Self {
                     value,

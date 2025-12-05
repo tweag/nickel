@@ -158,12 +158,14 @@ impl NickelValue {
     }
 
     /// Returns the position index of `self` if it is an inline value, or `None` otherwise.
+    #[inline]
     fn inline_pos_idx(&self) -> Option<PosIdx> {
         (self.tag() == ValueTag::Inline)
             .then(|| PosIdx::from_usize_truncate((self.data & Self::INLINE_POS_IDX_MASK) >> 32))
     }
 
     /// Creates a new inline value with an associated position index.
+    #[inline]
     pub const fn inline(inline: InlineValue, idx: PosIdx) -> Self {
         NickelValue {
             data: inline as usize | (idx.to_usize() << 32),
@@ -175,6 +177,7 @@ impl NickelValue {
     /// # Safety
     ///
     /// `self` must hold a valid inline value.
+    #[inline]
     pub unsafe fn as_inline_unchecked(&self) -> InlineValue {
         // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout as
         // `self.0`. The precondition of the function ensures that `self.0` is a valid value for
@@ -194,6 +197,7 @@ impl NickelValue {
     ///   - manually increment the reference count
     ///   - prevent `other` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - prevent `self` from being dropped
+    #[inline]
     unsafe fn raw_copy(other: &Self) -> Self {
         NickelValue { data: other.data }
     }
@@ -208,6 +212,7 @@ impl NickelValue {
     ///   - prevent `self` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
     ///   - derive `ptr` from a value or a value block that won't be dropped
+    #[inline]
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
@@ -220,6 +225,7 @@ impl NickelValue {
 impl NickelValue {
     /// Returns `self` with the position index set to `idx` if `self` is an inline value, or
     /// returns `self` unchanged otherwise.
+    #[inline]
     fn with_inline_pos_idx(mut self, idx: PosIdx) -> Self {
         // Although the inline position index is just dead data for value blocks on non-64 bits
         // architecture, we unconditionally update it to avoid branching
@@ -237,6 +243,7 @@ impl NickelValue {
     }
 
     /// Creates a new inline value.
+    #[inline]
     pub const fn inline(inline: InlineValue, pos_idx: PosIdx) -> Self {
         NickelValue {
             data: inline as usize,
@@ -249,6 +256,7 @@ impl NickelValue {
     /// # Safety
     ///
     /// `self` must hold a valid inline value.
+    #[inline]
     pub unsafe fn as_inline_unchecked(&self) -> InlineValue {
         // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout as
         // `self.0`. The precondition of the function ensures that `self.0` is a valid value for
@@ -265,6 +273,7 @@ impl NickelValue {
     ///   - manually increment the reference count
     ///   - prevent `other` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - prevent `self` from being dropped
+    #[inline]
     unsafe fn raw_copy(other: &Self) -> Self {
         NickelValue {
             data: other.data,
@@ -282,6 +291,7 @@ impl NickelValue {
     ///   - prevent `self` from being dropped (e.g. using [std::mem::ManuallyDrop])
     ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
     ///   - derive `ptr` from a value or a value block that won't be dropped
+    #[inline]
     unsafe fn block(ptr: NonNull<u8>) -> Self {
         NickelValue {
             data: ptr.as_ptr() as usize,
@@ -295,27 +305,32 @@ impl NickelValue {
     const VALUE_TAG_MASK: usize = 0b11;
 
     /// Returns the tag bits of this value.
+    #[inline]
     pub fn tag(&self) -> ValueTag {
         (self.data & Self::VALUE_TAG_MASK).try_into().unwrap()
     }
 
     /// Creates a new inline value without an associated position index. Same as
     /// `Self::inline(inline, PosIdx::NONE)`.
+    #[inline]
     pub const fn inline_posless(inline: InlineValue) -> Self {
         Self::inline(inline, PosIdx::NONE)
     }
 
     /// Creates a new null value with the index set to [PosIdx::NONE].
+    #[inline]
     pub const fn null() -> Self {
         Self::inline_posless(InlineValue::Null)
     }
 
     /// Creates a new true value with the index set to [PosIdx::NONE].
+    #[inline]
     pub const fn bool_true() -> Self {
         Self::inline_posless(InlineValue::True)
     }
 
     /// Creates a new false value with the index set to [PosIdx::NONE].
+    #[inline]
     pub const fn bool_false() -> Self {
         Self::inline_posless(InlineValue::False)
     }
@@ -330,38 +345,45 @@ impl NickelValue {
     }
 
     /// Creates a new boolean value with the index set to [PosIdx::NONE].
+    #[inline]
     pub fn bool_value_posless(value: bool) -> Self {
         Self::bool_value(value, PosIdx::NONE)
     }
 
     /// Creates a new empty array with the index set to [PosIdx::NONE].
+    #[inline]
     pub const fn empty_array() -> Self {
         Self::inline_posless(InlineValue::EmptyArray)
     }
 
     /// Creates a new empty record with the index set to [PosIdx::NONE].
+    #[inline]
     pub const fn empty_record() -> Self {
         Self::inline_posless(InlineValue::EmptyRecord)
     }
 
     /// Allocates a new number value.
+    #[inline]
     pub fn number(value: impl Into<Number>, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value.into(), pos_idx).into()
     }
 
     /// Allocates a new number value without any position set. Equivalent to `Self::number(value,
     /// PosIdx::NONE`
+    #[inline]
     pub fn number_posless(value: impl Into<Number>) -> Self {
         Self::number(value, PosIdx::NONE)
     }
 
     /// Allocates a new string value.
+    #[inline]
     pub fn string(value: impl Into<NickelString>, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value.into(), pos_idx).into()
     }
 
     /// Allocates a new string value without any position set. Equivalent to `Self::string(value,
     /// PosIdx::NONE`
+    #[inline]
     pub fn string_posless(value: impl Into<NickelString>) -> Self {
         Self::string(value, PosIdx::NONE)
     }
@@ -385,6 +407,7 @@ impl NickelValue {
 
     /// Allocates a new array value without any position set. If the array is empty, it is
     /// automatically inlined as [InlineValue::EmptyArray].
+    #[inline]
     pub fn array_posless(value: Array, pending_contracts: Vec<RuntimeContract>) -> Self {
         Self::array(value, pending_contracts, PosIdx::NONE)
     }
@@ -392,6 +415,7 @@ impl NickelValue {
     /// Creates a new empty array, but doesn't inline it. This forces the allocation of a value
     /// block. [Self::empty_array_block] can be useful when one needs to have a pre-allocated array
     /// that will be mutated in a second step.
+    #[inline]
     pub fn empty_array_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(ArrayData::default(), pos_idx).into()
     }
@@ -421,39 +445,46 @@ impl NickelValue {
     /// Creates a new empty record, but doesn't inline it. This forces the allocation of a value
     /// block. [Self::empty_record] can be useful when one needs to have a pre-allocated record
     /// that will be mutated in a second step.
+    #[inline]
     pub fn empty_record_block(pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(RecordData::empty(), pos_idx).into()
     }
 
     /// Allocates a new thunk value.
+    #[inline]
     pub fn thunk(data: lazy::ThunkData, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(RefCell::new(data), pos_idx).into()
     }
 
     /// Allocates a new thunk value without any position set. Equivalent to `Self::thunk(value,
     /// PosIdx::NONE)`.
+    #[inline]
     pub fn thunk_posless(data: lazy::ThunkData) -> Self {
         Self::thunk(data, PosIdx::NONE)
     }
 
     /// Allocates a new term value.
+    #[inline]
     pub fn term(value: Term, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new term value without any position set. Equivalent to `Self::term(value,
     /// PosIdx::NONE)`.
+    #[inline]
     pub fn term_posless(value: Term) -> Self {
         Self::term(value, PosIdx::NONE)
     }
 
     /// Allocates a new label value.
+    #[inline]
     pub fn label(value: Label, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new label value without any position set. Equivalent to `Self::label(value,
     /// PosIdx::NONE)`.
+    #[inline]
     pub fn label_posless(value: Label) -> Self {
         Self::label(value, PosIdx::NONE)
     }
@@ -476,65 +507,77 @@ impl NickelValue {
 
     /// Allocates a new enum variant value without any position set. Equivalent to
     /// `Self::enum_variant(tag, arg, PosIdx::NONE)`.
+    #[inline]
     pub fn enum_variant_posless(tag: impl Into<LocIdent>, arg: Option<NickelValue>) -> Self {
         Self::enum_variant(tag.into(), arg, PosIdx::NONE)
     }
 
     /// Allocates a new enum tag value. Same as `Self::enum_variant(tag, None, pos_idx)`.
+    #[inline]
     pub fn enum_tag(tag: impl Into<LocIdent>, pos_idx: PosIdx) -> Self {
         Self::enum_variant(tag.into(), None, pos_idx)
     }
 
     /// Allocates a new enum tag value without any position set. Equivalent to `Self::enum_tag(tag,
     /// arg, PosIdx::NONE)`.
+    #[inline]
     pub fn enum_tag_posless(tag: impl Into<LocIdent>) -> Self {
         Self::enum_tag(tag.into(), PosIdx::NONE)
     }
 
     /// Allocates a new foreign ID value.
+    #[inline]
     pub fn foreign_id(value: ForeignIdPayload, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new foreign ID value without any position set. Equivalent to
     /// `Self::foreign_id(value, PosIdx::NONE)`.
+    #[inline]
     pub fn foreign_id_posless(value: ForeignIdPayload) -> Self {
         Self::foreign_id(value, PosIdx::NONE)
     }
 
     /// Allocates a new sealing key value.
+    #[inline]
     pub fn sealing_key(value: SealingKey, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new sealing key value without any position set. Equivalent to
     /// `Self::sealing_key(value, PosIdx::NONE)`.
+    #[inline]
     pub fn sealing_key_posless(value: SealingKey) -> Self {
         Self::sealing_key(value, PosIdx::NONE)
     }
 
     /// Allocates a new custom contract value.
+    #[inline]
     pub fn custom_contract(value: NickelValue, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(value, pos_idx).into()
     }
 
     /// Allocates a new custom contract value without any position set. Equivalent to
     /// `Self::custom_contract(value, PosIdx::NONE)`.
+    #[inline]
     pub fn custom_contract_posless(value: NickelValue) -> Self {
         Self::custom_contract(value, PosIdx::NONE)
     }
 
     /// Allocates a new type.
+    #[inline]
     pub fn typ(typ: Type, contract: NickelValue, pos_idx: PosIdx) -> Self {
         ValueBlockRc::encode(TypeData { typ, contract }, pos_idx).into()
     }
 
     /// Returns the inner value of `self` if it's an inline value, or `None` otherwise.
+    #[inline]
     pub fn as_inline(&self) -> Option<InlineValue> {
         InlineValue::try_from(self).ok()
     }
 
     /// Returns the inner value of `self` if it's a (inlined) boolean value, or `None` otherwise.
+    #[inline]
     pub fn as_bool(&self) -> Option<bool> {
         match self.as_inline()? {
             InlineValue::True => Some(true),
@@ -545,18 +588,21 @@ impl NickelValue {
 
     /// Returns a reference to the inner number stored in this value if `self` is a value block
     /// with tag number, or `None` otherwise.
+    #[inline]
     pub fn as_number(&self) -> Option<&NumberData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner string stored in this value if `self` is a value block
     /// with tag string, or `None` otherwise.
+    #[inline]
     pub fn as_string(&self) -> Option<&StringData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner array stored in this value if `self` is a value block
     /// with tag array or an inline empty array. Returns `None` otherwise.
+    #[inline]
     pub fn as_array(&self) -> Option<Container<&ArrayData>> {
         if self.is_inline_empty_array() {
             Some(Container::Empty)
@@ -581,6 +627,7 @@ impl NickelValue {
     /// # Safety
     ///
     /// `self` must be a thunk value block, that is `self.data_tag()` must be [DataTag::Thunk].
+    #[inline]
     pub unsafe fn as_thunk_data_unchecked(&self) -> &ThunkData {
         // Safety: function safety pre-condition
         unsafe {
@@ -622,6 +669,7 @@ impl NickelValue {
     ///
     /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
     /// [DataTag::Thunk].
+    #[inline]
     pub(super) unsafe fn as_thunk_unchecked(&self) -> &Thunk {
         // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
         // `transparent` representation, guaranteeing the same layout as `NickelValue`.
@@ -634,6 +682,7 @@ impl NickelValue {
     ///
     /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
     /// [DataTag::Thunk].
+    #[inline]
     pub(super) unsafe fn as_thunk_mut_unchecked(&mut self) -> &mut Thunk {
         // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
         // `transparent` representation, guaranteeing the same layout as `NickelValue`.
@@ -650,6 +699,7 @@ impl NickelValue {
     ///
     /// `self` must be a value block with a thunk inside, that is `self.data_tag()` must be
     /// [DataTag::Thunk].
+    #[inline]
     pub(super) unsafe fn into_thunk_unchecked(self) -> Thunk {
         // Safety: this function pre-condition.
         Thunk(self)
@@ -657,18 +707,21 @@ impl NickelValue {
 
     /// Returns a reference to the inner term stored in this value if `self` is a value block with
     /// a tag term, or `None` otherwise.
+    #[inline]
     pub fn as_term(&self) -> Option<&TermData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner label stored in this value if `self` is a value block with
     /// tag label, or `None` otherwise.
+    #[inline]
     pub fn as_label(&self) -> Option<&LabelData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner enum variant stored in this value if `self` is a value
     /// block with tag enum variant, or `None` otherwise.
+    #[inline]
     pub fn as_enum_variant(&self) -> Option<&EnumVariantData> {
         self.as_value_data()
     }
@@ -682,18 +735,21 @@ impl NickelValue {
 
     /// Returns a reference to the inner sealing key stored in this value if `self` is a value
     /// block with sealing key inside, or `None` otherwise.
+    #[inline]
     pub fn as_sealing_key(&self) -> Option<&SealingKeyData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner type stored in this value if `self` is a value with a type
     /// inside, or `None` otherwise.
+    #[inline]
     pub fn as_type(&self) -> Option<&TypeData> {
         self.as_value_data()
     }
 
     /// Returns a reference to the inner foreign id stored in this value if `self` is a value
     /// block with a foreign value inside, or `None` otherwise.
+    #[inline]
     pub fn as_foreign_id(&self) -> Option<&ForeignIdData> {
         self.as_value_data()
     }
@@ -703,6 +759,7 @@ impl NickelValue {
     /// succinct and type-inference-friendly. Since this method must consume `self` in the case
     /// it's a value block, in order to keep the reference count correct, the caller can get `self`
     /// back in case of error.
+    #[inline]
     pub fn into_block(self) -> Result<ValueBlockRc, Self> {
         ValueBlockRc::try_from(self)
     }
@@ -725,6 +782,7 @@ impl NickelValue {
     }
 
     /// Checks if this value is an inline value or is an allocated block.
+    #[inline]
     pub fn is_inline(&self) -> bool {
         self.tag() == ValueTag::Inline
     }
@@ -1107,6 +1165,7 @@ impl NickelValue {
 
     /// Determines if a value is in evaluated form, called weak head normal form (WHNF). See
     /// [crate::term::Term::is_whnf] for more detais.
+    #[inline]
     pub fn is_whnf(&self) -> bool {
         !matches!(self.data_tag(), Some(DataTag::Thunk | DataTag::Term))
     }
@@ -1253,6 +1312,7 @@ impl NickelValue {
 
     /// Updates the position of this value. First allocates a position index in the position table
     /// and use it as the new index.
+    #[inline]
     pub fn with_pos(self, pos_table: &mut PosTable, pos: TermPos) -> Self {
         self.with_pos_idx(pos_table.push(pos))
     }
@@ -1290,6 +1350,7 @@ impl NickelValue {
     }
 
     /// Returns the position associated to this value.
+    #[inline]
     pub fn pos(&self, table: &PosTable) -> TermPos {
         table.get(self.pos_idx())
     }
@@ -1322,6 +1383,7 @@ impl NickelValue {
 }
 
 impl Default for NickelValue {
+    #[inline]
     fn default() -> Self {
         Self::null()
     }
@@ -1364,6 +1426,7 @@ impl Drop for NickelValue {
 }
 
 impl From<InlineValue> for NickelValue {
+    #[inline]
     fn from(inline: InlineValue) -> Self {
         NickelValue::inline_posless(inline)
     }
@@ -1405,6 +1468,7 @@ impl From<ValueBlockRc> for NickelValue {
     // Converts this value block to a [NickelValue] pointer. To keep the reference count
     // consistent, this function consumes the value block without decrementing the reference
     // count, which is left unchanged by the conversion.
+    #[inline]
     fn from(block: ValueBlockRc) -> Self {
         // We must avoid dropping `Self` here, which would decrement the reference count.
         let this = ManuallyDrop::new(block);
@@ -1440,6 +1504,7 @@ impl ValueTag {
 }
 
 impl From<ValueTag> for usize {
+    #[inline]
     fn from(tag: ValueTag) -> Self {
         // Safety: `#[repr(usize)]` on [ValueTag] guarantees that the enum is represented in memory
         // with the exact same layout as `usize`
@@ -1561,6 +1626,7 @@ impl DataTag {
 }
 
 impl From<DataTag> for u8 {
+    #[inline]
     fn from(tag: DataTag) -> Self {
         tag as u8
     }
@@ -1648,6 +1714,7 @@ struct ValueBlockHeader {
 impl ValueBlockHeader {
     /// Creates a new header for a value block with the given tag, a reference count of 1 and the
     /// given position index.
+    #[inline]
     pub fn new(tag: DataTag, pos_idx: PosIdx) -> Self {
         Self {
             tag,
@@ -1657,18 +1724,22 @@ impl ValueBlockHeader {
         }
     }
 
+    #[inline]
     fn ref_count(&self) -> u64 {
         self.ref_count.into()
     }
 
+    #[inline]
     fn set_ref_count(&mut self, count: u64) {
         self.ref_count = RefCount::try_from(count).expect("reference count overflow");
     }
 
+    #[inline]
     fn incr_ref_count(&mut self) {
         self.set_ref_count(self.ref_count() + 1);
     }
 
+    #[inline]
     fn decr_ref_count(&mut self) {
         self.set_ref_count(self.ref_count() - 1);
     }
@@ -1799,6 +1870,7 @@ impl ValueBlockRc {
     /// in between. Note that if the same raw pointer is converted back to a `ValueBlockRc` which is
     /// then dropped, this pointer becomes invalid and mustn't be used anymore (and in particular be
     /// passed to this function).
+    #[inline]
     pub unsafe fn from_raw(ptr: *mut u8) -> Option<Self> {
         NonNull::new(ptr).map(ValueBlockRc)
     }
@@ -1808,6 +1880,7 @@ impl ValueBlockRc {
     /// # Safety
     ///
     /// Same conditions as for [ValueBlockRc::from_raw].
+    #[inline]
     pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
         // Safety: if the pointer is coming from a call to `into_raw` (precondition), it can't be
         // nulll (invariant of `ValueBlockRc`)
@@ -1815,6 +1888,7 @@ impl ValueBlockRc {
     }
 
     /// Converts a pointer to a value block to a raw pointer. See [Self::from_raw].
+    #[inline]
     pub fn into_raw(self) -> *mut u8 {
         // We must avoid dropping `Self` here, which would decrement the reference count.
         let this = ManuallyDrop::new(self);
@@ -1822,18 +1896,21 @@ impl ValueBlockRc {
     }
 
     /// Returns the header of this value block.
+    #[inline]
     fn header(&self) -> ValueBlockHeader {
         // Safety: self.0 is always a valid pointer into a value block
         unsafe { Self::header_from_raw(self.0) }
     }
 
     /// Returns the tag in the header of this value block.
+    #[inline]
     fn tag(&self) -> DataTag {
         // Safety: self.0 is always a valid pointer into a value block
         unsafe { Self::tag_from_raw(self.0) }
     }
 
     /// Returns the position index of this value.
+    #[inline]
     pub fn pos_idx(&self) -> PosIdx {
         // Safety: self.0 is always a valid pointer into a value block
         unsafe { Self::header_from_raw(self.0).pos_idx }
@@ -1844,6 +1921,7 @@ impl ValueBlockRc {
     /// # Safety
     ///
     /// - `ptr` must be a valid pointer into a value block.
+    #[inline]
     unsafe fn header_from_raw(ptr: NonNull<u8>) -> ValueBlockHeader {
         // Safety: the safety precondition of this function
         unsafe { ptr.cast::<ValueBlockHeader>().as_ref().clone() }
@@ -1854,6 +1932,7 @@ impl ValueBlockRc {
     /// # Safety
     ///
     /// - `ptr` must be a valid pointer into a value block.
+    #[inline]
     unsafe fn tag_from_raw(ptr: NonNull<u8>) -> DataTag {
         // Safety: the safety precondition of this function
         unsafe { ptr.cast::<ValueBlockHeader>().as_ref().tag }
@@ -1862,11 +1941,13 @@ impl ValueBlockRc {
     /// Returns a mutable pointer to the header of this value block. [Self::header_mut] returns a
     /// mutable pointer instead of a reference to remain safe and avoid the possibility of handing
     /// over multiple mutable references.
+    #[inline]
     fn header_mut(&self) -> *mut ValueBlockHeader {
         self.0.cast::<ValueBlockHeader>().as_ptr()
     }
 
     /// Increments the reference count of this value block.
+    #[inline]
     fn incr_ref_count(&self) {
         // Safety: we never hand over mutable references into a value block unless there is an
         // active mutable borrow to `self` and the reference is 1-counted, but this is excluded
@@ -1875,6 +1956,7 @@ impl ValueBlockRc {
     }
 
     /// Decrements the reference count of this value block.
+    #[inline]
     fn decr_ref_count(&self) {
         // Safety: we never hand over mutable references into a value block unless there is an
         // active mutable borrow to `self` and the reference is 1-counted, but this excluded here
@@ -1899,6 +1981,7 @@ impl ValueBlockRc {
 
     /// Panicking variant of [Self::try_get_mut]. Equivalent to
     /// `self.try_get_mut().unwrap().unwrap()`.
+    #[inline]
     pub fn get_mut<T: ValueBlockData>(&mut self) -> &mut T {
         self.try_get_mut().unwrap().unwrap()
     }
@@ -1917,6 +2000,7 @@ impl ValueBlockRc {
     }
 
     /// Panicking variant of [Self::try_make_mut]. Equivalent to `self.try_make_mut().unwrap()`.
+    #[inline]
     pub fn make_mut<T: ValueBlockData + Clone>(&mut self) -> &mut T {
         self.try_make_mut().unwrap()
     }
@@ -2035,12 +2119,14 @@ impl ValueBlockRc {
 
     /// Tries to decode this value block as a reference to a value of type `T`. Returns `None` if
     /// the tag of this value block is not `T::TAG`.
+    #[inline]
     fn try_decode<T: ValueBlockData>(&self) -> Option<&T> {
         // Safety: we decode only if `self.tag()` is `T::TAG`
         (self.tag() == T::TAG).then(|| unsafe { self.decode_unchecked() })
     }
 
     /// Panicking variant of [Self::try_decode]. Same as `self.try_decode().unwrap()`.
+    #[inline]
     #[track_caller]
     fn decode<T: ValueBlockData>(&self) -> &T {
         self.try_decode().unwrap()
@@ -2053,6 +2139,7 @@ impl ValueBlockRc {
     ///
     /// The content of this value block must have been encoded from a value of type `T`, that is
     /// `self.tag() == T::TAG`.
+    #[inline]
     unsafe fn decode_unchecked<T: ValueBlockData>(&self) -> &T {
         // Safety: preconditions
         unsafe { Self::decode_from_raw_unchecked(self.0) }
@@ -2067,6 +2154,7 @@ impl ValueBlockRc {
     /// - You must ensure that there is no active mutable reference inside this value block as long
     ///   as the returned mutable reference is alive. This is typically the case if the reference
     ///   count of the value block is 1.
+    #[inline]
     unsafe fn decode_mut_unchecked<T: ValueBlockData>(&mut self) -> &mut T {
         // Safety: preconditions
         unsafe { Self::decode_mut_from_raw_unchecked(self.0) }
@@ -2080,6 +2168,7 @@ impl ValueBlockRc {
     ///   `self.tag() == T::TAG`.
     /// - The lifetime `'a` of the returned reference must not outlive the value block.
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
+    #[inline]
     unsafe fn decode_from_raw_unchecked<'a, T: ValueBlockData>(ptr: NonNull<u8>) -> &'a T {
         // Safety: preconditions
         unsafe { ptr.add(Self::data_offset::<T>()).cast::<T>().as_ref() }
@@ -2095,6 +2184,7 @@ impl ValueBlockRc {
     /// - You must ensure that there is no active mutable reference inside this value block as long
     ///   as the returned mutable reference is alive (during `'a`). This is typically satisfied if
     ///   the reference count of the value block is `1`.
+    #[inline]
     unsafe fn decode_mut_from_raw_unchecked<'a, T: ValueBlockData>(ptr: NonNull<u8>) -> &'a mut T {
         // Safety: preconditions
         unsafe { ptr.add(Self::data_offset::<T>()).cast::<T>().as_mut() }
@@ -2109,6 +2199,7 @@ impl ValueBlockRc {
     ///
     /// - The lifetime `'a` of the returned reference must not outlive the value block
     /// - The value block content must not be mutably borrowed during the lifetime `'a`.
+    #[inline]
     unsafe fn try_decode_from_raw<'a, T: ValueBlockData>(ptr: NonNull<u8>) -> Option<&'a T> {
         // Safety: we've checked that the tag matched `T`. The rest of the safety conditions are
         // the pre-conditions of the current function `try_decode`.
@@ -2176,6 +2267,7 @@ impl Drop for ValueBlockRc {
 }
 
 impl Clone for ValueBlockRc {
+    #[inline]
     fn clone(&self) -> Self {
         self.incr_ref_count();
         Self(self.0)
@@ -2206,6 +2298,7 @@ impl<C> Container<C> {
     }
 
     /// Unwrap the underlying allocation, or panics if `self` is [Self::Empty].
+    #[inline]
     pub fn unwrap_alloc(self) -> C {
         self.into_opt().unwrap()
     }
@@ -2214,6 +2307,7 @@ impl<C> Container<C> {
 impl<C: Default> Container<C> {
     /// Unwrap the underlying container, or allocate a new empty one (via [Default]) if `self` is
     /// [Container::Empty].
+    #[inline]
     pub fn unwrap_or_alloc(self) -> C {
         self.into_opt().unwrap_or_default()
     }
