@@ -39,10 +39,13 @@
 //! equality ought to stay reasonably cheap. We choose to just set an arbitrary limit (the gas) on
 //! the number of variable links that the type equality may follow. Doing so, we don't have to
 //! worry about loops anymore.
-use super::{Environment, cache::lazy::Thunk};
+use super::Environment;
 
 use crate::{
-    eval::value::{Container, EnumVariantData, NickelValue, ValueContentRef},
+    eval::{
+        cache::lazy::Thunk,
+        value::{Container, EnumVariantData, NickelValue, ValueContentRef},
+    },
     identifier::LocIdent,
     term::{IndexMap, Op1Data, StrChunk, Term, UnaryOp, record::Field},
     typ::{
@@ -329,7 +332,9 @@ fn contract_eq_bounded(
                 _ => false,
             }
         }
-        (ValueContentRef::Thunk(id1), ValueContentRef::Thunk(id2)) if Thunk::ptr_eq(id1, id2) => {
+        (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2))
+            if Thunk::ptr_eq(thunk1, thunk2) =>
+        {
             true
         }
         (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2)) => {

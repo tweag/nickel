@@ -532,14 +532,15 @@ impl Saturate for NickelValue {
         cache: &mut C,
         fields: I,
     ) -> Result<NickelValue, EvalError> {
-        if let Some(idx) = self.as_thunk() {
-            Ok(cache
+        let pos_idx = self.pos_idx();
+
+        match self.try_into_thunk() {
+            Ok(idx) => Ok(cache
                 .saturate(idx.clone(), fields.map(LocIdent::ident))
-                .with_pos_idx(self.pos_idx()))
-        } else {
+                .with_pos_idx(pos_idx)),
             // It's possible for constants, or arbitrary deserialized data since the introduction
             // of the compact value representation (`NickelValue`), to not be closurized.
-            Ok(self)
+            Err(this) => Ok(this),
         }
     }
 }
@@ -581,7 +582,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     // with an empty environment.
     let idx = cache.add(body.into(), BindingType::Revertible(combined_deps));
 
-    Ok(NickelValue::thunk_posless(idx))
+    Ok(idx.into())
 }
 
 /// Same as [Closurizable], but also revert the element if the term is a closure.
@@ -591,9 +592,9 @@ pub(super) trait RevertClosurize {
 }
 
 impl RevertClosurize for NickelValue {
-    fn revert_closurize<C: Cache>(self, cache: &mut C) -> NickelValue {
-        if let Some(idx) = self.as_thunk() {
-            NickelValue::thunk(cache.revert(idx), self.pos_idx())
+    fn revert_closurize<C: Cache>(self, _cache: &mut C) -> NickelValue {
+        if let Some(thunk) = self.as_thunk() {
+            thunk.revert().into()
         } else {
             // It's possible for constants, or arbitrary deserialized data since the introduction
             // of the compact value representation (`NickelValue`), to not be closurized.
