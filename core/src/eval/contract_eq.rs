@@ -193,6 +193,26 @@ fn contract_eq_bounded(
         (ValueContentRef::Type(type_data1), ValueContentRef::Type(type_data2)) => {
             type_eq_bounded(state, &type_data1.typ, env1, &type_data2.typ, env2)
         }
+        (ValueContentRef::Term(Term::Var(id)), _) => {
+            state.use_gas()
+                && env1
+                    .get(&id.ident())
+                    .map(|idx| {
+                        let closure = idx.borrow();
+                        contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
+                    })
+                    .unwrap_or(false)
+        }
+        (_, ValueContentRef::Term(Term::Var(id))) => {
+            state.use_gas()
+                && env2
+                    .get(&id.ident())
+                    .map(|idx| {
+                        let closure = idx.borrow();
+                        contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
+                    })
+                    .unwrap_or(false)
+        }
         (ValueContentRef::Term(term1), ValueContentRef::Term(term2)) => {
             match (&term1, &term2) {
                 // We only compare string chunks when they represent a plain string (they don't contain any
@@ -239,26 +259,6 @@ fn contract_eq_bounded(
                         (None, None) => id1 == id2,
                         _ => false,
                     }
-                }
-                (Term::Var(id), _) => {
-                    state.use_gas()
-                        && env1
-                            .get(&id.ident())
-                            .map(|idx| {
-                                let closure = idx.borrow();
-                                contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
-                            })
-                            .unwrap_or(false)
-                }
-                (_, Term::Var(id)) => {
-                    state.use_gas()
-                        && env2
-                            .get(&id.ident())
-                            .map(|idx| {
-                                let closure = idx.borrow();
-                                contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
-                            })
-                            .unwrap_or(false)
                 }
                 (Term::RecRecord(data1), Term::RecRecord(data2)) =>
                 // We only compare records whose field structure is statically known (i.e. without dynamic
