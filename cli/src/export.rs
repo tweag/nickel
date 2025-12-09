@@ -1,8 +1,8 @@
-use std::{fs, io::Write, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use nickel_lang_core::{
     error::{Error, IOError},
-    eval::cache::lazy::CBNCache,
+    eval::{cache::lazy::CBNCache, value::NickelValue},
     program::Program,
     serialize::{self, ExportFormat},
 };
@@ -34,30 +34,37 @@ impl ExportCommand {
     fn export(&self, program: &mut Program<CBNCache>) -> Result<(), Error> {
         let rt = program.eval_full_for_export()?;
 
-        // We only add a trailing newline for JSON exports. Both YAML and TOML
-        // exporters already append a trailing newline by default.
-        let trailing_newline = self.format == ExportFormat::Json;
-
         serialize::validate(self.format, &rt)
             .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
 
         if let Some(file) = &self.output {
-            let mut file = fs::File::create(file).map_err(IOError::from)?;
-            serialize::to_writer(&mut file, self.format, &rt)
-                .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
-
-            if trailing_newline {
-                writeln!(file).map_err(IOError::from)?;
-            }
+            let out = std::io::BufWriter::new(fs::File::create(file).map_err(IOError::from)?);
+            self.export_to(program, &rt, out)?;
         } else {
-            serialize::to_writer(std::io::stdout(), self.format, &rt)
-                .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
-
-            if trailing_newline {
-                println!();
-            }
+            let out = std::io::BufWriter::new(std::io::stdout().lock());
+            self.export_to(program, &rt, out)?;
         }
 
+        Ok(())
+    }
+
+    fn export_to(
+        &self,
+        program: &mut Program<CBNCache>,
+        value: &NickelValue,
+        mut out: impl std::io::Write,
+    ) -> Result<(), Error> {
+        // We only add a trailing newline for JSON exports. Both YAML and TOML
+        // exporters already append a trailing newline by default.
+        let trailing_newline = self.format == ExportFormat::Json;
+
+        serialize::to_writer(&mut out, self.format, value)
+            .map_err(|error| error.with_pos_table(program.pos_table().clone()))?;
+
+        if trailing_newline {
+            writeln!(out).map_err(IOError::from)?;
+        }
+        out.flush().map_err(IOError::from)?;
         Ok(())
     }
 }
