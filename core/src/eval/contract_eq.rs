@@ -196,6 +196,55 @@ fn contract_eq_bounded(
         (ValueContentRef::Type(type_data1), ValueContentRef::Type(type_data2)) => {
             type_eq_bounded(state, &type_data1.typ, env1, &type_data2.typ, env2)
         }
+        // All variables must be bound at this stage. This is checked by the typechecker when
+        // walking annotations. However, we may assume that `env` is a local environment (that it
+        // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
+        // if they have the same identifier: whatever global environment the term will be put in,
+        // free variables are not redefined locally and will be bound to the same value in any case.
+        (ValueContentRef::Term(Term::Var(id1)), ValueContentRef::Term(Term::Var(id2))) => {
+            match (env1.get(&id1.ident()), env2.get(&id2.ident())) {
+                (Some(idx1), Some(idx2)) => {
+                    // We consider unwrapping two thunks as only one operation using one
+                    // unit of gas. This is arbitrary but unimportant.
+                    if !state.use_gas() {
+                        return false;
+                    }
+
+                    let closure1 = idx1.borrow();
+                    let closure2 = idx2.borrow();
+
+                    contract_eq_bounded(
+                        state,
+                        &closure1.value,
+                        &closure1.env,
+                        &closure2.value,
+                        &closure2.env,
+                    )
+                }
+                (None, None) => id1 == id2,
+                _ => false,
+            }
+        }
+        (ValueContentRef::Term(Term::Var(id)), _) => {
+            state.use_gas()
+                && env1
+                    .get(&id.ident())
+                    .map(|idx| {
+                        let closure = idx.borrow();
+                        contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
+                    })
+                    .unwrap_or(false)
+        }
+        (_, ValueContentRef::Term(Term::Var(id))) => {
+            state.use_gas()
+                && env2
+                    .get(&id.ident())
+                    .map(|idx| {
+                        let closure = idx.borrow();
+                        contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
+                    })
+                    .unwrap_or(false)
+        }
         (ValueContentRef::Term(term1), ValueContentRef::Term(term2)) => {
             match (&term1, &term2) {
                 // We only compare string chunks when they represent a plain string (they don't contain any
@@ -213,55 +262,6 @@ fn contract_eq_bounded(
                 (Term::App(data1), Term::App(data2)) => {
                     contract_eq_bounded(state, &data1.head, env1, &data2.head, env2)
                         && contract_eq_bounded(state, &data1.arg, env1, &data2.arg, env2)
-                }
-                // All variables must be bound at this stage. This is checked by the typechecker when
-                // walking annotations. However, we may assume that `env` is a local environment (that it
-                // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
-                // if they have the same identifier: whatever global environment the term will be put in,
-                // free variables are not redefined locally and will be bound to the same value in any case.
-                (Term::Var(id1), Term::Var(id2)) => {
-                    match (env1.get(&id1.ident()), env2.get(&id2.ident())) {
-                        (Some(idx1), Some(idx2)) => {
-                            // We consider unwrapping two thunks as only one operation using one
-                            // unit of gas. This is arbitrary but unimportant.
-                            if !state.use_gas() {
-                                return false;
-                            }
-
-                            let closure1 = idx1.borrow();
-                            let closure2 = idx2.borrow();
-
-                            contract_eq_bounded(
-                                state,
-                                &closure1.value,
-                                &closure1.env,
-                                &closure2.value,
-                                &closure2.env,
-                            )
-                        }
-                        (None, None) => id1 == id2,
-                        _ => false,
-                    }
-                }
-                (Term::Var(id), _) => {
-                    state.use_gas()
-                        && env1
-                            .get(&id.ident())
-                            .map(|idx| {
-                                let closure = idx.borrow();
-                                contract_eq_bounded(state, &closure.value, &closure.env, t2, env2)
-                            })
-                            .unwrap_or(false)
-                }
-                (_, Term::Var(id)) => {
-                    state.use_gas()
-                        && env2
-                            .get(&id.ident())
-                            .map(|idx| {
-                                let closure = idx.borrow();
-                                contract_eq_bounded(state, t1, env1, &closure.value, &closure.env)
-                            })
-                            .unwrap_or(false)
                 }
                 (Term::RecRecord(data1), Term::RecRecord(data2)) =>
                 // We only compare records whose field structure is statically known (i.e. without dynamic
