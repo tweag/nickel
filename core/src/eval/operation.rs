@@ -259,9 +259,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }))
                 }
             }
-            UnaryOp::Typeof => {
-                Ok(NickelValue::enum_variant(type_tag(&value), None, pos_op_inh).into())
-            }
+            UnaryOp::Typeof => Ok(NickelValue::enum_tag(type_tag(&value), pos_op_inh).into()),
             UnaryOp::Cast => {
                 Ok(NickelValue::enum_variant(type_tag(&value), Some(value), pos_op_inh).into())
             }
@@ -1131,8 +1129,6 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                         Ok(seq_terms(terms, pos_op, cont).into())
                     }
-                    // For an enum variant, `force x` is simply equivalent to `deep_seq x x`, as
-                    // there's no lazy pending contract to apply.
                     ValueContentRef::EnumVariant(data) => {
                         let EnumVariantData { tag, arg } = data.clone();
 
