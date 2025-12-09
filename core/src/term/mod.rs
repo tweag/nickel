@@ -17,7 +17,7 @@ use crate::{
     identifier::{Ident, LocIdent},
     impl_display_from_pretty,
     label::{Label, MergeLabel},
-    position::{PosIdx, PosTable, RawSpan},
+    position::{PosIdx, PosTable},
     pretty::PrettyPrintCap,
     traverse::*,
     typ::{Type, UnboundTypeVariableError},
@@ -461,12 +461,12 @@ pub struct LabeledType {
 impl LabeledType {
     /// Create a labeled type from a type and a span, which are the minimal information required to
     /// instantiate the type and the underlying label. All other values are set to the defaults.
-    pub fn new(typ: Type, span: RawSpan) -> Self {
+    pub fn new(typ: Type, pos_idx: PosIdx) -> Self {
         Self {
             typ: typ.clone(),
             label: Label {
                 typ: Rc::new(typ),
-                span: Some(span),
+                span: pos_idx,
                 ..Default::default()
             },
         }

@@ -12,7 +12,7 @@ use crate::{
         ValueContentRefMut,
     },
     label,
-    position::{PosTable, RawSpan},
+    position::{PosIdx, PosTable},
     term::{self, pattern::compile::Compile as _},
     typ as mline_type,
 };
@@ -933,7 +933,7 @@ impl<'ast> FromAst<Type<'ast>> for term::LabeledType {
             typ: typ.clone(),
             label: label::Label {
                 typ: std::rc::Rc::new(typ),
-                span: Some(span),
+                span: pos_table.push(span.into()),
                 ..Default::default()
             },
         }
@@ -1361,7 +1361,7 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
         if let ValueContentRefMut::Term(term::Term::Op2(data)) = result.content_make_mut()
             && let term::BinaryOp::Merge(label) = &mut data.op
         {
-            label.span = ast.pos.into_opt();
+            label.span = pos_table.push(ast.pos);
         }
 
         result
@@ -1387,6 +1387,7 @@ impl<'ast> FromAst<Record<'ast>>
         use indexmap::map::Entry;
 
         fn insert_static_field(
+            pos_table: &mut PosTable,
             static_fields: &mut IndexMap<LocIdent, term::record::Field>,
             id: LocIdent,
             field: term::record::Field,
@@ -1397,7 +1398,7 @@ impl<'ast> FromAst<Record<'ast>>
                     let prev = occpd.insert(term::record::Field::default());
 
                     // unwrap(): the field's identifier must have a position during parsing.
-                    occpd.insert(merge_fields(id.pos.unwrap(), prev, field));
+                    occpd.insert(merge_fields(pos_table.push(id.pos), prev, field));
                 }
                 Entry::Vacant(vac) => {
                     vac.insert(field);
@@ -1410,7 +1411,9 @@ impl<'ast> FromAst<Record<'ast>>
 
         for def in record.field_defs {
             match def.to_mainline(pos_table) {
-                (FieldName::Ident(id), field) => insert_static_field(&mut static_fields, id, field),
+                (FieldName::Ident(id), field) => {
+                    insert_static_field(pos_table, &mut static_fields, id, field)
+                }
                 (FieldName::Expr(expr), field) => {
                     let pos = expr.pos(pos_table);
                     // Dynamic fields (whose name is defined by an interpolated string) have a different
@@ -1430,6 +1433,7 @@ impl<'ast> FromAst<Record<'ast>>
 
                     if let Some(static_access) = static_access {
                         insert_static_field(
+                            pos_table,
                             &mut static_fields,
                             LocIdent::new_with_pos(static_access, pos),
                             field,
@@ -1465,7 +1469,7 @@ impl<'ast> FromAst<Record<'ast>>
 ///
 /// This is a helper for the conversion of a record definition to mainline.
 fn merge_fields(
-    id_span: RawSpan,
+    id_span: PosIdx,
     field1: term::record::Field,
     field2: term::record::Field,
 ) -> term::record::Field {
@@ -1475,10 +1479,9 @@ fn merge_fields(
     };
     use term::{BinaryOp, make as mk_term, record::RecordData};
 
-    // FIXME: We're duplicating a lot of the logic in
-    // [`eval::merge::merge_fields`] but not quite enough to actually factor
-    // it out
-    fn merge_values(id_span: RawSpan, v1: NickelValue, v2: NickelValue) -> NickelValue {
+    // FIXME: We're duplicating a lot of the logic in [`eval::merge::merge_fields`] but not quite
+    // enough to actually factor it out
+    fn merge_values(id_span: PosIdx, v1: NickelValue, v2: NickelValue) -> NickelValue {
         match (v1.content(), v2.content()) {
             (ValueContent::Record(lens1), ValueContent::Record(lens2)) => {
                 let rd1 = lens1.take().unwrap_or_alloc();
@@ -1505,7 +1508,7 @@ fn merge_fields(
             }
             (lens1, lens2) => mk_term::op2(
                 BinaryOp::Merge(label::MergeLabel {
-                    span: Some(id_span),
+                    span: id_span,
                     kind: ast::MergeKind::PiecewiseDef,
                 }),
                 lens1.restore(),

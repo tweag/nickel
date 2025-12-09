@@ -1177,8 +1177,8 @@ impl IntoDiagnostics for EvalErrorData {
                     MergeKind::PiecewiseDef => "when combining the definitions of this field",
                 };
 
-                if let Some(merge_label_span) = &merge_label.span {
-                    labels.push(secondary(merge_label_span).with_message(span_label));
+                if let Some(merge_label_span) = pos_table.get(merge_label.span).into_opt() {
+                    labels.push(secondary(&merge_label_span).with_message(span_label));
                 }
 
                 fn push_merge_note(notes: &mut Vec<String>, typ: &str) {
@@ -1611,7 +1611,7 @@ mod blame_error {
     ) -> Vec<Label<FileId>> {
         let mut labels = vec![path_label];
 
-        if let Some(ref arg_pos) = blame_label.arg_pos.into_opt() {
+        if let Some(ref arg_pos) = pos_table.get(blame_label.arg_pos).into_opt() {
             // In some cases, if the blame error is located in an argument or return value
             // of an higher order functions for example, the original argument position can
             // point to the builtin implementation contract like `func` or `record`, so
@@ -1628,7 +1628,7 @@ mod blame_error {
         if let Some(mut evaluated_arg) = evaluated_arg {
             match (
                 pos_table.get(evaluated_arg.pos_idx()),
-                blame_label.arg_pos.as_opt_ref(),
+                pos_table.get(blame_label.arg_pos).as_opt_ref(),
             ) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
@@ -1726,15 +1726,18 @@ mod blame_error {
     /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
-    pub fn path_span(
+    pub fn path_span<'a, I>(
         pos_table: &mut PosTable,
         files: &mut Files,
-        path: &[ty_path::Elem],
+        path: I,
         ty: &Type,
-    ) -> PathSpan {
+    ) -> PathSpan
+    where
+        I: Iterator<Item = &'a ty_path::Elem> + Clone,
+    {
         use crate::parser::{ErrorTolerantParserCompat, grammar::FixedTypeParser, lexer::Lexer};
 
-        ty_path::span(path.iter().peekable(), ty)
+        ty_path::span(path.clone().peekable(), ty)
             .or_else(|| {
                 let type_pprinted = format!("{ty}");
                 let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
@@ -1743,7 +1746,7 @@ mod blame_error {
                     .parse_tolerant_compat(pos_table, file_id, Lexer::new(&type_pprinted))
                     .unwrap();
 
-                ty_path::span(path.iter().peekable(), &ty_with_pos)
+                ty_path::span(path.peekable(), &ty_with_pos)
             })
             .expect(
                 "path_span: we pretty-printed and parsed again the type of a label, \
@@ -1762,7 +1765,7 @@ mod blame_error {
             span,
             last,
             last_arrow_elem,
-        } = path_span(pos_table, files, &l.path, &l.typ);
+        } = path_span(pos_table, files, l.path.iter(), &l.typ);
 
         let msg = match (last, last_arrow_elem) {
             // The type path doesn't contain any arrow, and the failing subcontract is the
@@ -2576,10 +2579,20 @@ impl<'ast> IntoDiagnostics for &'_ TypecheckErrorKind<'ast> {
 
                 let PathSpan {
                     span: expd_span, ..
-                } = blame_error::path_span(&mut pos_table, files, type_path, &expected_mline);
+                } = blame_error::path_span(
+                    &mut pos_table,
+                    files,
+                    type_path.iter(),
+                    &expected_mline,
+                );
                 let PathSpan {
                     span: actual_span, ..
-                } = blame_error::path_span(&mut pos_table, files, type_path, &inferred_mline);
+                } = blame_error::path_span(
+                    &mut pos_table,
+                    files,
+                    type_path.iter(),
+                    &inferred_mline,
+                );
 
                 let mut labels = vec![
                     secondary(&expd_span).with_message("this part of the expected type"),

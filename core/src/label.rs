@@ -2,7 +2,7 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
-use std::{collections::HashMap, rc::Rc};
+use std::{iter, rc::Rc};
 
 use crate::{
     ast::MergeKind,
@@ -11,13 +11,15 @@ use crate::{
         value::NickelValue,
     },
     identifier::LocIdent,
-    position::{RawSpan, TermPos},
+    position::PosIdx,
     term::{
         SealingKey,
         record::{Field, RecordData},
     },
     typ::{Type, TypeF},
 };
+
+use smallvec::SmallVec;
 
 pub mod ty_path {
     //! Type paths.
@@ -60,6 +62,8 @@ pub mod ty_path {
         typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
     };
 
+    use nickel_lang_vector::Vector;
+
     /// An element of a path type.
     #[derive(Debug, Clone, PartialEq, Eq, Copy)]
     pub enum Elem {
@@ -70,7 +74,11 @@ pub mod ty_path {
         Dict,
     }
 
-    pub type Path = Vec<Elem>;
+    /// We use an inline vector up to `n` elements, as paths as assumed to be reasonably small, and
+    /// labels (thus paths) are cloned a lot. For small but non-empty paths, which we expect to be
+    /// common, this avoids having a to copy a separate heap-allocation. We do pay a price that an
+    /// empty path is bigger than an empty `Vec`.
+    pub type Path = Vector<Elem, 4>;
 
     /// Determine if the path has no `Domain` arrow component in it.
     pub fn has_no_dom(p: &Path) -> bool {
@@ -281,16 +289,16 @@ pub struct Label {
     ///
     /// The last diagnostic of the stack is usually the current working diagnostic (the one mutated
     /// by corresponding primops), and the latest/most precise when a blame error is raised.
-    pub diagnostics: Vec<ContractDiagnostic>,
+    pub diagnostics: SmallVec<[ContractDiagnostic; 1]>,
 
     /// The position of the original contract.
-    pub span: Option<RawSpan>,
+    pub span: PosIdx,
 
     /// The index corresponding to the value being checked. Set at run-time by the interpreter.
     pub arg_idx: Option<CacheIndex>,
 
     /// The original position of the value being checked. Set at run-time by the interpreter.
-    pub arg_pos: TermPos,
+    pub arg_pos: PosIdx,
 
     /// The polarity, used for higher-order contracts, that specifies if the current contract is
     /// on the environment (ex, the argument of a function) or on the term.
@@ -301,7 +309,11 @@ pub struct Label {
 
     /// An environment mapping type variables to [`TypeVarData`]. Used by polymorphic contracts to
     /// decide which actions to take when encountering a `forall`.
-    pub type_environment: HashMap<SealingKey, TypeVarData>,
+    ///
+    /// We use an associative map here instead of a proper hashmap because we never expect more
+    /// than a few type variables in an expression. The locality of an array makes it competitive,
+    /// and the empty case (which is overwhelmingly common) is smaller.
+    pub type_environment: Vec<(SealingKey, TypeVarData)>,
 
     /// The name of the record field to report in blame errors. This is set
     /// while first transforming a record as part of the pending contract generation.
@@ -413,7 +425,10 @@ impl Label {
     pub fn dummy() -> Label {
         Label {
             typ: Rc::new(Type::from(TypeF::Number)),
-            diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
+            diagnostics: iter::once(
+                ContractDiagnostic::new().with_message(String::from("testing")),
+            )
+            .collect(),
             polarity: Polarity::Positive,
             ..Default::default()
         }
@@ -518,7 +533,7 @@ impl Default for Label {
     fn default() -> Label {
         Label {
             typ: Rc::new(Type::from(TypeF::Dyn)),
-            span: None,
+            span: PosIdx::NONE,
             polarity: Polarity::Positive,
             diagnostics: Default::default(),
             arg_idx: Default::default(),
@@ -545,7 +560,7 @@ impl Default for Label {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MergeLabel {
     /// The span of the original merge (which might then decompose into many others).
-    pub span: Option<RawSpan>,
+    pub span: PosIdx,
     pub kind: MergeKind,
 }
 

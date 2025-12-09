@@ -1893,11 +1893,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     })?;
 
                 // We update the label and convert it back to a term form that can be cheaply cloned
-                label.arg_pos = self.context.pos_table.get(
-                    self.context
-                        .cache
-                        .get_then(idx.clone(), |c| c.value.pos_idx()),
-                );
+                label.arg_pos = self
+                    .context
+                    .cache
+                    .get_then(idx.clone(), |c| c.value.pos_idx());
                 label.arg_idx = Some(idx.clone());
                 let new_label = NickelValue::label(label, pos2);
 
@@ -3093,9 +3092,18 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Label", 2, value2);
                 };
 
-                Ok(NickelValue::from(label.type_environment.get(key).unwrap())
-                    .with_pos_idx(pos_op_inh)
-                    .into())
+                Ok(NickelValue::from(
+                    label
+                        .type_environment
+                        .iter()
+                        // We rev to find the latest binding, if there ever were several type
+                        // variables bound with the same name
+                        .rev()
+                        .find_map(|(k, data)| (k == key).then_some(data))
+                        .unwrap(),
+                )
+                .with_pos_idx(pos_op_inh)
+                .into())
             }
             BinaryOp::RecordSplitPair => {
                 let Some(cont1) = value1.as_record() else {
@@ -3657,7 +3665,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
 
                 label
                     .type_environment
-                    .insert(*key, TypeVarData { polarity });
+                    .push((*key, TypeVarData { polarity }));
 
                 Ok(arg3.with_pos_idx(arg_pos3.to_inherited()).into())
             }
