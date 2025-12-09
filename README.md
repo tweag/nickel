@@ -45,6 +45,12 @@ There should be a standard, clear path for common things. There should be no
 arbitrary restrictions that limit what you can do the one day you need to go
 beyond.
 
+## Who we are
+
+Nickel is designed, developed, and maintained by [Tweag](https://www.tweag.io),
+a part of  [Modus Create](https://www.moduscreate.com/). We develop it in the
+open, and gratefully accept community feedback and contributions.
+
 ## Use cases
 
 Nickel is a good fit in any situation where you need to generate a complex
