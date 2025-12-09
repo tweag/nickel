@@ -1152,10 +1152,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 env,
                             })
                         } else {
-                            Ok(Closure {
-                                value: NickelValue::enum_tag(tag, pos_op_inh),
-                                env,
-                            })
+                            Ok(Closure { value, env })
                         }
                     }
                     _ => Ok(Closure { value, env }),
