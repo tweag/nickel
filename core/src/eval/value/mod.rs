@@ -27,6 +27,7 @@ use std::{
     convert::Infallible,
     fmt,
     mem::{ManuallyDrop, size_of, transmute},
+    num::NonZero,
     ptr::{self, NonNull},
 };
 
@@ -49,7 +50,25 @@ pub struct TagMismatchError;
 /// details.
 #[derive(Eq)]
 pub struct NickelValue {
-    data: usize,
+    // According to [String provenance
+    // rules](https://doc.rust-lang.org/std/ptr/index.html#using-strict-provenance), as `data` can
+    // contain a pointer and thus require provenance information, it must either be itself a
+    // pointer, or we have to keep another pointer around that carries this information (which we
+    // surely don't want to do). On the other hand, according to the official documentation of
+    // `std::ptr`:
+    //
+    // > In general, it is always sound for an integer to pretend to be a pointer “for fun” as long
+    // > as you don’t use operations on it which require it to be valid (non-zero-sized offset,
+    // > read, write, etc).
+    //
+    // Thus, since `data` can represent either a integer (inline value) that can masquerade as a
+    // pointer or an actual pointer with provenance requirements, we always represent it as a
+    // pointer.
+    //
+    // Additionally, since pointers to value blocks are always initialized (and in particular
+    // non-null), and the tag for non-pointers values is non-zero, `data` is never zero. We use
+    // `NonNull`, which saves some null checks and enables layout optimizations.
+    data: NonNull<u8>,
     // On 64-bits pointer-width archs, we can fit everything into one word. Otherwise, we stay safe
     // and use a separate field for the position index of inline values.
     #[cfg(not(target_pointer_width = "64"))]
@@ -137,7 +156,7 @@ impl std::fmt::Pointer for NickelValue {
         if self.is_inline() {
             write!(f, "<inline>")
         } else {
-            std::fmt::Pointer::fmt(&(self.data as *const ()), f)
+            std::fmt::Pointer::fmt(&self.data, f)
         }
     }
 }
@@ -152,7 +171,15 @@ impl NickelValue {
     /// returns `self` unchanged otherwise.
     fn with_inline_pos_idx(mut self, idx: PosIdx) -> Self {
         if self.tag() == ValueTag::Inline {
-            self.data = (self.data & !Self::INLINE_POS_IDX_MASK) | (usize::from(idx) << 32);
+            unsafe {
+                self.data = self.data.map_addr(|data| {
+                    // Safety: the lower part of the data an inline value is non-zero, and is
+                    // preserved by the LHS of the bitwise or.
+                    NonZero::new_unchecked(
+                        (usize::from(data) & !Self::INLINE_POS_IDX_MASK) | (usize::from(idx) << 32),
+                    )
+                });
+            }
         }
         self
     }
@@ -160,15 +187,20 @@ impl NickelValue {
     /// Returns the position index of `self` if it is an inline value, or `None` otherwise.
     #[inline]
     fn inline_pos_idx(&self) -> Option<PosIdx> {
-        (self.tag() == ValueTag::Inline)
-            .then(|| PosIdx::from_usize_truncate((self.data & Self::INLINE_POS_IDX_MASK) >> 32))
+        (self.tag() == ValueTag::Inline).then(|| {
+            PosIdx::from_usize_truncate((self.as_usize() & Self::INLINE_POS_IDX_MASK) >> 32)
+        })
     }
 
     /// Creates a new inline value with an associated position index.
     #[inline]
     pub const fn inline(inline: InlineValue, idx: PosIdx) -> Self {
         NickelValue {
-            data: inline as usize | (idx.to_usize() << 32),
+            // Safety: inline values are tagged, the `Inline` tag is non-zero and smaller than 4,
+            // so the result of the bitwise or operation is non-zero.
+            data: NonNull::without_provenance(unsafe {
+                NonZero::new_unchecked(inline as usize | (idx.to_usize() << 32))
+            }),
         }
     }
 
@@ -185,7 +217,9 @@ impl NickelValue {
         //
         // Since `!Self::inline_pos_idx_MASK` is `FF_FF_FF_FF`, `AND`ing `self.data` with this mask
         // ensures that the result fit in a u32, so we can use `as` fearlessly.
-        unsafe { transmute::<u32, InlineValue>((self.data & !Self::INLINE_POS_IDX_MASK) as u32) }
+        unsafe {
+            transmute::<u32, InlineValue>((self.as_usize() & !Self::INLINE_POS_IDX_MASK) as u32)
+        }
     }
 
     /// Makes a raw byte-to-byte copy of another Nickel value, entirely ignoring reference counting
@@ -212,10 +246,8 @@ impl NickelValue {
     ///   - prevent the original block or value of `ptr` from being dropped (e.g. using
     ///     [std::mem::ManuallyDrop])
     #[inline]
-    unsafe fn block(ptr: NonNull<u8>) -> Self {
-        NickelValue {
-            data: ptr.as_ptr() as usize,
-        }
+    unsafe fn block(data: NonNull<u8>) -> Self {
+        NickelValue { data }
     }
 }
 
@@ -245,7 +277,9 @@ impl NickelValue {
     #[inline]
     pub const fn inline(inline: InlineValue, pos_idx: PosIdx) -> Self {
         NickelValue {
-            data: inline as usize,
+            // Safety: inline values are guaranteed to be tagged with a 1 bit, and thus are never
+            // zero.
+            data: unsafe { NonNull::without_provenance(NonZero::new_unchecked(inline as usize)) },
             pos_idx,
         }
     }
@@ -260,7 +294,7 @@ impl NickelValue {
         // Safety: `InlineValue` is `#[repr(usize)]`, ensuring that it has the same layout as
         // `self.0`. The precondition of the function ensures that `self.0` is a valid value for
         // [InlineValue].
-        unsafe { transmute::<usize, InlineValue>(self.data) }
+        unsafe { transmute::<usize, InlineValue>(self.as_usize()) }
     }
 
     /// Makes a raw byte-to-byte copy of another Nickel value, entirely ignoring reference counting
@@ -291,9 +325,9 @@ impl NickelValue {
     ///   - use a `ptr` coming from a call to [ValueBlockRc::into_raw]
     ///   - derive `ptr` from a value or a value block that won't be dropped
     #[inline]
-    unsafe fn block(ptr: NonNull<u8>) -> Self {
+    unsafe fn block(data: NonNull<u8>) -> Self {
         NickelValue {
-            data: ptr.as_ptr() as usize,
+            data,
             pos_idx: PosIdx::NONE,
         }
     }
@@ -303,10 +337,29 @@ impl NickelValue {
     /// The mask for the tag bits in a value pointer.
     const VALUE_TAG_MASK: usize = 0b11;
 
+    /// Returns the inner data as a bare `usize`. Note that this can mess the provenance
+    /// of `self.data`: this only for use with inline values.
+    #[inline]
+    fn as_usize(&self) -> usize {
+        self.data.addr().into()
+    }
+
+    /// Assuming this value is a value block, and returns a reference to the corresponding header.
+    ///
+    /// # Safety
+    ///
+    /// `self` must be a value block, that is `self.tag()` must be `Pointer`.
+    #[inline]
+    unsafe fn header(&self) -> &ValueBlockHeader {
+        // Safety: function pre-conditions, plus the lifetime of the returned header is tied to
+        // `&self`, guaranteeing that the block won't be de-allocated.
+        unsafe { ValueBlockRc::header_from_raw(self.data) }
+    }
+
     /// Returns the tag bits of this value.
     #[inline]
     pub fn tag(&self) -> ValueTag {
-        (self.data & Self::VALUE_TAG_MASK).try_into().unwrap()
+        (self.as_usize() & Self::VALUE_TAG_MASK).try_into().unwrap()
     }
 
     /// Creates a new inline value without an associated position index. Same as
@@ -629,9 +682,7 @@ impl NickelValue {
     #[inline]
     pub unsafe fn as_thunk_data_unchecked(&self) -> &ThunkData {
         // Safety: function safety pre-condition
-        unsafe {
-            ValueBlockRc::decode_from_raw_unchecked(NonNull::new_unchecked(self.data as *mut u8))
-        }
+        unsafe { ValueBlockRc::decode_from_raw_unchecked(self.data) }
     }
 
     /// Returns `&self` seen as a thunk if `self` is a value block with tag thunk, or
@@ -772,9 +823,7 @@ impl NickelValue {
             //
             // Since the value block won't be dropped until self is dropped, and since the output
             // lifetime of `&T` is tied to `&self`, `&T` won't outlive the value block.
-            unsafe {
-                ValueBlockRc::try_decode_from_raw(NonNull::new_unchecked(self.data as *mut u8))
-            }
+            unsafe { ValueBlockRc::try_decode_from_raw(self.data) }
         } else {
             None
         }
@@ -793,48 +842,47 @@ impl NickelValue {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
             // non-null pointer to a value block.
             ValueTag::Pointer => unsafe {
-                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
-                let tag = ValueBlockRc::tag_from_raw(as_ptr);
+                let tag = ValueBlockRc::tag_from_raw(self.data);
 
                 // Safety: additionally, the lifetime of the return `ValueContentRef<'_>` is tied to
                 // `&self`, so the former won't outlive the value block.
                 match tag {
                     DataTag::Number => {
-                        ValueContentRef::Number(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        ValueContentRef::Number(ValueBlockRc::decode_from_raw_unchecked(self.data))
                     }
                     DataTag::Array => ValueContentRef::Array(Container::Alloc(
-                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
                     )),
                     DataTag::Record => ValueContentRef::Record(Container::Alloc(
-                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
                     )),
                     DataTag::String => {
-                        ValueContentRef::String(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        ValueContentRef::String(ValueBlockRc::decode_from_raw_unchecked(self.data))
                     }
                     DataTag::Thunk => {
                         // Safety: we checked that value's tag is `DataTag::Thunk`
                         ValueContentRef::Thunk(self.as_thunk_unchecked())
                     }
                     DataTag::Term => {
-                        ValueContentRef::Term(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        ValueContentRef::Term(ValueBlockRc::decode_from_raw_unchecked(self.data))
                     }
                     DataTag::Label => {
-                        ValueContentRef::Label(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        ValueContentRef::Label(ValueBlockRc::decode_from_raw_unchecked(self.data))
                     }
                     DataTag::EnumVariant => ValueContentRef::EnumVariant(
-                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
                     ),
-                    DataTag::ForeignId => {
-                        ValueContentRef::ForeignId(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
-                    }
-                    DataTag::SealingKey => {
-                        ValueContentRef::SealingKey(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
-                    }
+                    DataTag::ForeignId => ValueContentRef::ForeignId(
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
+                    ),
+                    DataTag::SealingKey => ValueContentRef::SealingKey(
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
+                    ),
                     DataTag::CustomContract => ValueContentRef::CustomContract(
-                        ValueBlockRc::decode_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_from_raw_unchecked(self.data),
                     ),
                     DataTag::Type => {
-                        ValueContentRef::Type(ValueBlockRc::decode_from_raw_unchecked(as_ptr))
+                        ValueContentRef::Type(ValueBlockRc::decode_from_raw_unchecked(self.data))
                     }
                 }
             },
@@ -866,8 +914,7 @@ impl NickelValue {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
             // non-null pointer to a value block.
             ValueTag::Pointer => unsafe {
-                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
-                let header = ValueBlockRc::header_from_raw(as_ptr);
+                let header = self.header();
 
                 // [^thunk-copy-on-mut-ref]: We must be careful with thunks. Not only we don't need
                 // to copy-on-write, since we're handing back a `Thunk` which is just a wrapper
@@ -884,40 +931,40 @@ impl NickelValue {
                 //  `  self`, so there can't be other active mutable borrows to the block
                 Some(match header.tag() {
                     DataTag::Number => ValueContentRefMut::Number(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::Array => ValueContentRefMut::Array(Container::Alloc(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     )),
                     DataTag::Record => ValueContentRefMut::Record(Container::Alloc(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     )),
                     DataTag::String => ValueContentRefMut::String(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     // Safety: `Thunk` is a struct with a single field that is a `NickelValue` and has the
                     // `transparent` representation, guaranteeing the same layout as `NickelValue`.
                     DataTag::Thunk => ValueContentRefMut::Thunk(self.as_thunk_mut_unchecked()),
                     DataTag::Term => ValueContentRefMut::Term(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::Label => ValueContentRefMut::Label(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::EnumVariant => ValueContentRefMut::EnumVariant(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::ForeignId => ValueContentRefMut::ForeignId(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::SealingKey => ValueContentRefMut::SealingKey(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::CustomContract => ValueContentRefMut::CustomContract(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                     DataTag::Type => ValueContentRefMut::Type(
-                        ValueBlockRc::decode_mut_from_raw_unchecked(as_ptr),
+                        ValueBlockRc::decode_mut_from_raw_unchecked(self.data),
                     ),
                 })
             },
@@ -940,23 +987,20 @@ impl NickelValue {
 
         match self.tag() {
             ValueTag::Pointer => {
-                // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
-                // pointer to a block.
-                let as_ptr = unsafe { NonNull::new_unchecked(self.data as *mut u8) };
-                // Safety: ditto
-                let header = unsafe { ValueBlockRc::header_from_raw(as_ptr) };
-
                 // Safety: in each branch, the tag of the value block matches the type parameter of
                 // the lens built with `content_lens()`.
                 unsafe {
-                    match header.tag() {
+                    // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
+                    // pointer to a block.
+                    match self.header().tag() {
                         DataTag::Number => ValueContent::Number(ValueLens::content_lens(self)),
                         DataTag::Array => ValueContent::Array(ValueLens::container_lens(self)),
                         DataTag::Record => ValueContent::Record(ValueLens::container_lens(self)),
                         DataTag::String => ValueContent::String(ValueLens::content_lens(self)),
                         DataTag::Thunk => ValueContent::Thunk(ValueLens::thunk_lens(self)),
                         DataTag::Term => {
-                            let term: &TermData = ValueBlockRc::decode_from_raw_unchecked(as_ptr);
+                            let term: &TermData =
+                                ValueBlockRc::decode_from_raw_unchecked(self.data);
 
                             ValueContent::Term(match term {
                                 Term::StrChunks(_) => {
@@ -1047,25 +1091,22 @@ impl NickelValue {
         // Safety: `value.tag()` must be `Pointer` and `value.data_tag()` must be equal to `T::Tag`
         unsafe fn make_mut<T: ValueBlockData + Clone>(value: &mut NickelValue) -> &mut T {
             unsafe {
-                // Safety: if `value.tag()` is `Pointer`, `value.data` is a non-null pointer (precondition)
-                let mut as_ptr = NonNull::new_unchecked(value.data as *mut u8);
-                let header = ValueBlockRc::header_from_raw(as_ptr);
-
-                if header.ref_count() != 1 {
+                if value.header().ref_count() != 1 {
                     increment!("value::content_make_mut::strong clone");
-                    let unique = ValueBlockRc::encode(
+                    // Safety: header doesn't become dangling because the ref count is not one, so
+                    // the assignment of `*value` doesn't invalidate it.
+                    *value = ValueBlockRc::encode(
                         // Safety: `value.data_tag()` is `T::Tag` (precondition)
-                        ValueBlockRc::decode_from_raw_unchecked::<T>(as_ptr).clone(),
-                        header.pos_idx,
-                    );
-                    as_ptr = unique.0;
-                    *value = unique.into();
+                        ValueBlockRc::decode_from_raw_unchecked::<T>(value.data).clone(),
+                        value.header().pos_idx,
+                    )
+                    .into();
                 } else {
                     increment!("value::content_make_mut::no clone");
                 }
 
                 // Safety: we've made sure `value` is now unique
-                ValueBlockRc::decode_mut_from_raw_unchecked::<T>(as_ptr)
+                ValueBlockRc::decode_mut_from_raw_unchecked::<T>(value.data)
             }
         }
 
@@ -1073,8 +1114,7 @@ impl NickelValue {
             // Safety: if `self.tag()` is `Pointer`, then the content of self must be a valid
             // non-null pointer to a value block.
             ValueTag::Pointer => unsafe {
-                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
-                let tag = ValueBlockRc::tag_from_raw(as_ptr);
+                let tag = ValueBlockRc::tag_from_raw(self.data);
 
                 match tag {
                     DataTag::Number => ValueContentRefMut::Number(make_mut(self)),
@@ -1112,10 +1152,7 @@ impl NickelValue {
         (self.tag() == ValueTag::Pointer).then(|| {
             // Safety: if `self.tag()` is `Pointer`, then `self.data` must be valid pointer to a
             // value block.
-            unsafe {
-                let as_ptr = NonNull::new_unchecked(self.data as *mut u8);
-                ValueBlockRc::tag_from_raw(as_ptr)
-            }
+            unsafe { ValueBlockRc::tag_from_raw(self.data) }
         })
     }
 
@@ -1329,9 +1366,7 @@ impl NickelValue {
         match self.tag() {
             // Safety: if `self.tag()` is `Pointer`, then `self.data` must be a valid non-null
             // pointer to a value block
-            ValueTag::Pointer => unsafe {
-                ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8)).pos_idx
-            },
+            ValueTag::Pointer => unsafe { self.header().pos_idx },
             // unwrap(): if the tag is `Inline`, then `inline_pos_idx()` must be `Some`
             ValueTag::Inline => self.inline_pos_idx().unwrap(),
         }
@@ -1384,13 +1419,11 @@ impl Clone for NickelValue {
     fn clone(&self) -> Self {
         if self.tag() == ValueTag::Pointer {
             unsafe {
-                // Safety: if `self.tag()` is `Pointer`, `self.0` must be a valid non-null pointer
-                // to a value block.
+                // Safety: `self.tag()` is `Pointer`.
                 //
                 // We need to prevent this value block from being dropped as this would decrement
                 // the refcount, nullifying our increment.
-                ValueBlockRc::header_from_raw(NonNull::new_unchecked(self.data as *mut u8))
-                    .inc_ref_count();
+                self.header().inc_ref_count();
             }
         }
 
@@ -1408,7 +1441,7 @@ impl Drop for NickelValue {
             unsafe {
                 // Safety: if `self.tag()` is `Pointer`, `self.0` must be valid non-null pointer to
                 // a value block
-                let _ = ValueBlockRc::from_raw_unchecked(self.data as *mut u8);
+                let _ = ValueBlockRc::from_raw(self.data);
             }
         }
     }
@@ -1445,7 +1478,7 @@ impl TryFrom<NickelValue> for ValueBlockRc {
                 let value = ManuallyDrop::new(value);
                 // Safety: if `self.tag()` is `Pointer`, `self.0` must be a valid non-null pointer
                 // to a value block
-                ValueBlockRc::from_raw_unchecked(value.data as *mut u8)
+                ValueBlockRc::from_raw(value.data)
             })
         } else {
             Err(value)
@@ -1843,15 +1876,14 @@ impl ValueBlockData for TypeData {
 pub struct ValueBlockRc(NonNull<u8>);
 
 impl ValueBlockRc {
-    /// Creates a new [Self] from a raw pointer without checking for null.
+    /// Creates a new [Self] from a raw pointer.
     ///
     /// # Safety
     ///
     /// `ptr` must be a valid, non-null pointer to a value block.
     #[inline]
-    pub unsafe fn from_raw_unchecked(ptr: *mut u8) -> Self {
-        // Safety: function pre-condition
-        unsafe { ValueBlockRc(NonNull::new_unchecked(ptr)) }
+    pub unsafe fn from_raw(ptr: NonNull<u8>) -> Self {
+        ValueBlockRc(ptr)
     }
 
     /// Returns the header of this value block.
