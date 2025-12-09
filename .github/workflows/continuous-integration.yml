@@ -16,15 +16,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: [self-hosted, Linux, X64]
+          - os: ubuntu-24.04
             name: linux
-          - os: [self-hosted, macOS, ARM64]
+          - os: macos-15
             name: macos
             continue-on-error: true
 
     name: build-and-test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    # The `== true` makes it work wether continue-on-error has been defined or not.
+    # The `== true` makes it work whether continue-on-error has been defined or not.
     continue-on-error: ${{ matrix.continue-on-error == true }}
 
     steps:
@@ -34,27 +34,26 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install cachix
-      id: install_cachix
-      run: |
-        set -euo pipefail
-        cachix_path="$(nix build --print-out-paths --inputs-from . nixpkgs#cachix.bin)"
-        echo "cachixBin=${cachix_path}/bin/cachix" >> "$GITHUB_OUTPUT"
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+          accept-flake-config = true
 
     - name: Setup Cachix
       uses: cachix/cachix-action@v16
       with:
-        cachixBin: ${{ steps.install_cachix.outputs.cachixBin }}
         name: tweag-nickel
         authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
-        skipAddingSubstituter: true
 
     - name: Run all checks
       run: |
-        nix flake check --accept-flake-config --print-build-logs
+        nix flake check --print-build-logs
 
     - name: Typecheck benchmarks
-      run: nix shell --inputs-from . .#nickel-lang nixpkgs#findutils --command find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
+      run: find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
 
   build-and-test-windows:
     name: "build-and-test (windows-latest)"
