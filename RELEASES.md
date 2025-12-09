@@ -1,3 +1,63 @@
+Version 1.15 (2025-12-10)
+=========================
+
+Nickel 1.15 finally benefits from a lot of performance work that's been going on
+behind the scenes for the last few releases. Our microbenchmarks show performance
+improvements since 1.14 on every single benchmark, ranging from 10% to 65%.
+On a large real-world configuration that was supplied to us by a user, run-time
+decreased by 40% and peak memory usage decreased by 50%.
+Most of these performance improvements were work of @yannham, most notably in
+https://github.com/tweag/nickel/pull/2302.
+
+This release is also the first to provide a public API for Nickel as a library.
+Some intrepid users were already embedding the `nickel_lang_core` crate, and
+this remains the only way to access certain internal features. However, we hope
+that most users will find it easier to use the `nickel_lang` crate, which is
+simpler, better documented, and changes less often. We also now have a public C
+API: the header file is available as a release artifact, as are pre-built
+libraries for various architectures. Finally, a go-lang API is available at
+https://github.com/nickel-lang/go-nickel.
+
+LSP
+---
+
+* NLS completions can now see through the built-in any_of, all_of and Sequence contracts by @jneem in https://github.com/tweag/nickel/pull/2391
+* NLS can now report errors in YAML files by @jneem in https://github.com/tweag/nickel/pull/2383
+* Better error messages for incomplete records, thanks to typechecking changes by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2439
+
+Tooling
+-------
+
+* New public rust and C apis by @jneem in https://github.com/tweag/nickel/pull/2378 and https://github.com/tweag/nickel/pull/2360
+* Add locations to json by @jneem in https://github.com/tweag/nickel/pull/2382 and https://github.com/tweag/nickel/pull/2388
+* Add note to error when arrays are merged piecewise in a record by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2420
+* Better error message for undefined record field by @jneem in https://github.com/tweag/nickel/pull/2427
+* Allow the input format of stdin to be specified in the CLI by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2435
+* Adds a convert command by @jneem in https://github.com/tweag/nickel/pull/2437
+
+Performance
+-----------
+
+* [RFC007] Migrate to the new compact value representation by @yannham in https://github.com/tweag/nickel/pull/2302
+* [RFC007] Reduce `Term` size, chapter: functions by @yannham in https://github.com/tweag/nickel/pull/2409
+* [RFC007] Reduce `Term` size, chapter: `let` by @yannham in https://github.com/tweag/nickel/pull/2410
+* [RFC007] Reduce `Term` size, chapter: recursive records (revival) by @yannham in https://github.com/tweag/nickel/pull/2413
+* [RFC007] Reduce `Term` size, chapter: `Op1`, `Op2` & `OpN`  by @yannham in https://github.com/tweag/nickel/pull/2414
+* [RFC007] Reduce `Term` size, chapter: `Sealed` by @yannham in https://github.com/tweag/nickel/pull/2415
+* [RFC007] Reduce `Term` size, chapter: `Annotated` by @yannham in https://github.com/tweag/nickel/pull/2416
+* Fix large error types in `core` by @yannham in https://github.com/tweag/nickel/pull/2417
+* [RFC007] Reduce `Term` size, chapter: errors by @yannham in https://github.com/tweag/nickel/pull/2421
+* perf: reduce memory consumption of the stack by @yannham in https://github.com/tweag/nickel/pull/2442
+* perf: optimize term and metadata representation by @yannham in https://github.com/tweag/nickel/pull/2451
+* Pattern compilation improvements by @jneem in https://github.com/tweag/nickel/pull/2443 and https://github.com/tweag/nickel/pull/2453
+
+Stdlib
+------
+
+* Add base64 encoding and decoding functions to stdlib by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2444
+* Add a YamlDocuments export format by @jneem in https://github.com/tweag/nickel/pull/2445
+
+
 Version 1.14 (2025-10-02)
 =========================
 
