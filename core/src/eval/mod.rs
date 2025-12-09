@@ -891,7 +891,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::Closurize(value)) => {
-                    let result = match value.content_ref() {
+                    match value.content_ref() {
                         ValueContentRef::Array(Container::Empty)
                         | ValueContentRef::Record(Container::Empty) => value.clone(),
                         ValueContentRef::Array(Container::Alloc(array_data)) => {
@@ -935,10 +935,9 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             debug_assert!(false, "trying to closurize a non-container value");
                             value.clone()
                         }
-                    };
-
+                    }
                     // We can use an empty environment for a freshly closurized value
-                    result.into()
+                    .into()
                 }
                 ValueContentRef::Term(Term::RecRecord(data)) => {
                     // We start by closurizing the fields, which might not be if the record is

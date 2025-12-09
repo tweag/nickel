@@ -249,8 +249,8 @@ impl Closurize for RecordData {
     }
 }
 
-/// Decides is an expression is worth being wrapped in a thunk. This is almos the same as asking if
-/// the expression is a weak head normal form, in which case it's already evaluated and doesn't
+/// Decides is an expression is worth being wrapped in a thunk. This is almost the same as asking
+/// if the expression is a weak head normal form, in which case it's already evaluated and doesn't
 /// need to be cached, but with some subtle differences.
 pub fn should_share(value: &NickelValue) -> bool {
     match value.content_ref() {

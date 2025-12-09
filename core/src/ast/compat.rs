@@ -1235,11 +1235,17 @@ impl<'ast> FromAst<Ast<'ast>> for NickelValue {
             Node::Var(loc_ident) => {
                 NickelValue::term(Term::Var(*loc_ident), pos_table.push(ast.pos))
             }
-            Node::EnumVariant { tag, arg } => NickelValue::enum_variant(
+            Node::EnumVariant { tag, arg: None } => {
+                NickelValue::enum_tag(*tag, pos_table.push(ast.pos))
+            }
+            Node::EnumVariant {
+                tag,
+                arg: Some(arg),
+            } => closurize(NickelValue::enum_variant(
                 *tag,
-                arg.map(|arg| arg.to_mainline(pos_table)),
+                Some(arg.to_mainline(pos_table)),
                 pos_table.push(ast.pos),
-            ),
+            )),
             Node::Record(record) => {
                 let (data, dyn_fields) = (*record).to_mainline(pos_table);
                 NickelValue::term(
@@ -1552,8 +1558,8 @@ fn merge_fields(
 }
 
 /// Wrap a value in a [crate::term::Term::Closurize] operator with the same position index.
+#[inline]
 fn closurize(value: NickelValue) -> NickelValue {
     let pos_idx = value.pos_idx();
-
     NickelValue::term(term::Term::Closurize(value), pos_idx)
 }

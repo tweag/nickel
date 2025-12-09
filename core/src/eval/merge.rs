@@ -160,7 +160,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             BinaryOp::Merge(mode.into()),
                             arg1.clone().closurize(&mut self.context.cache, env1),
                             arg2.clone().closurize(&mut self.context.cache, env2),
-                        ));
+                        ))
+                        .closurize(&mut self.context.cache, Environment::new());
 
                         Ok(NickelValue::enum_variant(*tag1, Some(arg), pos_op_inh))
                     }
@@ -415,7 +416,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         result.map(|value| {
             if wrap_in_ok {
                 let pos = value.pos_idx();
-                NickelValue::enum_variant("Ok", Some(value), pos).into()
+                NickelValue::enum_variant(
+                    "Ok",
+                    Some(value.closurize(&mut self.context.cache, Environment::new())),
+                    pos,
+                )
+                .into()
             } else {
                 value.into()
             }
