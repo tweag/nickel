@@ -80,7 +80,7 @@ pub trait Repl {
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<NickelValue, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
-    fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
+    fn typecheck(&mut self, exp: &str) -> Result<Type<'_>, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
@@ -238,7 +238,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         Ok(value)
     }
 
-    fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
+    fn typecheck(&mut self, exp: &str) -> Result<Type<'_>, Error> {
         let cache = &mut self.vm_ctxt.import_resolver;
 
         let file_id = cache.replace_string(SourcePath::ReplTypecheck, String::from(exp));

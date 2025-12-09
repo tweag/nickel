@@ -873,7 +873,7 @@ impl AnalysisRegistry {
     }
 
     /// Returns the analysis for a file.
-    pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis> {
+    pub fn get(&self, file_id: FileId) -> Option<&PackedAnalysis<'_>> {
         if file_id == self.borrow_stdlib_analysis().file_id() {
             Some(self.borrow_stdlib_analysis())
         } else {
@@ -951,11 +951,11 @@ impl AnalysisRegistry {
         }
     }
 
-    pub fn remove(&mut self, file_id: FileId) -> Option<PackedAnalysis> {
+    pub fn remove(&mut self, file_id: FileId) -> Option<PackedAnalysis<'_>> {
         self.with_analyses_mut(|analyses| analyses.remove(&file_id))
     }
 
-    pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
+    pub fn get_def(&self, ident: &LocIdent) -> Option<&Def<'_>> {
         let file = ident.pos.as_opt_ref()?.src_id;
         self.get(file)?
             .analysis()
@@ -1043,7 +1043,7 @@ impl AnalysisRegistry {
     }
 
     /// Same as [Self::get], but produce a proper LSP error if the file is not in the registry.
-    pub fn get_or_err(&self, file: FileId) -> Result<&PackedAnalysis, ResponseError> {
+    pub fn get_or_err(&self, file: FileId) -> Result<&PackedAnalysis<'_>, ResponseError> {
         self.get(file).ok_or_else(|| ResponseError {
             data: None,
             message: "File has not yet been parsed or cached.".to_owned(),
@@ -1075,7 +1075,7 @@ impl AnalysisRegistry {
     pub fn ident_data_at(
         &self,
         pos: RawPos,
-    ) -> Result<Option<crate::position::IdentData>, ResponseError> {
+    ) -> Result<Option<crate::position::IdentData<'_>>, ResponseError> {
         Ok(self
             .get_or_err(pos.src_id)?
             .analysis()
@@ -1083,7 +1083,7 @@ impl AnalysisRegistry {
             .ident_data_at(pos.index))
     }
 
-    pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis {
+    pub(crate) fn stdlib_analysis(&self) -> &PackedAnalysis<'_> {
         self.borrow_stdlib_analysis()
     }
 

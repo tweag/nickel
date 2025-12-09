@@ -156,7 +156,7 @@ impl<E> StringChunk<E> {
             })
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
@@ -166,6 +166,7 @@ pub enum MergePriority {
     ///
     /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
+    #[default]
     Neutral,
 
     /// A numeral priority.
@@ -218,12 +219,6 @@ impl Ord for MergePriority {
             (MergePriority::Neutral, MergePriority::Numeral(n)) => Number::ZERO.cmp(n),
             (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Number::ZERO),
         }
-    }
-}
-
-impl Default for MergePriority {
-    fn default() -> Self {
-        Self::Neutral
     }
 }
 

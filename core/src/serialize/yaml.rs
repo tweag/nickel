@@ -549,7 +549,7 @@ pub fn load_json<'ast>(
             start: saphyr_parser::Marker::new(ev.start, 0, 0),
             end: saphyr_parser::Marker::new(ev.end, 0, 0),
         };
-        fn scalar(s: &str) -> saphyr_parser::Event {
+        fn scalar(s: &str) -> saphyr_parser::Event<'_> {
             saphyr_parser::Event::Scalar(s.into(), ScalarStyle::Plain, 0, None)
         }
 

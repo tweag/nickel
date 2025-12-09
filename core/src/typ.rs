@@ -447,7 +447,7 @@ impl EnumRows {
         })
     }
 
-    pub fn iter(&self) -> EnumRowsIterator<Type, EnumRows> {
+    pub fn iter(&self) -> EnumRowsIterator<'_, Type, EnumRows> {
         EnumRowsIterator {
             erows: Some(self),
             ty: std::marker::PhantomData,
@@ -707,7 +707,7 @@ impl RecordRows {
         self.find_path(&[id])
     }
 
-    pub fn iter(&self) -> RecordRowsIterator<Type, RecordRows> {
+    pub fn iter(&self) -> RecordRowsIterator<'_, Type, RecordRows> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,

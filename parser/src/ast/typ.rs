@@ -255,7 +255,7 @@ impl<'ast> RecordRows<'ast> {
         self.find_path(&[id])
     }
 
-    pub fn iter(&self) -> RecordRowsIter<Type<'ast>, RecordRows<'ast>> {
+    pub fn iter(&self) -> RecordRowsIter<'_, Type<'ast>, RecordRows<'ast>> {
         RecordRowsIter {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -273,7 +273,7 @@ impl<'ast> EnumRows<'ast> {
         })
     }
 
-    pub fn iter(&self) -> EnumRowsIter<Type<'ast>, EnumRows<'ast>> {
+    pub fn iter(&self) -> EnumRowsIter<'_, Type<'ast>, EnumRows<'ast>> {
         EnumRowsIter {
             erows: Some(self),
             ty: std::marker::PhantomData,

@@ -631,7 +631,7 @@ impl<'ast> UnifEnumRows<'ast> {
 
 impl<'ast> UnifEnumRows<'ast> {
     /// Returns an iterator producing immutable references to individual rows.
-    pub(super) fn iter(&self) -> EnumRowsIterator<UnifType<'ast>, UnifEnumRows<'ast>> {
+    pub(super) fn iter(&self) -> EnumRowsIterator<'_, UnifType<'ast>, UnifEnumRows<'ast>> {
         EnumRowsIterator {
             erows: Some(self),
             ty: std::marker::PhantomData,
@@ -652,7 +652,7 @@ impl<'ast> UnifRecordRows<'ast> {
 }
 
 impl<'ast> UnifRecordRows<'ast> {
-    pub(super) fn iter(&self) -> RecordRowsIterator<UnifType<'ast>, UnifRecordRows<'ast>> {
+    pub(super) fn iter(&self) -> RecordRowsIterator<'_, UnifType<'ast>, UnifRecordRows<'ast>> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
