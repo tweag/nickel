@@ -5,8 +5,7 @@ fn main() {
         Path::new(&concat!(env!("CARGO_MANIFEST_DIR"), "/src/grammar.rs"));
 
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("missing OUT_DIR variable"));
-    let out_parser_dir = out_dir.join("parser");
-    std::fs::create_dir_all(&out_parser_dir).expect("failed to create $OUT_DIR/parser");
+    std::fs::create_dir_all(&out_dir).expect("failed to create $OUT_DIR");
     // Running lalrpop can be expensive. When building from git, we generate the parser
     // in this build script, but when publishing the crate we add the generated
     // parser to the published crate at `src/grammar.rs`.
@@ -15,7 +14,7 @@ fn main() {
     // version, we try to copy `src/grammar.rs` into the same location in $OUT_DIR
     // that lalrpop would generate the grammar. If that copy fails because `src/grammar.rs`
     // doesn't exist, we're probably building from git and so we generate the grammar.
-    match std::fs::copy(checked_in_grammar_path, out_parser_dir.join("grammar.rs")) {
+    match std::fs::copy(checked_in_grammar_path, out_dir.join("grammar.rs")) {
         Ok(_) => {
             eprintln!("Found a pre-generated LALRPOP grammar, copying it over");
         }
