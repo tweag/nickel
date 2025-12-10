@@ -247,7 +247,7 @@ workspace_version_array=()
 readarray -td'.' workspace_version_array <<< "$workspace_version"
 
 # We checked at the beginning of the script that $1 was either "major", "minor"
-# or "patch", so we don't need to handle the cath-all case.
+# or "patch", so we don't need to handle the catch-all case.
 if [[ $1 == "major" ]]; then
     new_workspace_version=$((workspace_version_array[0] + 1)).0.0
 elif [[ $1 == "minor" ]]; then
@@ -392,7 +392,8 @@ installables=(cli lsp/nls)
 # The path of all the crates that need to be published. They are published in
 # the same order they appear here, so if there's any dependency between them,
 # please list them in a topological order.
-crates_to_publish=(vector git flock core package "${installables[@]}")
+#crates_to_publish=(vector git flock core package "${installables[@]}")
+crates_to_publish=(git parser core package "${installables[@]}")
 
 # The crates below aren't published on crates.io because they are only
 # dev-dependencies of the crates to publish (used for tests and benchmarks).
@@ -436,10 +437,11 @@ done
 # using a clean output directory and some globbing
 report_progress "Pre-generating the Nickel parser from the LALRPOP grammar"
 temp_target_dir=$(mktemp -d)
-cargo check -p nickel-lang-core --target-dir="$temp_target_dir"
-cp "$temp_target_dir"/debug/build/nickel-lang-core-*/out/parser/grammar.rs core/src/parser/grammar.rs
+cargo check -p nickel-lang-parser --target-dir="$temp_target_dir"
+cp "$temp_target_dir"/debug/build/nickel-lang-parser-*/out/grammar.rs parser/src/grammar.rs
 rm -rf "$temp_target_dir" || true
-git add core/src/parser/grammar.rs
+git add parser/src/grammar.rs
+cleanup_actions+=("git reset -- parser/src/grammar.rs")
 
 # Cargo requires to commit changes, but the last changes are temporary
 # work-arounds for the crates.io release that aren't supposed to stay. we'll
