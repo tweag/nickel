@@ -1948,13 +1948,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     ValueContentRef::Term(Term::Fun(..)) => {
                         // Warn on naked function contracts, but not if they came from the
                         // stdlib. Some stdlib functions return naked function contracts.
-                        if let Some(pos) = self.context.pos_table.get(pos1).as_opt_ref() {
-                            if !self.context.import_resolver.files().is_stdlib(pos.src_id) {
-                                self.warn(Warning::NakedFunctionContract {
-                                    func_pos: self.context.pos_table.get(pos1),
-                                    app_pos: self.context.pos_table.get(pos_op),
-                                });
-                            }
+                        if let Some(pos) = self.context.pos_table.get(pos1).as_opt_ref()
+                            && !self.context.import_resolver.files().is_stdlib(pos.src_id)
+                        {
+                            self.warn(Warning::NakedFunctionContract {
+                                func_pos: self.context.pos_table.get(pos1),
+                                app_pos: self.context.pos_table.get(pos_op),
+                            });
                         }
 
                         if let BinaryOp::ContractApply = op {

@@ -113,15 +113,15 @@ pub(crate) fn parse_incomplete_path(
     // token is a '.', ignore that one too.
     // The idea is that on the inputs `expr.a.path.foo` or `expr.a.path.`, we want to complete
     // based on the fields in `expr.a.path`
-    if let Some(last) = tokens.last() {
-        if last.2 == subrange.end.to_usize() {
-            tokens.pop();
-        }
+    if let Some(last) = tokens.last()
+        && last.2 == subrange.end.to_usize()
+    {
+        tokens.pop();
     }
-    if let Some(last) = tokens.last() {
-        if let Token::Normal(NormalToken::Dot) = last.1 {
-            tokens.pop();
-        }
+    if let Some(last) = tokens.last()
+        && let Token::Normal(NormalToken::Dot) = last.1
+    {
+        tokens.pop();
     }
 
     let Some(start) = path_start(&tokens) else {

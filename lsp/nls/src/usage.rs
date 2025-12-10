@@ -450,10 +450,10 @@ impl<'ast> UsageLookup<'ast> {
                     Node::Var(id) => {
                         let id = LocIdent::from(*id);
 
-                        if let Some(def) = env.get(&id.ident) {
-                            if let Some(span) = def.loc_ident().pos.into_opt() {
-                                self.usage_table.entry(span).or_default().push(id);
-                            }
+                        if let Some(def) = env.get(&id.ident)
+                            && let Some(span) = def.loc_ident().pos.into_opt()
+                        {
+                            self.usage_table.entry(span).or_default().push(id);
                         }
 
                         TraverseControl::Continue

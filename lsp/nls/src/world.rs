@@ -233,13 +233,12 @@ impl World {
             _,
             pos,
         )) = err.borrow_error()
+            && let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt())
         {
-            if let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt()) {
-                self.failed_imports
-                    .entry(filename.to_owned())
-                    .or_default()
-                    .insert(pos.src_id);
-            }
+            self.failed_imports
+                .entry(filename.to_owned())
+                .or_default()
+                .insert(pos.src_id);
         }
     }
 

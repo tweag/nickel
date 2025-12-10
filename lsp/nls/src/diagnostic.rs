@@ -182,39 +182,38 @@ impl DiagnosticCompat for SerializableDiagnostic {
                 .find(|lab| lab.style == LabelStyle::Primary)
                 .or_else(|| within_file_labels.clone().next());
 
-            if let Some(label) = maybe_label {
-                if let Some(range) =
+            if let Some(label) = maybe_label
+                && let Some(range) =
                     lsp_types::Range::from_codespan(&label.file_id, &label.range, files)
-                {
-                    let message = if diagnostic.notes.is_empty() {
-                        diagnostic.message.clone()
-                    } else {
-                        format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
-                    };
-                    diagnostics.push(SerializableDiagnostic {
-                        range: OrdRange(range),
-                        severity,
-                        code: code.clone(),
-                        message,
-                        related_information: Some(
-                            cross_file_labels
-                                .filter_map(|label| {
-                                    let location = lsp_types::Location::from_codespan(
-                                        &label.file_id,
-                                        &label.range,
-                                        files,
-                                    )?;
-                                    Some(OrdDiagnosticRelatedInformation(
-                                        DiagnosticRelatedInformation {
-                                            location,
-                                            message: label.message.clone(),
-                                        },
-                                    ))
-                                })
-                                .collect(),
-                        ),
-                    });
-                }
+            {
+                let message = if diagnostic.notes.is_empty() {
+                    diagnostic.message.clone()
+                } else {
+                    format!("{}\n{}", diagnostic.message, diagnostic.notes.join("\n"))
+                };
+                diagnostics.push(SerializableDiagnostic {
+                    range: OrdRange(range),
+                    severity,
+                    code: code.clone(),
+                    message,
+                    related_information: Some(
+                        cross_file_labels
+                            .filter_map(|label| {
+                                let location = lsp_types::Location::from_codespan(
+                                    &label.file_id,
+                                    &label.range,
+                                    files,
+                                )?;
+                                Some(OrdDiagnosticRelatedInformation(
+                                    DiagnosticRelatedInformation {
+                                        location,
+                                        message: label.message.clone(),
+                                    },
+                                ))
+                            })
+                            .collect(),
+                    ),
+                });
             }
         }
 

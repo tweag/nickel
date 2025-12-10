@@ -24,10 +24,10 @@ pub struct FileLock {
 
 impl Drop for FileLock {
     fn drop(&mut self) {
-        if let Some(f) = self.f.take() {
-            if let Err(e) = unlock(&f) {
-                eprintln!("failed to release lock {}: {e:?}", self.path.display());
-            }
+        if let Some(f) = self.f.take()
+            && let Err(e) = unlock(&f)
+        {
+            eprintln!("failed to release lock {}: {e:?}", self.path.display());
         }
     }
 }

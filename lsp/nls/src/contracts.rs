@@ -106,10 +106,10 @@ impl LocalConfigs {
         while let Some(parent) = cur.parent() {
             if let Some(nls_conf) = self.configs.get(parent) {
                 for config in &nls_conf.globs {
-                    if let Ok(relative) = path.strip_prefix(parent) {
-                        if config.glob.matches_path(relative) {
-                            return Some(config.clone());
-                        }
+                    if let Ok(relative) = path.strip_prefix(parent)
+                        && config.glob.matches_path(relative)
+                    {
+                        return Some(config.clone());
                     }
                 }
             }
@@ -211,39 +211,39 @@ impl ContractConfigsWatcher {
     }
 
     pub fn watch_configs_for(&mut self, uri: &Url) {
-        if let Some(debouncer) = self.debouncer.as_mut() {
-            if let Ok(path) = uri_to_path(uri) {
-                let mut cur = path.as_path();
-                while let Some(parent) = cur.parent() {
-                    if !self.already_watched.insert(parent.to_owned()) {
-                        // If we're already watching a directory then we're
-                        // also already watching the parent directories,
-                        // so just stop early.
-                        break;
-                    }
-
-                    log::debug!("adding watcher for {}", parent.display());
-                    if let Err(e) = debouncer.watch(parent, RecursiveMode::NonRecursive) {
-                        log::warn!("failed to watch {}: {e}", path.display());
-                        // If we fail to watch a directory path, don't keep trying to watch the parents.
-                        break;
-                    }
-
-                    cur = parent;
-
-                    // Load it now if it exists, because the notifier only loads it if
-                    // it changed.
-                    let path = parent.join(CONFIG_FILE_NAME);
-
-                    // We watch the config path in addition to the parent directory. Some
-                    // operations trigger notifications on the path itself, while others
-                    // trigger notifications on the parent directory.
-                    log::debug!("adding watcher for {}", path.display());
-                    if let Err(e) = debouncer.watch(&path, RecursiveMode::NonRecursive) {
-                        log::warn!("failed to watch {}: {e}", path.display());
-                    }
-                    Self::load_config(&self.configs, &path);
+        if let Some(debouncer) = self.debouncer.as_mut()
+            && let Ok(path) = uri_to_path(uri)
+        {
+            let mut cur = path.as_path();
+            while let Some(parent) = cur.parent() {
+                if !self.already_watched.insert(parent.to_owned()) {
+                    // If we're already watching a directory then we're
+                    // also already watching the parent directories,
+                    // so just stop early.
+                    break;
                 }
+
+                log::debug!("adding watcher for {}", parent.display());
+                if let Err(e) = debouncer.watch(parent, RecursiveMode::NonRecursive) {
+                    log::warn!("failed to watch {}: {e}", path.display());
+                    // If we fail to watch a directory path, don't keep trying to watch the parents.
+                    break;
+                }
+
+                cur = parent;
+
+                // Load it now if it exists, because the notifier only loads it if
+                // it changed.
+                let path = parent.join(CONFIG_FILE_NAME);
+
+                // We watch the config path in addition to the parent directory. Some
+                // operations trigger notifications on the path itself, while others
+                // trigger notifications on the parent directory.
+                log::debug!("adding watcher for {}", path.display());
+                if let Err(e) = debouncer.watch(&path, RecursiveMode::NonRecursive) {
+                    log::warn!("failed to watch {}: {e}", path.display());
+                }
+                Self::load_config(&self.configs, &path);
             }
         }
     }

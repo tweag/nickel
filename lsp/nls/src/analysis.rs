@@ -283,10 +283,10 @@ impl<'ast> ParentChainIter<'ast, '_> {
             // If a parent and a grandparent were both merges, we can skip the parent
             // because the grandparent will have a superset of its fields. This prevents
             // quadratic behavior on long chains of merges.
-            if let Some(gp) = self.peek_gp() {
-                if is_merge_term(gp) {
-                    continue;
-                }
+            if let Some(gp) = self.peek_gp()
+                && is_merge_term(gp)
+            {
+                continue;
             }
 
             if is_fieldy_term(p) {

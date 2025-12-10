@@ -579,10 +579,10 @@ where
     pub fn check_invariants(&self) {
         assert!(self.is_packed());
         assert_eq!(self.length, self.root.as_ref().map_or(0, |root| root.len()));
-        if let Some(root) = self.root.as_ref() {
-            if let Node::Interior { children } = root.as_ref() {
-                assert!(children.len() > 1);
-            }
+        if let Some(root) = self.root.as_ref()
+            && let Node::Interior { children } = root.as_ref()
+        {
+            assert!(children.len() > 1);
         }
         assert_eq!(self.height, height_for_length::<N>(self.len()));
     }
@@ -666,11 +666,11 @@ where
             self.length -= 1;
 
             // If we've shrunk the root down to a single child, reduce the tree height by 1.
-            if let Node::Interior { children } = root_mut {
-                if children.len() == 1 {
-                    self.root = Some(children.pop_back());
-                    self.height -= 1;
-                }
+            if let Node::Interior { children } = root_mut
+                && children.len() == 1
+            {
+                self.root = Some(children.pop_back());
+                self.height -= 1;
             }
             Some(ret)
         }
