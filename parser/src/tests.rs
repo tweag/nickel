@@ -28,11 +28,11 @@ fn parse_without_pos<'ast>(alloc: &'ast AstAlloc, s: &str) -> Ast<'ast> {
     parse(alloc, s).unwrap().without_pos(alloc)
 }
 
-fn lex(s: &str) -> Result<Vec<(usize, Token, usize)>, LexicalError> {
+fn lex(s: &str) -> Result<Vec<(usize, Token<'_>, usize)>, LexicalError> {
     Lexer::new(s).collect()
 }
 
-fn lex_without_pos(s: &str) -> Result<Vec<Token>, LexicalError> {
+fn lex_without_pos(s: &str) -> Result<Vec<Token<'_>>, LexicalError> {
     lex(s).map(|v| v.into_iter().map(|(_, tok, _)| tok).collect())
 }
 

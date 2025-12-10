@@ -592,7 +592,7 @@ impl<'ast> Def<'ast> {
         }
     }
 
-    pub fn completion_item(&self) -> CompletionItem {
+    pub fn completion_item(&self) -> CompletionItem<'_> {
         CompletionItem {
             label: ident_quoted(self.ident()),
             metadata: self.metadata(),

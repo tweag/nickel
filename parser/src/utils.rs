@@ -578,29 +578,25 @@ pub fn strip_indent(chunks: &mut [StringChunk<Ast<'_>>]) {
                 }
 
                 // Strip the first line, if it is only whitespace characters
-                if index == 0 {
-                    if let Some(first_index) = buffer.find('\n') {
-                        if first_index == 0
-                            || buffer.as_bytes()[..first_index]
-                                .iter()
-                                .all(|c| *c == b' ' || *c == b'\t')
-                        {
-                            buffer = String::from(&buffer[(first_index + 1)..]);
-                        }
-                    }
+                if index == 0
+                    && let Some(first_index) = buffer.find('\n')
+                    && (first_index == 0
+                        || buffer.as_bytes()[..first_index]
+                            .iter()
+                            .all(|c| *c == b' ' || *c == b'\t'))
+                {
+                    buffer = String::from(&buffer[(first_index + 1)..]);
                 }
 
                 // Strip the last line, if it is only whitespace characters.
-                if index == chunks_len - 1 {
-                    if let Some(last_index) = buffer.rfind('\n') {
-                        if last_index == buffer.len() - 1
-                            || buffer.as_bytes()[(last_index + 1)..]
-                                .iter()
-                                .all(|c| *c == b' ' || *c == b'\t')
-                        {
-                            buffer.truncate(last_index);
-                        }
-                    }
+                if index == chunks_len - 1
+                    && let Some(last_index) = buffer.rfind('\n')
+                    && (last_index == buffer.len() - 1
+                        || buffer.as_bytes()[(last_index + 1)..]
+                            .iter()
+                            .all(|c| *c == b' ' || *c == b'\t'))
+                {
+                    buffer.truncate(last_index);
                 }
 
                 *s = buffer;

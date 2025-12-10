@@ -742,7 +742,7 @@ impl World {
         diags
     }
 
-    pub fn file_analysis(&self, file: FileId) -> Result<&PackedAnalysis, ResponseError> {
+    pub fn file_analysis(&self, file: FileId) -> Result<&PackedAnalysis<'_>, ResponseError> {
         self.analysis_reg.get_or_err(file)
     }
 
@@ -760,7 +760,7 @@ impl World {
     pub fn ident_data_at(
         &self,
         pos: RawPos,
-    ) -> Result<Option<crate::position::IdentData>, ResponseError> {
+    ) -> Result<Option<crate::position::IdentData<'_>>, ResponseError> {
         self.analysis_reg.ident_data_at(pos)
     }
 

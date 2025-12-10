@@ -575,7 +575,7 @@ impl SourceCache {
             ),
             InputFormat::Toml => crate::serialize::toml_deser::from_str(pos_table, source, file_id)
                 .map(|v: NickelValue| v.with_pos_idx(pos_idx))
-                .map_err(|err| (ParseError::from_toml(err, file_id))),
+                .map_err(|err| ParseError::from_toml(err, file_id)),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
                 let json = nix_ffi::eval_to_json(source, &self.get_base_dir_for_nix(file_id))
