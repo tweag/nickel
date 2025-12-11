@@ -1475,7 +1475,7 @@ mod tests {
         // forall. `{x: Number, y: String; r}` is in negative position, so we still need to check
         // for excluded fields, but `x` and `y` are already taken care of in the body of the record
         // type. It only remains to check that `z` isn't present in the input record.
-        let expected_var = Ident::from(caps.get(1).unwrap().as_str());
+        let expected_var = Ident::find_generated(caps.get(1).unwrap().as_str());
 
         assert_eq!(
             contract_env.get(&expected_var).unwrap().to_string(),
