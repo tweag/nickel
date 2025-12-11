@@ -392,8 +392,8 @@ installables=(cli lsp/nls)
 # The path of all the crates that need to be published. They are published in
 # the same order they appear here, so if there's any dependency between them,
 # please list them in a topological order.
-#crates_to_publish=(vector git flock core package "${installables[@]}")
-crates_to_publish=(git parser core package "${installables[@]}")
+# TODO: we should only try to publish crates that were actually updated
+crates_to_publish=(vector git flock parser core package "${installables[@]}")
 
 # The crates below aren't published on crates.io because they are only
 # dev-dependencies of the crates to publish (used for tests and benchmarks).
