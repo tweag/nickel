@@ -1,22 +1,35 @@
 Version 1.15 (2025-12-10)
 =========================
 
-Nickel 1.15 finally benefits from a lot of performance work that's been going on
-behind the scenes for the last few releases. Our microbenchmarks show performance
-improvements since 1.14 on every single benchmark, ranging from 10% to 65%.
-On a large real-world configuration that was supplied to us by a user, run-time
-decreased by 40% and peak memory usage decreased by 50%.
-Most of these performance improvements were work of @yannham, most notably in
+For several releases now, the runtime representation of Nickel expressions has
+been completely reworked behind the scenes for improved performance. Nickel 1.15
+is the first version to migrate to the new representation. Our microbenchmarks
+show run time improvements since 1.14 on every single benchmark, ranging from
+10% to 65%. On a large real-world configuration that was supplied to us by a
+user, run-time decreased by 40% and peak memory usage decreased by 50%. Most of
+these performance improvements were work of @yannham, most notably in
 https://github.com/tweag/nickel/pull/2302.
 
-This release is also the first to provide a public API for Nickel as a library.
-Some intrepid users were already embedding the `nickel_lang_core` crate, and
-this remains the only way to access certain internal features. However, we hope
-that most users will find it easier to use the `nickel_lang` crate, which is
-simpler, better documented, and changes less often. We also now have a public C
-API: the header file is available as a release artifact, as are pre-built
-libraries for various architectures. Finally, a go-lang API is available at
-https://github.com/nickel-lang/go-nickel.
+This release is also the first to provide a public API for Nickel as a library,
+designed and implemented by @jneem. Some intrepid users were already embedding
+the `nickel_lang_core` crate, and this remains the only way to access certain
+internal features. However, we hope that most users will find it easier to use
+the `nickel_lang` crate, which is simpler, better documented, and changes less
+often. We also now have a public C API: the header file is available as a
+release artifact, as are pre-built libraries for various architectures. Finally,
+a go-lang API is available at https://github.com/nickel-lang/go-nickel.
+
+Breaking changes
+----------------
+
+* Add a YamlDocuments export format by @jneem in https://github.com/tweag/nickel/pull/2445
+  This change adds a new supported format `'YamlDocuments` to `std.serialize`
+  and `std.deserialize`. While standard calls to `serialize` or `deserialize`
+  should not be impacted even in statically typed code, this can be a breaking
+  change if you copied the stdlib's format enum type in an annotation, for
+  example: `my_serialize : [| 'Json, 'Yaml, 'Toml, 'Text |] -> [...]`. In this
+  case, you must update such enum types. Run any evaluation or typehecking
+  command on your codebase and simply let the typechecking errors guide you.
 
 LSP
 ---
@@ -50,13 +63,16 @@ Performance
 * perf: reduce memory consumption of the stack by @yannham in https://github.com/tweag/nickel/pull/2442
 * perf: optimize term and metadata representation by @yannham in https://github.com/tweag/nickel/pull/2451
 * Pattern compilation improvements by @jneem in https://github.com/tweag/nickel/pull/2443 and https://github.com/tweag/nickel/pull/2453
+* perf: store thunk data directly in value blocks by @yannham in https://github.com/tweag/nickel/pull/2455
+* perf: rework ref counting to look like std::rc::Rc by @yannham in https://github.com/tweag/nickel/pull/2456
+* perf: remove useless reserve by @yannham in https://github.com/tweag/nickel/pull/2457
+* perf: optimize the label representation by @yannham in https://github.com/tweag/nickel/pull/2448
+* perf: buffer output by @jneem in https://github.com/tweag/nickel/pull/2466
 
 Stdlib
 ------
 
 * Add base64 encoding and decoding functions to stdlib by @L0r3m1p5um in https://github.com/tweag/nickel/pull/2444
-* Add a YamlDocuments export format by @jneem in https://github.com/tweag/nickel/pull/2445
-
 
 Version 1.14 (2025-10-02)
 =========================
