@@ -100,11 +100,18 @@ jobs:
 
   release-artifacts-macos:
     name: "Build MacOS Nickel binaries"
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+      - uses: cachix/install-nix-action@v31
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
       - name: Build binaries
         run: |
           set +e
