@@ -50,7 +50,7 @@ pub struct TagMismatchError;
 /// details.
 #[derive(Eq)]
 pub struct NickelValue {
-    // According to [String provenance
+    // According to [Strict provenance
     // rules](https://doc.rust-lang.org/std/ptr/index.html#using-strict-provenance), as `data` can
     // contain a pointer and thus require provenance information, it must either be itself a
     // pointer, or we have to keep another pointer around that carries this information (which we
