@@ -32,7 +32,7 @@ nickel-lang-core = { version = "0.16.1", path = "./core", default-features = fal
 nickel-lang-flock = { version = "0.1.0", path = "./flock" }
 nickel-lang-git = { version = "0.2.1", path = "./git" }
 nickel-lang-package = { version = "0.5.1", path = "./package" }
-nickel-lang-parser = { version = "0.1.0", path = "./parser" }
+nickel-lang-parser = { version = "0.1.1", path = "./parser" }
 nickel-lang-vector = { version = "0.1.0", path = "./vector" }
 nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
