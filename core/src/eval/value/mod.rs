@@ -337,14 +337,14 @@ impl NickelValue {
     /// The mask for the tag bits in a value pointer.
     const VALUE_TAG_MASK: usize = 0b11;
 
-    /// Returns the inner data as a bare `usize`. Note that this can mess the provenance
-    /// of `self.data`: this only for use with inline values.
+    /// Returns the inner data as a bare `usize`. This loses the provenance of `self.data`, and is
+    /// supposed to be used for inline values.
     #[inline]
     fn as_usize(&self) -> usize {
         self.data.addr().into()
     }
 
-    /// Assuming this value is a value block, and returns a reference to the corresponding header.
+    /// Assuming this value is a value block, returns a reference to the corresponding header.
     ///
     /// # Safety
     ///
@@ -990,7 +990,7 @@ impl NickelValue {
                 // Safety: in each branch, the tag of the value block matches the type parameter of
                 // the lens built with `content_lens()`.
                 unsafe {
-                    // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be valid
+                    // Safety: if `self.tag()` is `ValueTag::Pointer`, `self.data` must be a valid
                     // pointer to a block.
                     match self.header().tag() {
                         DataTag::Number => ValueContent::Number(ValueLens::content_lens(self)),
@@ -1093,8 +1093,8 @@ impl NickelValue {
             unsafe {
                 if value.header().ref_count() != 1 {
                     increment!("value::content_make_mut::strong clone");
-                    // Safety: header doesn't become dangling because the ref count is not one, so
-                    // the assignment of `*value` doesn't invalidate it.
+                    // Safety: header doesn't become dangling because the ref count is strictly
+                    // greater than one, so the reassignment of `*value` doesn't invalidate it.
                     *value = ValueBlockRc::encode(
                         // Safety: `value.data_tag()` is `T::Tag` (precondition)
                         ValueBlockRc::decode_from_raw_unchecked::<T>(value.data).clone(),
