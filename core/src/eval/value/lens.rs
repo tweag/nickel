@@ -15,11 +15,7 @@ use crate::{
     },
 };
 
-use std::{
-    alloc::dealloc,
-    mem::ManuallyDrop,
-    ptr::{self, NonNull},
-};
+use std::{alloc::dealloc, mem::ManuallyDrop, ptr};
 
 /// A lazy handle to part or all of the content of a Nickel value, making it possible to
 /// conditionally take owned data out. If the value is unique (1-ref counted), the data is directly
@@ -114,7 +110,7 @@ impl<T: ValueBlockData + Clone> ValueLens<T> {
         // tag matches `T::TAG`, so `self.value.data` is a valid pointer to a `ValueBlockHeader`
         // followed by a `U` at the right offset.
         unsafe {
-            let ptr = NonNull::new_unchecked(value.data as *mut u8);
+            let ptr = value.data;
             let ref_count = ptr.cast::<ValueBlockHeader>().as_ref().ref_count();
             let ptr_content = ptr.add(ValueBlockRc::data_offset::<T>()).cast::<T>();
 

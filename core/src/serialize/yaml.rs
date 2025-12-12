@@ -303,18 +303,18 @@ impl<'ast> Loader<'ast> {
             pos: TermPos,
             alloc: &'a AstAlloc,
         ) -> Result<ast::Node<'a>, ParseError> {
-            if let Some(number) = v.strip_prefix("0x") {
-                if let Ok(i) = i64::from_str_radix(number, 16) {
-                    return Ok(alloc.number(i.into()));
-                }
-            } else if let Some(number) = v.strip_prefix("0o") {
-                if let Ok(i) = i64::from_str_radix(number, 8) {
-                    return Ok(alloc.number(i.into()));
-                }
-            } else if let Some(number) = v.strip_prefix('+') {
-                if let Ok(i) = number.parse::<i64>() {
-                    return Ok(alloc.number(i.into()));
-                }
+            if let Some(number) = v.strip_prefix("0x")
+                && let Ok(i) = i64::from_str_radix(number, 16)
+            {
+                return Ok(alloc.number(i.into()));
+            } else if let Some(number) = v.strip_prefix("0o")
+                && let Ok(i) = i64::from_str_radix(number, 8)
+            {
+                return Ok(alloc.number(i.into()));
+            } else if let Some(number) = v.strip_prefix('+')
+                && let Ok(i) = number.parse::<i64>()
+            {
+                return Ok(alloc.number(i.into()));
             }
             match v {
                 "~" | "null" | "Null" | "NULL" => Ok(ast::Node::Null),

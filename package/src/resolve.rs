@@ -259,10 +259,10 @@ impl DependencyProvider for PackageRegistry {
             }
         };
 
-        if let Some(locked_version) = self.previously_locked.get(package) {
-            if range.contains(locked_version) {
-                return Ok(Some(locked_version.clone()));
-            }
+        if let Some(locked_version) = self.previously_locked.get(package)
+            && range.contains(locked_version)
+        {
+            return Ok(Some(locked_version.clone()));
         }
 
         match package {
