@@ -29,7 +29,6 @@ mod export;
 mod global;
 mod input;
 mod pprint_ast;
-
 mod query;
 mod typecheck;
 
@@ -45,7 +44,6 @@ const WARNING_LIMIT: usize = 10;
 fn main() -> ExitCode {
     #[cfg(feature = "metrics")]
     let metrics = metrics::Recorder::install();
-
     let opts = <Options as clap::Parser>::parse();
 
     let error_format = opts.global.error_format;
