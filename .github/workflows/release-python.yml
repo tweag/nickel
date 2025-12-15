@@ -1,5 +1,14 @@
 name: Release Python
 
+env:
+  # Each version of PyO3 has a range of python versions it supports -- the
+  # newest python is not necessarily supported. This version should be kept
+  # up-to-date which whichever version of PyO3 we're using.
+  PYTHON_VERSION: |
+    3.11
+    3.12
+    3.13
+
 on:
   release:
     types: [published]
@@ -22,9 +31,9 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: aarch64
     steps:
       - uses: actions/checkout@v6
@@ -32,12 +41,12 @@ jobs:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter --manifest-path py-nickel/Cargo.toml
+          args: --release --out dist --interpreter python3.11 python3.12 python3.13 --manifest-path py-nickel/Cargo.toml
           sccache: 'true'
           manylinux: auto
       - name: Upload wheels
@@ -51,20 +60,20 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: aarch64
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter --manifest-path py-nickel/Cargo.toml
+          args: --release --out dist --interpreter python3.11 python3.12 python3.13 --manifest-path py-nickel/Cargo.toml
           sccache: 'true'
           manylinux: musllinux_1_2
       - name: Upload wheels
@@ -86,13 +95,13 @@ jobs:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: ${{ env.PYTHON_VERSION }}
           architecture: ${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter --manifest-path py-nickel/Cargo.toml
+          args: --release --out dist --interpreter python3.11 python3.12 python3.13 --manifest-path py-nickel/Cargo.toml
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v5
@@ -105,9 +114,9 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: macos-13
+          - runner: macos-15
             target: x86_64
-          - runner: macos-14
+          - runner: macos-15
             target: aarch64
     steps:
       - uses: actions/checkout@v6
@@ -115,12 +124,12 @@ jobs:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter --manifest-path py-nickel/Cargo.toml
+          args: --release --out dist --interpreter python3.11 python3.12 python3.13 --manifest-path py-nickel/Cargo.toml
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v5
@@ -147,7 +156,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish distribution to PyPI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ github.event_name == 'release' || github.event.inputs.dry_run == 'false' }}
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
@@ -166,7 +175,7 @@ jobs:
 
   publish-to-testpypi:
     name: Publish distribution to TestPyPI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [linux, musllinux, windows, macos, sdist]
     environment:
       name: testpypi
