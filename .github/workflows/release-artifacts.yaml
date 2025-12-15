@@ -7,6 +7,11 @@ on:
       release_tag:
         description: "The release tag to target"
 
+env:
+  # We need to download the right LLVM tools on windows, and the version needs to match the one
+  # that rust uses. I don't know how to automate this...
+  LLVM_LINK: https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/clang+llvm-21.1.2-x86_64-pc-windows-msvc.tar.xz
+
 permissions:
   id-token: write
   contents: write
@@ -137,7 +142,7 @@ jobs:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - name: Install LLVM tools
         run: |
-          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz -o llvm.tar.xz
+          curl -L ${{ env.LLVM_LINK }} -o llvm.tar.xz
           mkdir llvm
           tar xJvf llvm.tar.xz --strip-components=1 -C llvm
       - name: Install MinGW target
