@@ -296,6 +296,8 @@ mod interner {
 
     use typed_arena::Arena;
 
+    use super::Bitmap;
+
     /// A symbol is a correspondence between an [Ident](super::Ident) and its string representation
     /// stored in the [Interner].
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -372,7 +374,7 @@ mod interner {
         vec: Vec<&'this str>,
 
         /// Allows checking whether an identifier was generated.
-        generated: Vec<bool>,
+        generated: Bitmap,
     }
 
     impl InnerInterner {
@@ -382,7 +384,7 @@ mod interner {
                 Mutex::new(Arena::new()),
                 |_arena| HashMap::new(),
                 |_arena| Vec::new(),
-                Vec::new(),
+                Bitmap::default(),
             )
         }
 
@@ -484,5 +486,74 @@ mod interner {
             assert_eq!(10000, interner.0.read().unwrap().borrow_map().len());
             assert_eq!(10000, interner.0.read().unwrap().borrow_vec().len());
         }
+    }
+}
+
+/// A basic bitmap that's more space-efficient than a `Vec<bool>`, but much simpler
+/// than (and not size-bounded like) the `bitmaps` crate.
+#[derive(Default)]
+struct Bitmap {
+    /// Our first element is at `self.data[0] & 0b1`, our next element is
+    /// at `self.data[0] & 0b10`, and so on.
+    data: Vec<u64>,
+    /// The size of this bitmap in bits. This will always be between
+    /// `self.data.len() * 8 - 7` and `self.data.len() * 8` inclusive.
+    len: usize,
+}
+
+impl Bitmap {
+    /// Breaks down a location into an index (in `Bitmap::data`) and a bitmask.
+    fn location(idx: usize) -> (usize, u64) {
+        let shift = (idx % 64) as u32;
+        (idx / 64, 1 << shift)
+    }
+
+    fn push(&mut self, val: bool) {
+        let (idx, mask) = Bitmap::location(self.len);
+        if idx >= self.data.len() {
+            debug_assert_eq!(idx, self.data.len());
+            self.data.push(0);
+        }
+        if val {
+            self.data[idx] |= mask;
+        }
+        self.len += 1;
+    }
+}
+
+impl std::ops::Index<usize> for Bitmap {
+    type Output = bool;
+
+    fn index(&self, idx: usize) -> &bool {
+        let (idx, mask) = Bitmap::location(idx);
+        if (self.data[idx] & mask) == 0 {
+            &false
+        } else {
+            &true
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Bitmap;
+
+    #[test]
+    fn bitmap_basics() {
+        let mut b = Bitmap::default();
+        b.push(true);
+        b.push(false);
+        assert!(b[0]);
+        assert!(!b[1]);
+
+        for _ in 0..64 {
+            b.push(true);
+        }
+        b.push(false);
+
+        assert!(b[63]);
+        assert!(b[64]);
+        assert!(b[65]);
+        assert!(!b[66]);
     }
 }
