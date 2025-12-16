@@ -171,8 +171,8 @@ fun x => { foo | doc "This won't appear in the output of `nickel doc`" }
 
 `nickel doc` evaluates imports, and if those imports evaluate to records then it
 will recurse into those imports. In practice, when you document a Nickel library
-that is implemented across multiple files, you only want to run `nickel doc` on the
-main entry point. For example, if "main.ncl" contains
+that is implemented across multiple files, you only want to run `nickel doc` on
+the main entry point. For example, if "main.ncl" contains
 
 ```nickel ignore
 {

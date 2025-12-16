@@ -185,8 +185,6 @@ Let us now have a quick tour of the type system. The basic types are:
     might incur rounding errors.
 - `String`: a string, which must always be valid UTF8.
 - `Bool`: a boolean, that is either `true` or `false`.
-<!-- - `Lbl`: a contract label. You usually don't need to use it or worry about it,-->
-<!--     it is more of an internal thing.  -->
 
 The following type constructors are available:
 
@@ -519,15 +517,15 @@ referred to as rows:
 { partial1 = 570, partial2 = 1770, }
 ```
 
-In the type of `add_total`, the part `{total: Number ; a}` expresses exactly what
-we wanted: the argument must have a field `total: Number`, but the *tail* (the
-rest of the record type) is polymorphic, and `a` may be substituted for
+In the type of `add_total`, the part `{total: Number ; a}` expresses exactly
+what we wanted: the argument must have a field `total: Number`, but the *tail*
+(the rest of the record type) is polymorphic, and `a` may be substituted for
 arbitrary fields (such as `jan: Number, feb: Number`). We used two different
 generic parameters `a` and `b`, to express that the tails of the arguments may
 differ.  If we used `a` in both places, as in `forall a. {total: Number ; a} ->
-{total: Number ; a} -> Number`, we could still write `add_total {total = 1, foo =
-1} {total = 2, foo = 2}` but not `add_total {total = 1, foo = 1} {total = 2, bar
-= 2}`. Using distinct parameters `a` and `b` gives us maximum flexibility.
+{total: Number ; a} -> Number`, we could still write `add_total {total = 1, foo
+= 1} {total = 2, foo = 2}` but not `add_total {total = 1, foo = 1} {total = 2,
+bar = 2}`. Using distinct parameters `a` and `b` gives us maximum flexibility.
 
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Number, subtotal: Number ; a} -> Number`.

@@ -80,7 +80,8 @@ nickel-lang 0.1.0
 
 ### NLS (nickel-lang-lsp)
 
-To build NLS separately, the LSP server for Nickel, build the `nickel-lang-lsp` crate:
+To build NLS separately, the LSP server for Nickel, build the `nickel-lang-lsp`
+crate:
 
 ```shell
 $ cargo build -p nickel-lang-lsp

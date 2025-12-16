@@ -373,10 +373,11 @@ versions of packages, while also doing one or both of the following
 - preferring to resolve minimal versions instead of maximal versions. This promotes
   stability in version resolution, at the cost of requiring intervention to bring
   in bugfixes in dependencies.
-- only allowing `^` version specifications (along with `=` overrides at the top level).
-  This amounts to being opinionated that "the ecosystem is using semver, and your
-  version requirements should comply with semver." It's basically a semver analogue
-  of go's policy of only allowing lower bounds (plus pinning at the top level).
+- only allowing `^` version specifications (along with `=` overrides at the top
+  level). This amounts to being opinionated that "the ecosystem is using semver,
+  and your version requirements should comply with semver." It's basically a
+  semver analogue of go's policy of only allowing lower bounds (plus pinning at
+  the top level).
 
 ### Question: how to handle pre-1.0 minor versions?
 

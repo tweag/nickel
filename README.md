@@ -111,8 +111,8 @@ the `nickel-lang-core` crate documentation).
      packages. Pass arguments to Nickel with an extra `--` as in `nix run
      github:tweag/nickel -- repl`,
    - Again with flake-enabled Nix, you can install Nickel in your profile with
-     `nix profile install github:tweag/nickel`. The `nickel` command is then in your
-     `$PATH` and is available anywhere.
+     `nix profile install github:tweag/nickel`. The `nickel` command is then in
+     your `$PATH` and is available anywhere.
    - If you're running macOS you can use Homebrew to install the Nickel binary
      with `brew install nickel`.
    - Without Nix, you can use `cargo run --bin nickel` after [building](#build),
@@ -292,9 +292,9 @@ The next steps we plan to work on are:
     language with object-oriented features, among which inheritance is similar
     to Nickel's merge system. One big difference with Nickel is the absence of
     typing.
-- [KCL](https://kcl-lang.io/) is a gradually typed configuration language whose validation
-    is based on object-oriented schemas that can be extended through inheritance.
-    Unlike the languages above, its evaluation is strict.
+- [KCL](https://kcl-lang.io/) is a gradually typed configuration language whose
+    validation is based on object-oriented schemas that can be extended through
+    inheritance. Unlike the languages above, its evaluation is strict.
 - [Pulumi](https://www.pulumi.com/) is not a language in itself, but a cloud
     tool (like Terraform) where you can use your preferred language for
     describing your infrastructure. This is a different approach to the problem,

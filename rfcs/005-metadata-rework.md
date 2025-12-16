@@ -185,9 +185,9 @@ error: missing definition for `bar`
 Surely, `bar` is not missing a definition in the final combined record. The
 issue is that the implementation of the `{_: T}` contract maps `T` onto the
 fields of its argument. This operation is eager, in that if one field doesn't
-have a definition right away, this operation fails. Because we do `(CrossApp)`, the
-`{_ : Package}` contract is applied independently to both `{foo, bar}` and `{foo
-= ..., bar = ...}`. The former, which serves as an interface, is missing
+have a definition right away, this operation fails. Because we do `(CrossApp)`,
+the `{_ : Package}` contract is applied independently to both `{foo, bar}` and
+`{foo = ..., bar = ...}`. The former, which serves as an interface, is missing
 definitions and fails the contract no matter what it will be merged with.
 
 For this particular case, we could make the `{_: T}` contract to map lazily, but
@@ -352,8 +352,8 @@ However, having metadata everywhere has also a cost.
 The first one is that the operation of fetching metadata involves evaluating
 arbitrary Nickel expressions. In the last example, querying
 `other_block.field_head` is done by evaluating `other_block.field_head` in
-so-called non-strict mode. This is like normal evaluation, but stops as soon as we
-encounter metadata.
+so-called non-strict mode. This is like normal evaluation, but stops as soon as
+we encounter metadata.
 
 This evaluation is required because when we get back an expression for
 `field_head`, the interpreter has absolutely no way of knowing in advance if
