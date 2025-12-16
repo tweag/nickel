@@ -1138,8 +1138,8 @@ represents any value)
   `'"tag with space"`.
 - Arrows: `<source> -> <target>` is a function taking an argument of type
   `<source>` and returns values of type `<target>`.
-- Foralls: `forall var1 .. varn. <type>` is a polymorphic type quantifying over type
-variables `var1`, .., `varn`.
+- Foralls: `forall var1 .. varn. <type>` is a polymorphic type quantifying over
+  type variables `var1`, .., `varn`.
 - Records: see the next section [Record types](#record-types).
 
 Type variables bound by a `forall` are only visible inside types (any of the
@@ -1401,9 +1401,9 @@ current directory.
 
 One-argument import, like `import "myfile.ncl"`, uses filename extension to
 determine the file format. Nickel automatically recognizes the extensions
-`ncl`, `json`, `yml`, `yaml`, `toml` and `txt`. When compiled with experimental Nix
-support, it also recognizes `nix`. If the file's extension is not recognized, it
-will default to Nickel format.
+`ncl`, `json`, `yml`, `yaml`, `toml` and `txt`. When compiled with experimental
+Nix support, it also recognizes `nix`. If the file's extension is not
+recognized, it will default to Nickel format.
 
 Two-argument import, like `import "test.html" as 'Text` uses a special enum
 tag to determine the format. Currently the tags are `'Nickel`, `'Json`,

@@ -79,10 +79,10 @@ same pull request. If preliminary steps make sense as standalone changes, don't
 hesitate to split your pull request into several ones. There are a couple
 aspects to consider when working on Nickel:
 
-1. **Documentation**: If you added new items (functions, modules) to the public API
-   of a crate, please document those items in-code. If you made a user-facing
-   change (syntax, stdlib, language features, etc.), please update the existing
-   documentation (in particular the user-manual) in consequence.
+1. **Documentation**: If you added new items (functions, modules) to the public
+   API of a crate, please document those items in-code. If you made a
+   user-facing change (syntax, stdlib, language features, etc.), please update
+   the existing documentation (in particular the user-manual) in consequence.
 2. **Tests**: be it for bug fixing or adding new features, please try to write
    extensive tests as much as possible, to ensure the correctness of your
    changes as well as avoiding regressions.
