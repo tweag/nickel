@@ -37,10 +37,7 @@ Nickel's salient traits are:
 - **Design by contract**: *contracts* are a principled approach to validation.
     In a Nickel configuration, contracts act like *schemas*. You can write your
     own, mix them with existing contracts, and enforce that your configuration
-    is correct by sprinkling simple type-like annotations. The Nickel
-    interpreter also uses contracts under the hood to provide meaningful error
-    messages when statically typed functions are misused from within dynamically
-    typed code.
+    is correct by sprinkling simple type-like annotations.
 
 The motto guiding Nickel's design is:
 > Great defaults, design for extensibility
