@@ -5,7 +5,7 @@
 [![Discord](https://img.shields.io/badge/Discord-100000?style=flat&logo=Discord&logoColor=C3C3C3&labelColor=4179DA&color=010101)][discord]
 
 Nickel is the universal configuration language. Nickel is configuration
-templating, but done right. Modular, correct and boilerplate-free.
+templating, but done right. Modular, correct and concise.
 
 Its purpose is to automate the generation of static configuration files - think
 JSON, YAML, XML, or your favorite data representation language - that are then
