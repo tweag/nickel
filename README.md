@@ -4,7 +4,8 @@
 [![Website](https://img.shields.io/website-up-down-green-red/http/cv.lbesson.qc.to.svg)](https://nickel-lang.org)
 [![Discord](https://img.shields.io/badge/Discord-100000?style=flat&logo=Discord&logoColor=C3C3C3&labelColor=4179DA&color=010101)][discord]
 
-Nickel is the cheap configuration language.
+Nickel is the universal configuration language. Nickel is configuration
+templating, but done right. Modular, correct and concise.
 
 Its purpose is to automate the generation of static configuration files - think
 JSON, YAML, XML, or your favorite data representation language - that are then
@@ -16,34 +17,34 @@ Nickel's salient traits are:
 - **Lightweight**: Nickel is easy to embed. An interpreter should be simple to
     implement. The reference interpreter can be called from many programming
     languages.
-- **Composable code**: the basic building blocks for computing are functions.
+- **Composable code**: the basic building blocks for computations are functions.
     They are first-class citizens, which can be passed around, called and
     composed.
-- **Composable data**: the basic building blocks for data are records
-    (called *objects* in JSON). In Nickel, records can be merged at will,
-    including associated metadata (documentation, default values, type
-    contracts, etc).
-- **Typed, but only when it helps**: static types improve code quality, serve as
-    documentation and eliminate bugs early. But application-specific
-    self-contained code will always evaluate to the same value, so type errors
-    will show up at runtime anyway. Some JSON is hard to type. There, types are
-    only a burden. Whereas reusable code - that is, *functions* - is evaluated
-    on potentially infinitely many different inputs, and is impossible to test
-    exhaustively. There, types are precious. Nickel has types, but you get to
-    choose when you want it or not, and it handles safely the interaction between
-    the typed and the untyped world.
-- **Design by contract**: complementary to the type system, contracts are
-    a principled approach to checking assertions. The interpreter automatically
-    inserts assertions at the boundary between typed and untyped code. Nickel
-    lets users add arbitrary assertions of their own and easily understand why
-    when assertions fail.
+- **Composable data**: the basic building blocks for data are records (JSON's
+    *objects*). Records can be composed through the merge operator, combining
+    metadata as well (documentation, default values, type contracts, etc).
+- **Typed, but only when it helps**: one one hand, static types improve code
+    quality, serve as documentation and eliminate bugs early, in particular for
+    functions.
+
+    On the other hand, most configuration data are static. In this case, dynamic
+    type errors are often simple and sufficient. Additionally, some JSON schemas
+    are hard to translate to more rigid types.
+
+    Nickel features a *(sound) gradual type system*: it has types, but you get
+    to choose when you want to use them or not. You can statically check complex
+    functions, but use more flexible runtime validation for configuration data.
+- **Design by contract**: *contracts* are a principled approach to validation.
+    In a Nickel configuration, contracts act like *schemas*. You can write your
+    own, mix them with existing contracts, and enforce that your configuration
+    is correct by sprinkling simple type-like annotations.
 
 The motto guiding Nickel's design is:
 > Great defaults, design for extensibility
 
-There should be a standard, clear path for common things. There should be no
-arbitrary restrictions that limit what you can do the one day you need to go
-beyond.
+There should be one clear and simple path for common tasks. But the day you need
+to go beyond, there should be no arbitrary restrictions that limit what you can
+do.
 
 ## Who we are
 
@@ -82,6 +83,8 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 Related projects that are part of the Nickel ecosystem:
 
+- [nickel-kubernetes](https://github.com/tweag/nickel-kubernetes): a collection
+    of auto-generated Nickel contracts (schemas) for Kubernetes resources.
 - [Terraform-Nickel](https://github.com/tweag/tf-ncl): write Terraform
     configuration with Nickel
 - [Organist](https://github.com/nickel-lang/organist): batteries included
@@ -106,13 +109,14 @@ the `nickel-lang-core` crate documentation).
 
 1. Get a Nickel binary:
    - With [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix, run
-     Nickel directly with `nix run github:tweag/nickel`. You can use [our binary
+     Nickel directly with `nix run nixpkgs#nickel`. You can use [our binary
      cache](https://tweag-nickel.cachix.org/) to prevent rebuilding a lot of
      packages. Pass arguments to Nickel with an extra `--` as in `nix run
-     github:tweag/nickel -- repl`,
+     nixpkgs#nickel -- repl`. Use `github:tweag/nickel` to run the unstable
+     version (`master` in practice).
    - Again with flake-enabled Nix, you can install Nickel in your profile with
-     `nix profile install github:tweag/nickel`. The `nickel` command is then in
-     your `$PATH` and is available anywhere.
+     `nix profile install nixpkgs#nickel`. The `nickel` command is then in your
+     `$PATH` and is available anywhere.
    - If you're running macOS you can use Homebrew to install the Nickel binary
      with `brew install nickel`.
    - Without Nix, you can use `cargo run --bin nickel` after [building](#build),
@@ -166,11 +170,16 @@ server.
 
 #### Editor Setup
 
-Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode. In-editor
-diagnostics, type hints, and auto-completion are provided by the Nickel Language
-Server. Please follow
-[the LSP guide](https://github.com/tweag/nickel/tree/master/lsp) to set up syntax
-highlighting and NLS.
+Nickel has syntax highlighting plugins for
+[Vim/Neovim](https://github.com/nickel-lang/vim-nickel),
+[Emacs](https://github.com/nickel-lang/nickel-mode) and
+[VSCode](https://marketplace.visualstudio.com/items?itemName=Tweag.vscode-nickel).
+It also has a [tree-sitter
+grammar](https://github.com/nickel-lang/tree-sitter-nickel) which provides
+highlighting in an editor-independent way. The Nickel Language Server (NLS)
+provides in-editor diagnostics, type hints, and auto-completion. Please follow
+[the LSP guide](https://github.com/tweag/nickel/tree/master/lsp) to set up
+syntax highlighting and NLS.
 
 #### Formatting
 
@@ -181,12 +190,8 @@ nickel format network.ncl container.ncl api.ncl
 ```
 
 Nickel uses [Topiary](https://github.com/tweag/topiary/) to format Nickel code
-under the hood.
-
-Please follow the Formatting Capabilities section of the [LSP
-documentation](https://github.com/tweag/nickel/tree/master/lsp) to know how to
-hook up the Nickel LSP and Topiary in order to enable formatting inside your
-code editor.
+under the hood. The Nickel Language Server also provides formatting capabilities
+out of the box.
 
 ### Build
 
@@ -219,7 +224,7 @@ code editor.
    by using `cargo run`:
 
    ```console
-   cargo run --bin nickel -- eval foo.ncl
+   cargo run --bin nickel --release -- eval foo.ncl
    ```
 
 ### Test
@@ -258,15 +263,15 @@ to work on are:
 
 The next steps we plan to work on are:
 
-- Nix integration: being able to seamlessly use Nickel to write packages and
-  shells ([Organist](https://github.com/nickel-lang/organist))
-- Custom merge functions (second part of the
-  [overriding
-  proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
 - Incremental evaluation: design an incremental evaluation model and a caching
   mechanism in order to perform fast re-evaluation upon small changes to a
   configuration.
-- Performance improvements
+- Implement a bytecode compiler and virtual machine
+  ([RFC007](https://github.com/tweag/nickel/blob/master/rfcs/007-bytecode-interpreter.md))
+  for improved performance
+- Custom merge functions (second part of the
+  [overriding
+  proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
 
 ## Comparison
 
