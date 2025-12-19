@@ -288,27 +288,27 @@ impl Cache for IncCache {
         node.state = IncNodeState::default();
     }
 
-    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
-        &mut self,
-        idx: &CacheIndex,
-        mut f: F,
-    ) -> CacheIndex {
-        let node = self.store.get(*idx).unwrap().clone();
-
-        let new_node = IncNode {
-            orig: f(self, &node.orig),
-            cached: node.cached.clone().map(|clos| f(self, &clos)),
-            kind: node.kind,
-            bty: node.bty.clone(),
-            state: node.state,
-            fwdlinks: node.fwdlinks.clone(),
-            backlinks: node.backlinks.clone(),
-        };
-
-        // TODO: Should this push the dependencies?
-
-        self.add_node(new_node)
-    }
+    // fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
+    //     &mut self,
+    //     idx: &CacheIndex,
+    //     mut f: F,
+    // ) -> CacheIndex {
+    //     let node = self.store.get(*idx).unwrap().clone();
+    //
+    //     let new_node = IncNode {
+    //         orig: f(self, &node.orig),
+    //         cached: node.cached.clone().map(|clos| f(self, &clos)),
+    //         kind: node.kind,
+    //         bty: node.bty.clone(),
+    //         state: node.state,
+    //         fwdlinks: node.fwdlinks.clone(),
+    //         backlinks: node.backlinks.clone(),
+    //     };
+    //
+    //     // TODO: Should this push the dependencies?
+    //
+    //     self.add_node(new_node)
+    // }
 
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         let node = self.store.get_mut(*idx).unwrap();
