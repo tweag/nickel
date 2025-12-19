@@ -1,14 +1,19 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{BlackholedError, Cache, CacheIndex, Closure};
 use crate::{
-    eval::value::{self, NickelValue},
+    eval::value::{self, EnumVariantData, NickelValue, ValueContentRef},
     identifier::Ident,
     metrics::increment,
     position::PosIdx,
     term::{BindingType, Term, record::FieldDeps},
 };
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
+
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    hash::{DefaultHasher, Hash, Hasher},
+    num::NonZero,
+    rc::Rc,
+};
 
 /// The state of a thunk.
 ///
@@ -29,10 +34,15 @@ pub enum ThunkState {
     Evaluated,
 }
 
+#[derive(Copy, Debug, PartialEq, Eq, Clone, Hash)]
+pub struct ContentHash(u64);
+
 /// The mutable data stored inside a thunk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThunkData {
     inner: InnerThunkData,
+    /// The hash of the expression represented by this thunk. Used for incremental evaluation.
+    hash: Option<ContentHash>,
     state: ThunkState,
     /// A flag indicating whether the thunk is locked. See [Thunk::lock].
     locked: bool,
@@ -128,8 +138,53 @@ impl ThunkData {
     pub fn new(closure: Closure) -> Self {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
+            hash: None,
             state: ThunkState::Suspended,
             locked: false,
+        }
+    }
+
+    /// Compute the content hash of a thunk, given the closure stored in it and the
+    /// Cross-evaluation Unique Identifier of the corresponding expression.
+    pub fn compute_content_hash(
+        closure: &Closure,
+        cui: Option<ContentHash>,
+    ) -> Option<ContentHash> {
+        // TODO: For now, we're being stupid, and hash the whole environment. What we should do is
+        // filter on the actual free variables of the closure.
+        let mut hasher = DefaultHasher::new();
+
+        for (id, thunk) in closure.env.iter_elems() {
+            id.hash(&mut hasher);
+            thunk.content_hash()?.hash(&mut hasher);
+        }
+
+        if let Some(cui) = cui {
+            cui.hash(&mut hasher);
+        } else {
+            // If we don't have a cross-evaluation unique identifier, we still try to hash simple
+            // constants, that don't involve other expressions.
+            match closure.value.content_ref() {
+                ValueContentRef::Null => 0.hash(&mut hasher),
+                ValueContentRef::Bool(b) => b.hash(&mut hasher),
+                ValueContentRef::Number(n) => n.hash(&mut hasher),
+                ValueContentRef::String(s) => s.hash(&mut hasher),
+                ValueContentRef::EnumVariant(EnumVariantData { tag, arg: None }) => {
+                    tag.hash(&mut hasher)
+                }
+                _ => return None,
+            }
+        }
+
+        Some(ContentHash(hasher.finish()))
+    }
+
+    /// Creates new standard thunk data, and fill the content hash, if computable.
+    #[inline]
+    pub fn new_hashed(closure: Closure, cui: Option<ContentHash>) -> Self {
+        ThunkData {
+            hash: Self::compute_content_hash(&closure, cui),
+            ..Self::new(closure)
         }
     }
 
@@ -143,6 +198,7 @@ impl ThunkData {
                 cached: None,
                 deps,
             },
+            hash: None,
             state: ThunkState::Suspended,
             locked: false,
         }
@@ -332,42 +388,14 @@ impl ThunkData {
                         cached: None,
                         deps: deps.clone(),
                     },
+                    //TODO: what should the hash be here? I suppose it should only be actually
+                    //computed when building the cached value.
+                    hash: None,
                     state: ThunkState::Suspended,
                     locked: false,
                 },
                 thunk.0.pos_idx(),
             )),
-        }
-    }
-
-    /// Map a function over the content of the thunk to create a new independent thunk. If the
-    /// thunk is revertible, the mapping function is applied on both the original expression and
-    /// the cached expression.
-    ///
-    /// The new thunk is unlocked, whatever the locking status of the original thunk.
-    pub fn map<F>(&self, mut f: F) -> Self
-    where
-        F: FnMut(&Closure) -> Closure,
-    {
-        match self.inner {
-            InnerThunkData::Standard(ref c) => ThunkData {
-                inner: InnerThunkData::Standard(f(c)),
-                state: self.state,
-                locked: false,
-            },
-            InnerThunkData::Revertible {
-                ref orig,
-                ref deps,
-                ref cached,
-            } => ThunkData {
-                inner: InnerThunkData::Revertible {
-                    orig: Rc::new(f(orig)),
-                    cached: cached.as_ref().map(f),
-                    deps: deps.clone(),
-                },
-                state: self.state,
-                locked: false,
-            },
         }
     }
 
@@ -427,6 +455,12 @@ impl Thunk {
                 pos_idx,
             )),
         }
+    }
+
+    /// Returns the content hash of this thunk, if it's been computed before.
+    #[inline]
+    fn content_hash(&self) -> Option<ContentHash> {
+        self.data().borrow().hash
     }
 
     /// Returns a reference to the inner `RefCell<ThunkData>`.
@@ -635,19 +669,6 @@ impl Thunk {
         })
     }
 
-    /// Map a function over the content of the thunk to create a new, fresh independent thunk. If
-    /// the thunk is revertible, the function is applied to both the original expression and the
-    /// cached expression.
-    pub fn map<F>(&self, f: F) -> Self
-    where
-        F: FnMut(&Closure) -> Closure,
-    {
-        Thunk(NickelValue::thunk(
-            self.data().borrow().map(f),
-            self.0.pos_idx(),
-        ))
-    }
-
     /// Determine if a thunk is worth being put on the stack for future update.
     ///
     /// Typically, expressions in weak head normal form won't evaluate further and their update can
@@ -771,15 +792,6 @@ impl Cache for CBNCache {
     #[inline]
     fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
         idx.reset_state();
-    }
-
-    #[inline]
-    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
-        &mut self,
-        idx: &CacheIndex,
-        mut f: F,
-    ) -> CacheIndex {
-        idx.map(|v| f(self, v))
     }
 
     #[inline]
