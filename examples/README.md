@@ -62,7 +62,7 @@ nickel>
   and print the result as JSON:
 
     ```nickel
-    nickel> builtin.serialize 'Json (import "merge-main.ncl")
+    nickel> std.serialize 'Json (import "merge-main.ncl")
     "{
         \"firewall\": {
         ...
