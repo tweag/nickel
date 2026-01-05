@@ -11,16 +11,50 @@ use codespan::ByteIndex;
 use codespan_reporting::files::Error;
 use nickel_lang_vector::Vector;
 
-use crate::position::RawSpan;
+use crate::{
+    position::RawSpan,
+    stash::{StashError, Stasher, UnstashError, Unstasher},
+};
 
 /// A file identifier, which can be used to access a file in a [`Files`].
 ///
 /// Note that there is no protection against using a `FileId` for the wrong
 /// instance of `Files`.
 #[derive(
-    Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+    Copy,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    rkyv::Archive,
 )]
 pub struct FileId(u32);
+
+impl<'a> rkyv::Serialize<Stasher<'a>> for FileId {
+    fn serialize(&self, serializer: &mut Stasher<'a>) -> Result<Self::Resolver, StashError> {
+        serializer.stash_file(*self)?;
+        Ok(crate::files::FileIdResolver(()))
+    }
+}
+
+impl rkyv::Deserialize<FileId, Unstasher> for ArchivedFileId {
+    fn deserialize(
+        &self,
+        deserializer: &mut Unstasher,
+    ) -> Result<FileId, <Unstasher as rkyv::rancor::Fallible>::Error> {
+        let id = FileId(self.0.to_native());
+        if deserializer.allowed_files.contains(&id) {
+            Ok(id)
+        } else {
+            Err(UnstashError::InvalidFile { id })
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct File {

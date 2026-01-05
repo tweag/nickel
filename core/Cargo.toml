@@ -50,6 +50,7 @@ logos.workspace = true
 nickel-lang-parser.workspace = true
 nickel-lang-vector.workspace = true
 ouroboros.workspace = true
+rkyv = { workspace = true, features = ["indexmap-2"] }
 saphyr-parser.workspace = true
 smallvec.workspace = true
 serde = { workspace = true, features = ["derive"] }
