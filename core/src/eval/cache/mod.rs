@@ -12,6 +12,7 @@ use crate::{
 
 pub mod lazy;
 // pub mod incremental;
+pub mod incremental_ng;
 
 /// An index to a specific item stored in the cache
 pub type CacheIndex = lazy::Thunk;
