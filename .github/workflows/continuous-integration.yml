@@ -41,7 +41,7 @@ jobs:
       with:
         hatchet-protocol: 'holster'
       # Currently broken on macos:
-      # https://github.com/haskell/hackage-server/issues/1425
+      # https://github.com/wimpysworld/nothing-but-nix/issues/39
       if: runner.os == 'Linux'
 
     - name: Install Nix
