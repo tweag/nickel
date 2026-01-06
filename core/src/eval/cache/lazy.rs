@@ -173,25 +173,25 @@ impl ThunkData {
         self
     }
 
-    /// Compute the hash of this thunks, ignoring any potential value in [Self::hash]. As opposed
-    /// to [Self::content_hash], beside always recomputing the hash, [Self::compute_hash] also
-    /// doesn't update [Self::hash].
-    fn compute_hash(&mut self) -> Option<ContentHash> {
+    /// Computes the content hash of a closure, given an (optional) Cross-evaluation Unique
+    /// Identifier. This is similar to [Self::compute_hash], but it doens't require a [Self] value
+    /// to exist.
+    pub fn hash_content(closure: &Closure, cui: Option<ContentHash>) -> Option<ContentHash> {
         // TODO: For now, we're being stupid, and hash the whole environment. What we should do is
-        // filter on the actual free variables of the closure.
+        // 1. Compute the free variables of each expression of interest
+        // 2. Only retrieve the free variables as dependencies from the environment
         let mut hasher = DefaultHasher::new();
-        let closure = self.closure_or_orig();
 
         for (id, thunk) in closure.env.iter_elems() {
             id.hash(&mut hasher);
             thunk.content_hash()?.hash(&mut hasher);
         }
 
-        if let Some(cui) = self.cui.as_ref() {
+        if let Some(cui) = cui {
             cui.hash(&mut hasher);
         } else {
-            // If we don't have a cross-evaluation unique identifier, we still try to hash simple
-            // constants, that don't involve other expressions.
+            // If we don't have a cross-evaluation unique identifier, we still try to structurally
+            // hash simple constants, that don't involve other expressions.
             match closure.value.content_ref() {
                 ValueContentRef::Null => 0.hash(&mut hasher),
                 ValueContentRef::Bool(b) => b.hash(&mut hasher),
@@ -205,6 +205,14 @@ impl ThunkData {
         }
 
         Some(ContentHash(hasher.finish()))
+    }
+
+    /// Computes the hash of this thunk, ignoring any potential value in [Self::hash]. As opposed
+    /// to [Self::content_hash], beside always recomputing the hash, [Self::compute_hash] also
+    /// doesn't update [Self::hash].
+    #[inline]
+    fn compute_hash(&self) -> Option<ContentHash> {
+        Self::hash_content(self.closure_or_orig(), self.cui)
     }
 
     /// Compute the content hash of a thunk, given the closure stored in it and the
@@ -786,7 +794,7 @@ impl ThunkUpdateFrame {
 }
 
 /// Placeholder [Cache] for the call-by-need evaluation strategy.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct CBNCache {}
 
 impl Cache for CBNCache {
