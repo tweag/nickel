@@ -166,13 +166,6 @@ impl ThunkData {
         }
     }
 
-    /// Returns `self` with the Cross-evaluation Unique Identifier set to `cui`.
-    #[inline]
-    pub fn with_cui(mut self, cui: ContentHash) -> Self {
-        self.cui = Some(cui);
-        self
-    }
-
     /// Computes the content hash of a closure, given an (optional) Cross-evaluation Unique
     /// Identifier. This is similar to [Self::compute_hash], but it doens't require a [Self] value
     /// to exist.
@@ -512,6 +505,12 @@ impl Thunk {
                 pos_idx,
             )),
         }
+    }
+
+    /// Attach a Cross-evaluation Unique Identifier to this thunk.
+    #[inline]
+    pub fn set_cui(&self, cui: ContentHash) {
+        self.data().borrow_mut().cui = Some(cui);
     }
 
     /// Returns the content hash of this thunk. If the hash has been computed before (and stored in

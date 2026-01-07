@@ -36,7 +36,15 @@ pub enum CacheEntry {
 // very much fill it right away at thunk creation. Concretely, the question is: should we have only
 // one `add_cached` additional method, or a `add_hashed` and `add_or_get_from_cache`? Let's
 // meditate.
-
+//
+// # After meditation
+//
+// I think there's an even better way: makes hashing/cache fetching, and only try to fetch from the
+// incremental cache when we first evaluate a (hashable) thunk. Doing so, any unused thunk will be
+// left alone. We can compute hashes in a lazy way. This means we allocate a thunk unconditionally
+// at first (even if it ends up being pulled from the incremental cache), but it's not a huge cost
+// and is likely to be similar to the cost of pulling an existing loadable thunk from the
+// incremental cache anyway, as we need to put the thunk data somewhere.
 #[derive(Default, Clone)]
 pub struct IncrementalCache {
     cbn_cache: CBNCache,
@@ -56,17 +64,21 @@ impl IncrementalCache {
         todo!()
     }
 
-    /// Same as [Cache::add], but provided a Cross-evaluation Unique Identifier, first looks for an
-    /// entry into the incremental cache. If there's a hit, the cached result is returned, avoiding
-    /// further evaluation. Otherwise, fallbacks to [Cache::add]. The thunk will then be recorded
-    /// in the incremental cache if it is ever evaluated.
+    /// Allocates a thunk for the given closure. This replaces [Cache::add] for thunks of interest
+    /// in the incremental cache.
+    ///
+    /// The hash is left unknown, and is computed for thunks of interest when they're first
+    /// evaluated.
+    #[inline]
     pub fn add_cached(
         &mut self,
         clos: crate::eval::Closure,
         bty: crate::term::BindingType,
-        cui: Option<ContentHash>,
+        cui: ContentHash,
     ) -> <Self as Cache>::UpdateIndex {
-        todo!()
+        let idx = self.cbn_cache.add(clos, bty);
+        idx.set_cui(cui);
+        idx
     }
 }
 
