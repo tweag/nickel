@@ -12,6 +12,7 @@ use crate::{
 
 pub mod lazy;
 // pub mod incremental;
+pub mod incremental_ng;
 
 /// An index to a specific item stored in the cache
 pub type CacheIndex = lazy::Thunk;
@@ -58,12 +59,6 @@ pub trait Cache: Clone {
 
     /// Resets the state of the element at index `idx` to `Suspended`
     fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex);
-
-    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
-        &mut self,
-        idx: &CacheIndex,
-        f: F,
-    ) -> CacheIndex;
 
     /// Initializes the cached value of the element at index `idx` with the given `rec_env`.
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]);
