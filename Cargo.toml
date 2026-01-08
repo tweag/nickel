@@ -56,7 +56,7 @@ clap_complete = "4.5"
 codespan = { version = "0.13", features = ["serialization"] }
 codespan-reporting = { version = "0.13", features = ["serialization"] }
 colorchoice = "1.0"
-comrak = "0.36"
+comrak = "0.49"
 criterion = "0.5"
 crossbeam = "0.8.4"
 csv = "1"
