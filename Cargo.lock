@@ -3766,6 +3766,7 @@ dependencies = [
  "arbtest",
  "criterion",
  "imbl-sized-chunks",
+ "rkyv",
  "rpds",
  "serde",
 ]

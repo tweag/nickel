@@ -94,7 +94,7 @@ pub struct RecordRow(pub RecordRowF<Box<Type>>);
 pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, rkyv::Archive)]
 pub struct Type {
     pub typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,
     pub pos: TermPos,

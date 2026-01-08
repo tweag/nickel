@@ -125,7 +125,7 @@ pub enum EnumRowsF<Ty, ERows> {
 /// users to write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is
 /// required for the typechecker. It is thus determined during parsing and stored as `VarKind` where
 /// type variables are introduced, that is, on forall quantifiers.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, rkyv::Archive)]
 pub enum VarKind {
     #[default]
     Type,
@@ -140,7 +140,7 @@ pub enum VarKind {
 // TODO: this seems overly complicated, and it's anyways more space-efficient to store the
 // `excluded` information separately like we do in the `State` field constr. Probably we can store
 // it that way during parsing too.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, rkyv::Archive)]
 pub enum VarKindDiscriminant {
     Type,
     EnumRows,
@@ -251,7 +251,7 @@ pub enum DictTypeFlavour {
 /// - `RRows`: the recursive unfolding of record rows
 /// - `ERows`: the recursive unfolding of enum rows
 /// - `Te`: the type of a term (used to store contracts)
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum TypeF<Ty, RRows, ERows, Te> {
     /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.

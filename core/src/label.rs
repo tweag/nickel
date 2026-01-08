@@ -279,7 +279,7 @@ pub mod ty_path {
 /// user-written contracts, but is toggled in the argument contract when the interpreter decomposes
 /// an higher order-contract. This also generalizes to higher types such as `((Number -> Number) ->
 /// Number) -> Number` where the polarity alternates each time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive)]
 pub struct Label {
     /// The type checked by the original contract.
     pub typ: Rc<Type>,
