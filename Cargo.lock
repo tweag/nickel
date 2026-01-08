@@ -379,9 +379,9 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bytemuck"
-version = "1.23.2"
+version = "1.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3995eaeebcdf32f91f980d360f78732ddc061097ab4e39991ae7a6ace9194677"
+checksum = "1fbdf580320f38b612e485521afda1ee26d10cc9884efaaa750d383e13e3c5f4"
 
 [[package]]
 name = "byteorder"
@@ -3292,9 +3292,9 @@ dependencies = [
 
 [[package]]
 name = "malachite"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec410515e231332b14cd986a475d1c3323bcfa4c7efc038bfa1d5b410b1c57e4"
+checksum = "e4a44b9abebbed66d1b43671f1f2badec398c208dab6b98270c7a01aade24e2d"
 dependencies = [
  "malachite-base",
  "malachite-float",
@@ -3304,11 +3304,11 @@ dependencies = [
 
 [[package]]
 name = "malachite-base"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c738d3789301e957a8f7519318fcbb1b92bb95863b28f6938ae5a05be6259f34"
+checksum = "5eb2a098b227df48779e28ed4125dd3161b792a9254961377cea6f5c19e5b417"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.0",
  "itertools 0.14.0",
  "libm",
  "ryu",
@@ -3316,9 +3316,9 @@ dependencies = [
 
 [[package]]
 name = "malachite-float"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9446a966be7f1708c10badd6690d3094b5ad62d3accdcf2154740656d7650cfa"
+checksum = "ef3dfdcaabc1e9c59b7e4ba04d17a22d91944f2f22afcdeb04d43e03415fefb4"
 dependencies = [
  "itertools 0.14.0",
  "malachite-base",
@@ -3329,9 +3329,9 @@ dependencies = [
 
 [[package]]
 name = "malachite-nz"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1707c9a1fa36ce21749b35972bfad17bbf34cf5a7c96897c0491da321e387d3b"
+checksum = "ab7c0ddc4e2681459d70591baf30ca5abd31c25969e76d3605838bec794c8077"
 dependencies = [
  "itertools 0.14.0",
  "libm",
@@ -3342,9 +3342,9 @@ dependencies = [
 
 [[package]]
 name = "malachite-q"
-version = "0.6.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d764801aa4e96bbb69b389dcd03b50075345131cd63ca2e380bca71cc37a3675"
+checksum = "e13d19f04fc672f251d477c8d58c13c6c5550553dfba6a665c9ad3604466ac9a"
 dependencies = [
  "itertools 0.14.0",
  "malachite-base",
@@ -4733,9 +4733,9 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
 name = "safe_arch"
-version = "0.7.4"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b02de82ddbe1b636e6170c21be622223aea188ef2e139be0a5b219ec215323"
+checksum = "629516c85c29fe757770fa03f2074cf1eac43d44c02a3de9fc2ef7b0e207dfdd"
 dependencies = [
  "bytemuck",
 ]
@@ -6011,9 +6011,9 @@ dependencies = [
 
 [[package]]
 name = "wide"
-version = "0.7.33"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
+checksum = "13ca908d26e4786149c48efcf6c0ea09ab0e06d1fe3c17dc1b4b0f1ca4a7e788"
 dependencies = [
  "bytemuck",
  "safe_arch",
