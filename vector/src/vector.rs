@@ -111,7 +111,7 @@ fn extract_index<const N: usize>(idx: usize, height: u8) -> usize {
     shifted & (N - 1)
 }
 
-impl<T: Clone, const N: usize> Node<T, N>
+impl<T, const N: usize> Node<T, N>
 where
     Const<N>: ValidBranchingConstant,
 {
@@ -129,7 +129,12 @@ where
             }
         }
     }
+}
 
+impl<T: Clone, const N: usize> Node<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+{
     /// If this node is at height `height`, try to get the element at the given
     /// index.
     fn get(&self, height: u8, idx: usize) -> Option<&T> {
@@ -301,6 +306,24 @@ where
             self.leaf.next()
         }
     }
+
+    // This implementation of size_hint isn't particularly fast. We provide it
+    // because rkyv's serialization requires an ExactSizeIterator, and a slow
+    // size_hint is probably better than collecting into some other collection.
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self
+            .stack
+            .iter()
+            .flat_map(|nodes| nodes.clone().map(|n| n.len()))
+            .sum::<usize>()
+            + self.leaf.clone().count();
+        (len, Some(len))
+    }
+}
+
+impl<'a, T, const N: usize> ExactSizeIterator for Iter<'a, T, N> where
+    Const<N>: ValidBranchingConstant
+{
 }
 
 /// A mutable iterator over a [`Vector`].

@@ -40,11 +40,45 @@ impl RawPos {
 /// A position span identified by a starting byte offset and an ending byte offset in a file.
 ///
 /// `end` is the offset of the last character plus one.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, Hash, rkyv::Serialize, rkyv::Archive, rkyv::Deserialize,
+)]
 pub struct RawSpan {
     pub src_id: FileId,
+    #[rkyv(with = ByteIndexU32)]
     pub start: ByteIndex,
+    #[rkyv(with = ByteIndexU32)]
     pub end: ByteIndex,
+}
+
+struct ByteIndexU32;
+
+impl rkyv::with::ArchiveWith<ByteIndex> for ByteIndexU32 {
+    type Archived = rkyv::primitive::ArchivedU32;
+    type Resolver = ();
+
+    fn resolve_with(field: &ByteIndex, _resolver: (), out: rkyv::Place<Self::Archived>) {
+        use rkyv::Archive;
+        field.0.resolve((), out)
+    }
+}
+
+impl<S: rkyv::rancor::Fallible> rkyv::with::SerializeWith<ByteIndex, S> for ByteIndexU32 {
+    fn serialize_with(field: &ByteIndex, serializer: &mut S) -> Result<(), S::Error> {
+        use rkyv::Serialize;
+        field.0.serialize(serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible>
+    rkyv::with::DeserializeWith<rkyv::primitive::ArchivedU32, ByteIndex, D> for ByteIndexU32
+{
+    fn deserialize_with(
+        field: &rkyv::primitive::ArchivedU32,
+        _de: &mut D,
+    ) -> Result<ByteIndex, D::Error> {
+        Ok(ByteIndex(field.to_native()))
+    }
 }
 
 impl RawSpan {
@@ -119,7 +153,18 @@ impl From<RawSpan> for codespan::Span {
 }
 
 /// The position span of a term.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Eq,
+    PartialEq,
+    Hash,
+    Default,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub enum TermPos {
     /// The term exactly corresponds to an original expression in the source, or is a construct
     /// introduced by program transformation that corresponds to an original span in the source.

@@ -279,7 +279,7 @@ pub enum BindingType {
 
 /// A runtime representation of a contract, as a term and a label ready to be applied via
 /// [BinaryOp::ContractApply].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive)]
 pub struct RuntimeContract {
     /// The pending contract, which can be a function, a type, a custom contract or a record.
     pub contract: NickelValue,

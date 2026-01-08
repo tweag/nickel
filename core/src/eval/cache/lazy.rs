@@ -400,7 +400,7 @@ impl ThunkData {
 /// value block, like most other values. A pointer to those data is thus precisely a `NickelValue`.
 /// [Thunk] is a smart constructor for a value for which we know for sure it contains a thunk
 /// (which makes it possible to perform most operations bypassing checks).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 // CAUTION: we rely on the fact that `Thunk` has the same layout as `NickelValue` (we transmute
 // them freely). It's useful to allow zero-cost conversion between `&NickelValue` and `&Thunk`. Do
 // not change the representation of `Thunk` lightly. Doing so without properly adapting the rest of

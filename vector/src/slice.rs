@@ -1,5 +1,11 @@
 use std::ops::Index;
 
+use rkyv::{
+    Archive,
+    rancor::Fallible,
+    vec::{ArchivedVec, VecResolver},
+};
+
 use crate::{
     Const, ValidBranchingConstant,
     vector::{IntoIter, Iter, IterMut},
@@ -285,5 +291,44 @@ where
             end: vec.len(),
             vec,
         }
+    }
+}
+
+impl<T, const N: usize> Archive for Slice<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+    T: Archive + Clone,
+{
+    type Archived = ArchivedVec<T>;
+    type Resolver = VecResolver;
+
+    fn resolve(&self, resolver: VecResolver, out: rkyv::Place<Self::Archived>) {
+        ArchivedVec::resolve_from_len(self.len(), resolver, out);
+    }
+}
+
+impl<S, T, const N: usize> rkyv::Serialize<S> for Slice<T, N>
+where
+    Const<N>: ValidBranchingConstant,
+    S: Fallible + rkyv::ser::Allocator + rkyv::ser::Writer,
+    T: rkyv::Serialize<S> + Clone,
+{
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        ArchivedVec::serialize_from_iter::<T, _, _>(self.into_iter(), serializer)
+    }
+}
+
+impl<D, T, const N: usize> rkyv::Deserialize<Slice<T, N>, D> for ArchivedVec<T::Archived>
+where
+    T: Archive + Clone,
+    T::Archived: rkyv::Deserialize<T, D>,
+    Const<N>: ValidBranchingConstant,
+    D: Fallible + ?Sized,
+{
+    fn deserialize(&self, deserializer: &mut D) -> Result<Slice<T, N>, D::Error> {
+        self.as_slice()
+            .iter()
+            .map(|x| x.deserialize(deserializer))
+            .collect()
     }
 }

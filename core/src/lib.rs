@@ -17,6 +17,7 @@ pub mod pretty;
 pub mod program;
 pub mod repl;
 pub mod serialize;
+pub mod stash;
 pub mod stdlib;
 pub mod term;
 pub mod transform;
