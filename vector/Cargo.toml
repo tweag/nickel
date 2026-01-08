@@ -15,6 +15,7 @@ bench = false
 
 [dependencies]
 imbl-sized-chunks.workspace = true
+rkyv.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
