@@ -1213,7 +1213,7 @@ mod doc {
         term::{Term, record::RecordData},
     };
 
-    use comrak::{Arena, ComrakOptions, format_commonmark, parse_document};
+    use comrak::{Arena, format_commonmark, parse_document};
     use comrak::{
         arena_tree::{Children, NodeEdge},
         nodes::{
@@ -1316,6 +1316,15 @@ mod doc {
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
+            // comrak expects a fmt::Write and we have an io::Write, so wrap it.
+            // (There's also the fmt2io crate for this, but that's overkill)
+            struct IoToFmt<'a>(&'a mut dyn Write);
+            impl<'a> std::fmt::Write for IoToFmt<'a> {
+                fn write_str(&mut self, s: &str) -> std::fmt::Result {
+                    self.0.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)
+                }
+            }
+
             let document = ast_node(NodeValue::Document);
 
             // Our nodes in the Markdown document are owned by this arena
@@ -1323,10 +1332,10 @@ mod doc {
 
             // The default ComrakOptions disables all extensions (essentially reducing to
             // CommonMark)
-            let options = ComrakOptions::default();
+            let options = comrak::Options::default();
 
             self.markdown_append(0, &arena, &document, &options);
-            format_commonmark(&document, &options, out)
+            format_commonmark(&document, &options, &mut IoToFmt(out))
                 .map_err(|e| Error::IOError(IOError(e.to_string())))?;
 
             Ok(())
@@ -1337,9 +1346,9 @@ mod doc {
         fn markdown_append<'a>(
             &'a self,
             header_level: u8,
-            arena: &'a Arena<AstNode<'a>>,
+            arena: &'a Arena<'a>,
             document: &'a AstNode<'a>,
-            options: &ComrakOptions,
+            options: &comrak::Options,
         ) {
             let mut entries: Vec<(_, _)> = self.fields.iter().collect();
             entries.sort_by_key(|(k, _)| *k);
@@ -1404,9 +1413,9 @@ mod doc {
     /// Instead, we strip the root document node off, and return its children.
     fn parse_markdown_string<'a>(
         header_level: u8,
-        arena: &'a Arena<AstNode<'a>>,
+        arena: &'a Arena<'a>,
         md: &str,
-        options: &ComrakOptions,
+        options: &comrak::Options,
     ) -> Children<'a, std::cell::RefCell<Ast>> {
         let node = parse_document(arena, md, options);
 
@@ -1423,24 +1432,27 @@ mod doc {
     }
 
     fn increase_header_level(header_level: u8, ast: &mut Ast) -> &Ast {
-        if let NodeValue::Heading(NodeHeading { level, setext }) = ast.value {
+        if let NodeValue::Heading(NodeHeading {
+            level,
+            setext,
+            closed,
+        }) = ast.value
+        {
             ast.value = NodeValue::Heading(NodeHeading {
                 level: header_level + level,
                 setext,
+                closed,
             });
         }
         ast
     }
 
     /// Creates a codespan header of the provided string with the provided header level.
-    fn mk_header<'a>(
-        ident: &str,
-        header_level: u8,
-        arena: &'a Arena<AstNode<'a>>,
-    ) -> &'a AstNode<'a> {
+    fn mk_header<'a>(ident: &str, header_level: u8, arena: &'a Arena<'a>) -> &'a AstNode<'a> {
         let res = arena.alloc(ast_node(NodeValue::Heading(NodeHeading {
             level: header_level,
             setext: false,
+            closed: false,
         })));
 
         let code = arena.alloc(ast_node(NodeValue::Code(NodeCode {
@@ -1455,7 +1467,7 @@ mod doc {
 
     fn mk_types_and_contracts<'a>(
         ident: &str,
-        arena: &'a Arena<AstNode<'a>>,
+        arena: &'a Arena<'a>,
         typ: Option<&'a str>,
         contracts: &'a [String],
     ) -> &'a AstNode<'a> {
@@ -1485,7 +1497,7 @@ mod doc {
         ident: &str,
         separator: char,
         typ: &str,
-        arena: &'a Arena<AstNode<'a>>,
+        arena: &'a Arena<'a>,
     ) -> &'a AstNode<'a> {
         let list_item = arena.alloc(ast_node(NodeValue::Item(NodeList {
             list_type: ListType::Bullet,

@@ -2,7 +2,6 @@ use std::{fs::File, io::read_to_string, iter::once};
 
 use codespan_reporting::term::termcolor::NoColor;
 use comrak::{
-    ComrakOptions,
     arena_tree::{Node, NodeEdge},
     nodes::{Ast, AstNode, NodeCodeBlock, NodeValue},
     parse_document,
@@ -200,12 +199,15 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> impl Iterator<Item = Cod
     document.traverse().filter_map(|ne| match ne {
         NodeEdge::Start(Node { data, .. }) => match &*data.borrow() {
             Ast {
-                value: NodeValue::CodeBlock(NodeCodeBlock { info, literal, .. }),
+                value: NodeValue::CodeBlock(code),
                 ..
-            } => Some(CodeBlock {
-                typ: CodeBlockType::from_info(info)?,
-                content: literal.clone(),
-            }),
+            } => {
+                let NodeCodeBlock { info, literal, .. } = &**code;
+                Some(CodeBlock {
+                    typ: CodeBlockType::from_info(info)?,
+                    content: literal.clone(),
+                })
+            }
             _ => None,
         },
         _ => None,
@@ -216,7 +218,11 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> impl Iterator<Item = Cod
 fn check_manual_snippets(path: &str) {
     let contents = read_to_string(File::open(project_root().join(path)).unwrap()).unwrap();
     let arena = Arena::new();
-    let snippets = nickel_code_blocks(parse_document(&arena, &contents, &ComrakOptions::default()));
+    let snippets = nickel_code_blocks(parse_document(
+        &arena,
+        &contents,
+        &comrak::Options::default(),
+    ));
 
     for code_block in snippets {
         code_block.check();
