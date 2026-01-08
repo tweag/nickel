@@ -1,12 +1,64 @@
 use std::collections::HashSet;
 
+use nickel_lang_parser::{
+    ast::Number,
+    files::{DeserializeInterned, Interned, SerializeInterned},
+    position::TermPos,
+};
 use rkyv::{
+    Archive, Deserialize, Serialize,
     de::Pooling,
-    primitive::ArchivedU32,
+    rc::{ArchivedRc, RcResolver},
     ser::{Allocator, Positional, Sharing, Writer},
 };
 
-use crate::files::{ArchivedFileId, FileId};
+use crate::{
+    eval::value::NickelValue,
+    files::FileId,
+    position::{PosIdx, PosTable},
+};
+
+fn numerator_limbs(n: &Number) -> &[u64] {
+    todo!()
+}
+
+fn denominator_limbs(n: &Number) -> &[u64] {
+    todo!()
+}
+
+// TODO: this fails with a lifetime error. Without the "remote" thing it doesn't fail.
+// #[derive(Archive)]
+// #[rkyv(remote = Number)]
+// struct NumberDef<'a> {
+//     #[rkyv(getter = numerator_limbs, with = rkyv::with::Inline)]
+//     num_limbs: &'a [u64],
+//     #[rkyv(getter = denominator_limbs, with = rkyv::with::Inline)]
+//     denom_limbs: &'a [u64],
+// }
+
+struct WithNumberDef;
+
+// impl rkyv::with::ArchiveWith<Number> for WithNumberDef {
+//     type Archived = ArchivedNumberDef;
+//     type Resolver = ();
+
+//     fn resolve_with(n: &Number, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+//         let num_limbs = n.numerator_ref().into_limbs_asc();
+//         todo!()
+//     }
+// }
+
+pub struct NickelValueFlavor;
+
+impl Archive for NickelValue {
+    type Archived = ArchivedRc<i32, NickelValueFlavor>; // FIXME
+
+    type Resolver = RcResolver;
+
+    fn resolve(&self, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        todo!()
+    }
+}
 
 pub enum StashError {
     InvalidFile { id: FileId },
@@ -19,15 +71,27 @@ pub struct Stasher<'a> {
         rkyv::ser::sharing::Share,
     >,
     allowed_files: HashSet<FileId>,
+    pos_table: &'a PosTable,
 }
 
-impl Stasher<'_> {
-    pub fn stash_file(&mut self, file_id: FileId) -> Result<(), StashError> {
-        if self.allowed_files.contains(&file_id) {
+impl SerializeInterned<FileId> for Stasher<'_> {
+    fn serialize_id(&mut self, id: FileId) -> Result<(), Self::Error> {
+        if self.allowed_files.contains(&id) {
             Ok(())
         } else {
-            Err(StashError::InvalidFile { id: file_id })
+            Err(StashError::InvalidFile { id })
         }
+    }
+}
+
+impl Interned for PosIdx {
+    type Resolved = TermPos;
+}
+
+impl SerializeInterned<PosIdx> for Stasher<'_> {
+    fn serialize_id(&mut self, id: PosIdx) -> Result<(), Self::Error> {
+        self.pos_table.get(id).serialize(self)?;
+        Ok(())
     }
 }
 
@@ -85,6 +149,25 @@ pub enum UnstashError {
 pub struct Unstasher {
     pool: rkyv::de::Pool,
     pub(crate) allowed_files: HashSet<FileId>,
+    // TODO: maybe deduplicate positions on deserialization?
+    pub(crate) pos_table: PosTable,
+}
+
+impl DeserializeInterned<FileId> for Unstasher {
+    fn deserialize_id(&mut self, raw_id: u32) -> Result<FileId, Self::Error> {
+        let id = FileId::from_raw(raw_id);
+        if self.allowed_files.contains(&id) {
+            Ok(id)
+        } else {
+            Err(UnstashError::InvalidFile { id })
+        }
+    }
+}
+
+impl DeserializeInterned<PosIdx> for Unstasher {
+    fn deserialize_id(&mut self, pos: TermPos) -> Result<PosIdx, Self::Error> {
+        Ok(self.pos_table.push(pos))
+    }
 }
 
 impl rkyv::rancor::Fallible for Unstasher {

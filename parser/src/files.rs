@@ -10,11 +10,21 @@ use std::{
 use codespan::ByteIndex;
 use codespan_reporting::files::Error;
 use nickel_lang_vector::Vector;
+use rkyv::{rancor::Fallible, ser::Writer};
 
-use crate::{
-    position::RawSpan,
-    stash::{StashError, Stasher, UnstashError, Unstasher},
-};
+use crate::position::RawSpan;
+
+pub trait Interned {
+    type Resolved;
+}
+
+pub trait SerializeInterned<Id: Interned>: Fallible {
+    fn serialize_id(&mut self, id: Id) -> Result<(), Self::Error>;
+}
+
+pub trait DeserializeInterned<Id: Interned>: Fallible {
+    fn deserialize_id(&mut self, value: Id::Resolved) -> Result<Id, Self::Error>;
+}
 
 /// A file identifier, which can be used to access a file in a [`Files`].
 ///
@@ -35,24 +45,32 @@ use crate::{
 )]
 pub struct FileId(u32);
 
-impl<'a> rkyv::Serialize<Stasher<'a>> for FileId {
-    fn serialize(&self, serializer: &mut Stasher<'a>) -> Result<Self::Resolver, StashError> {
-        serializer.stash_file(*self)?;
+impl FileId {
+    /// Construct a `FileId` from an integer id.
+    ///
+    /// This is used for serialization and deserialization. For most other uses,
+    /// it's better to get a `FileId` straight from a [`Files`], because then
+    /// you're guaranteed to have a valid id (for that `Files`, at least).
+    pub fn from_raw(id: u32) -> Self {
+        FileId(id)
+    }
+}
+
+impl Interned for FileId {
+    type Resolved = u32;
+}
+
+impl<S: SerializeInterned<FileId> + Writer> rkyv::Serialize<S> for FileId {
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        serializer.serialize_id(*self)?;
         Ok(crate::files::FileIdResolver(()))
     }
 }
 
-impl rkyv::Deserialize<FileId, Unstasher> for ArchivedFileId {
-    fn deserialize(
-        &self,
-        deserializer: &mut Unstasher,
-    ) -> Result<FileId, <Unstasher as rkyv::rancor::Fallible>::Error> {
-        let id = FileId(self.0.to_native());
-        if deserializer.allowed_files.contains(&id) {
-            Ok(id)
-        } else {
-            Err(UnstashError::InvalidFile { id })
-        }
+impl<D: DeserializeInterned<FileId>> rkyv::Deserialize<FileId, D> for ArchivedFileId {
+    fn deserialize(&self, deserializer: &mut D) -> Result<FileId, D::Error> {
+        let id: u32 = self.0.to_native();
+        deserializer.deserialize_id(id)
     }
 }
 

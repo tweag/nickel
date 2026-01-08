@@ -25,7 +25,6 @@ pub mod identifier;
 pub mod lexer;
 pub mod metrics;
 pub mod position;
-pub mod stash;
 pub mod traverse;
 pub mod typ;
 pub(crate) mod uniterm;

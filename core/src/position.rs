@@ -48,9 +48,7 @@ impl PosIdx {
     pub const fn to_usize(self) -> usize {
         self.0 as usize
     }
-}
 
-impl PosIdx {
     /// Creates a position index from a usize, truncating the higher bits if set.
     pub fn from_usize_truncate(value: usize) -> Self {
         Self(value as u32)
