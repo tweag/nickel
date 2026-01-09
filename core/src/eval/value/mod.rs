@@ -94,7 +94,9 @@ impl PartialEq for NickelValue {
             (ValueContentRef::String(string1), ValueContentRef::String(string2)) => {
                 string1 == string2
             }
-            (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2)) => thunk1 == thunk2,
+            (ValueContentRef::Thunk(thunk1), ValueContentRef::Thunk(thunk2)) => {
+                *thunk1.borrow() == *thunk2.borrow()
+            }
             (ValueContentRef::Term(term1), ValueContentRef::Term(term2)) => term1 == term2,
             (ValueContentRef::Label(label1), ValueContentRef::Label(label2)) => label1 == label2,
             (
@@ -129,7 +131,7 @@ impl fmt::Debug for NickelValue {
             ValueContentRef::Array(container) => write!(f, "Array({container:?})"),
             ValueContentRef::Record(container) => write!(f, "Record({container:?})"),
             ValueContentRef::String(string) => write!(f, "String({string})"),
-            ValueContentRef::Thunk(thunk) => write!(f, "Thunk({thunk:?})"),
+            ValueContentRef::Thunk(thunk) => write!(f, "Thunk({:?})", thunk.borrow()),
             ValueContentRef::Term(term) => write!(f, "Term({term:?})"),
             ValueContentRef::Label(label) => write!(f, "Label({label:?})"),
             ValueContentRef::EnumVariant(enum_variant_data) => {

@@ -1559,7 +1559,7 @@ fn merge_fields(
 
 /// Wrap a value in a [crate::term::Term::Closurize] operator with the same position index.
 #[inline]
-fn closurize(value: NickelValue) -> NickelValue {
+pub(crate) fn closurize(value: NickelValue) -> NickelValue {
     let pos_idx = value.pos_idx();
     NickelValue::term(term::Term::Closurize(value), pos_idx)
 }
