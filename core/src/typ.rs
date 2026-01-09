@@ -41,6 +41,7 @@
 //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
 //! only be equated with itself.
 use crate::{
+    ast::compat::closurize,
     environment::Environment,
     error::{EvalErrorKind, ParseError, ParseErrors, TypecheckErrorData},
     eval::value::{Array, NickelValue},
@@ -587,12 +588,12 @@ impl Subcontract for EnumRows {
                             mk_term::var(variant_arg)
                         );
 
-                        mk_term::enum_variant(row.id, arg)
+                        closurize(mk_term::enum_variant(row.id, arg))
                     } else {
                         mk_term::var(value_arg)
                     };
 
-                    let body = mk_term::enum_variant("Ok", body);
+                    let body = closurize(mk_term::enum_variant("Ok", body));
 
                     let pattern = Pattern {
                         data: PatternData::Enum(alloc.alloc(EnumPattern {
