@@ -178,7 +178,7 @@ macro_rules! ncl_bench_group {
                                 runner = resolve_imports(&mut pos_table, runner, &mut cache).unwrap().transformed_term;
                             }
 
-                            let vm_ctxt = VmContext {
+                            let mut vm_ctxt = VmContext {
                                     import_resolver: cache,
                                     trace: Box::new(std::io::sink()),
                                     reporter: Box::new(nickel_lang_core::error::NullReporter {}),
@@ -186,21 +186,28 @@ macro_rules! ncl_bench_group {
                                     pos_table,
                             };
 
-                            // We need to make a new eval environment for each instance. First,
-                            // envs contain thunks, which are shared state and will have different
-                            // behavior between the first evaluation (which will update them) and
-                            // subsequent ones. From there one could consider that the first
-                            // evaluation acts as a warm-up and that it's ok (it's defendable that
-                            // updating thunks in the stdenv is maybe not what we really want to
-                            // measure).
+                            // We need to make a new eval environment for each instance.
                             //
-                            // However, a second, more serious issue is that those updated thunks
-                            // leak position indices allocated in a previous run (the VM allocates
-                            // indices dynamically, typically for inherited indices), thus pointing
-                            // to a different pos_table clone. This can cause (and has caused in
-                            // the past) panics. To avoid any form of state sharing between runs,
-                            // we use distinct, fresh environments.
+                            // The issue is that when using the stdenv, we update thunks located
+                            // there. Those updated thunks leak position indices allocated in a
+                            // previous run (the VM allocates indices dynamically, typically for
+                            // inherited indices), thus pointing to a different pos_table clone.
+                            // This can cause (and has caused in the past) panics. To avoid any
+                            // form of state sharing between runs, we use distinct, fresh
+                            // environments.
                             let eval_env = vm_ctxt.import_resolver.mk_eval_env(&mut eval_cache);
+
+                            // We still do a first dry run of the example, to pre-update thunks in
+                            // the stdenv. For some micro-benches, this thunk updating can become
+                            // the main cost and that's not what we want to measure (or if we want
+                            // to, in a separate, dedicated bench).
+                            //
+                            // Another reason is that this used to be the case before the compact
+                            // value representation (`NickelValue`), and changing this behavior
+                            // makes it harder to compare benches before and after compact values.
+                            if !matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
+                                let _ = VirtualMachine::new_empty_env(&mut vm_ctxt).with_initial_env(eval_env.clone()).eval(runner.clone());
+                            }
 
                             (vm_ctxt, eval_env, id, runner)
                         },
@@ -208,8 +215,7 @@ macro_rules! ncl_bench_group {
                             if matches!(bench.eval_mode, $crate::bench::EvalMode::TypeCheck) {
                                 vm_ctxt.import_resolver.typecheck(id, TypecheckMode::Walk).unwrap();
                             } else {
-                                let mut vm = VirtualMachine::new_empty_env(&mut vm_ctxt)
-                                .with_initial_env(eval_env);
+                                let mut vm = VirtualMachine::new_empty_env(&mut vm_ctxt).with_initial_env(eval_env);
 
                                 if let Err(e) = vm.eval(runner) {
                                     report(
