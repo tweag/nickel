@@ -143,6 +143,8 @@ fn check_repl(content: String) {
 
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::sink());
     repl.load_stdlib().unwrap();
+    // comrak preserves \r\n newlines on windows, so get rid of them.
+    let content = content.replace("\r\n", "\n");
     for piece in content.split("\n\n") {
         // We only process `piece`s starting with `>`. This way we can make the
         // testing code ignore unknown REPL statements, e.g. `:query`.
