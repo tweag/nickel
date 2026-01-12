@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, io::Write as _, path::PathBuf, rc::Rc};
 
-use comrak::{Arena, ComrakOptions, arena_tree::NodeEdge, nodes::AstNode};
+use comrak::{Arena, arena_tree::NodeEdge, nodes::AstNode};
 use nickel_lang_core::{
     cache::{CacheHub, ImportResolver, InputFormat, SourcePath},
     error::{
@@ -324,29 +324,31 @@ fn nickel_code_blocks<'a>(document: &'a AstNode<'a>) -> Vec<DocTest> {
             // we can munge the parsed AST to point into the doc comment?
             NodeEdge::Start(Node { data, .. }) => match &*data.borrow() {
                 Ast {
-                    value: NodeValue::CodeBlock(NodeCodeBlock { info, literal, .. }),
+                    value: NodeValue::CodeBlock(block),
                     ..
-                } => info
-                    .strip_prefix("nickel")
-                    .map(|tag| match tag.trim() {
-                        "ignore" => Vec::new(),
-                        "multiline" => {
-                            static BLANK_LINE: Lazy<Regex> =
-                                Lazy::new(|| Regex::new("\n\\s*\n").unwrap());
-                            BLANK_LINE
-                                .split(literal)
-                                .filter_map(|chunk| {
-                                    if !chunk.trim().is_empty() {
-                                        Some(DocTest::new(chunk.to_owned()))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect()
-                        }
-                        _ => vec![DocTest::new(literal.to_owned())],
-                    })
-                    .unwrap_or_default(),
+                } => {
+                    let NodeCodeBlock { info, literal, .. } = &**block;
+                    info.strip_prefix("nickel")
+                        .map(|tag| match tag.trim() {
+                            "ignore" => Vec::new(),
+                            "multiline" => {
+                                static BLANK_LINE: Lazy<Regex> =
+                                    Lazy::new(|| Regex::new("\n\\s*\n").unwrap());
+                                BLANK_LINE
+                                    .split(literal)
+                                    .filter_map(|chunk| {
+                                        if !chunk.trim().is_empty() {
+                                            Some(DocTest::new(chunk.to_owned()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect()
+                            }
+                            _ => vec![DocTest::new(literal.to_owned())],
+                        })
+                        .unwrap_or_default()
+                }
                 _ => vec![],
             },
             _ => vec![],
@@ -435,7 +437,7 @@ fn doctest_transform(
                 let snippets = nickel_code_blocks(comrak::parse_document(
                     &arena,
                     doc,
-                    &ComrakOptions::default(),
+                    &comrak::Options::default(),
                 ));
 
                 for (i, snippet) in snippets.iter().enumerate() {
