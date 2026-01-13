@@ -289,6 +289,7 @@ pub struct Label {
     ///
     /// The last diagnostic of the stack is usually the current working diagnostic (the one mutated
     /// by corresponding primops), and the latest/most precise when a blame error is raised.
+    #[rkyv(with = crate::stash::ArchiveSmallVec)]
     pub diagnostics: SmallVec<[ContractDiagnostic; 1]>,
 
     /// The position of the original contract.
@@ -381,7 +382,7 @@ impl TryFrom<&NickelValue> for Polarity {
 
 /// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
 /// customize contract error messages, and provide more context than "a contract has failed".
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, rkyv::Archive)]
 pub struct ContractDiagnostic {
     /// The main error message tag to be printed together with the error message.
     pub message: Option<String>,
@@ -557,7 +558,7 @@ impl Default for Label {
 /// Additionally, merging arrays currently generates a contract and its associated label for which
 /// we don't necessarily have a defined span at hand. The merge label makes it possible to fallback
 /// to the original position of the merge.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, rkyv::Archive)]
 pub struct MergeLabel {
     /// The span of the original merge (which might then decompose into many others).
     pub span: PosIdx,

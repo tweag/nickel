@@ -157,7 +157,7 @@ pub struct EvalErrorData {
 }
 
 /// An error occurring during evaluation.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, rkyv::Archive)]
 pub enum EvalErrorKind {
     /// A blame occurred: a contract has been broken somewhere.
     BlameError {
@@ -311,7 +311,7 @@ pub enum EvalErrorKind {
     Other(String, PosIdx),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, rkyv::Archive)]
 pub enum IllegalPolymorphicTailAction {
     FieldAccess { field: String },
     Map,
@@ -621,7 +621,7 @@ pub struct ExportErrorData {
 
 /// The type of an error occurring during serialization, together with  a path to the field that
 /// contains a non-serializable value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive)]
 pub struct PointedExportErrorData {
     /// The path to the field that contains a non-serializable value. This might be empty if the
     /// error occurred before entering any record.
@@ -656,7 +656,7 @@ impl From<ExportErrorKind> for PointedExportErrorData {
 }
 
 /// The type of error occurring during serialization.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, rkyv::Archive)]
 pub enum ExportErrorKind {
     /// Encountered a null value for a format that doesn't support them.
     UnsupportedNull(ExportFormat, NickelValue),
@@ -669,6 +669,7 @@ pub enum ExportErrorKind {
     /// A number was too large (in absolute value) to be serialized as `f64`
     NumberOutOfRange {
         term: NickelValue,
+        #[rkyv(with = nickel_lang_parser::stash::NumberStash)]
         value: Number,
     },
     /// The YAML documents export format expects the value to be an array.

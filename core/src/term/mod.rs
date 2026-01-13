@@ -6,6 +6,7 @@ pub mod record;
 pub mod string;
 
 use record::{Field, FieldDeps, Include, RecordData, RecordDeps, SharedMetadata};
+use rkyv::string::{ArchivedString, StringResolver};
 use smallvec::SmallVec;
 
 use crate::{
@@ -52,20 +53,21 @@ use std::{ffi::OsString, fmt, ops::Deref, rc::Rc};
 /// The payload of a `Term::ForeignId`.
 pub type ForeignIdPayload = u64;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct FunData {
     pub arg: LocIdent,
     pub body: NickelValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct LetData {
+    #[rkyv(with = crate::stash::ArchiveSmallVec)]
     pub bindings: SmallVec<[(LocIdent, NickelValue); 4]>,
     pub body: NickelValue,
     pub attrs: LetAttrs,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct RecRecordData {
     pub record: RecordData,
     /// Fields defined through `include` expressions.
@@ -80,39 +82,39 @@ pub struct RecRecordData {
     pub closurized: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct Op1Data {
     pub op: UnaryOp,
     pub arg: NickelValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct Op2Data {
     pub op: BinaryOp,
     pub arg1: NickelValue,
     pub arg2: NickelValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct OpNData {
     pub op: NAryOp,
     pub args: Vec<NickelValue>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct SealedData {
     pub key: SealingKey,
     pub inner: NickelValue,
     pub label: Rc<Label>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct AnnotatedData {
     pub annot: Rc<TypeAnnotation>,
     pub inner: NickelValue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct AppData {
     pub head: NickelValue,
     pub arg: NickelValue,
@@ -143,7 +145,7 @@ pub struct AppData {
 /// program transformation currently as they are then compiled away; there shouldn't be any sharing
 /// here, so it doesn't make sense to use [std::rc::Rc]. Other values might be cloned a lot on the
 /// other hand, so if they aren't expected to be modified much, they are put behind `Rc`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive)]
 pub enum Term {
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions yet to be concatenated.
@@ -246,18 +248,17 @@ pub enum Term {
     RuntimeError(Box<EvalErrorKind>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, rkyv::Archive)]
 /// Specifies where something should be imported from.
 pub enum Import {
     Path {
+        #[rkyv(with = rkyv::with::AsString)]
         path: OsString,
         format: InputFormat,
     },
     /// Importing packges requires a [`crate::package::PackageMap`] to translate the location
     /// to a path. The format is always Nickel.
-    Package {
-        id: Ident,
-    },
+    Package { id: Ident },
 }
 
 /// A unique sealing key, introduced by polymorphic contracts.
@@ -267,7 +268,7 @@ pub type SealingKey = i32;
 /// revertible cache elements at evaluation, which are devices used for the implementation of
 /// recursive records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more
 /// details.
-#[derive(Debug, Eq, PartialEq, Clone, Default)]
+#[derive(Debug, Eq, PartialEq, Clone, Default, rkyv::Archive)]
 pub enum BindingType {
     #[default]
     Normal,
@@ -425,7 +426,7 @@ impl Traverse<NickelValue> for RuntimeContract {
 }
 
 /// The attributes of a let binding.
-#[derive(Debug, Default, Eq, PartialEq, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, rkyv::Archive)]
 pub struct LetAttrs {
     /// The type of a let binding. See the documentation of [`BindingType`].
     pub binding_type: BindingType,
@@ -452,7 +453,7 @@ impl From<LetMetadata> for record::FieldMetadata {
 }
 
 /// A type or a contract together with its corresponding label.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, rkyv::Archive)]
 pub struct LabeledType {
     pub typ: Type,
     pub label: Label,
@@ -512,7 +513,7 @@ impl Traverse<NickelValue> for LabeledType {
 }
 
 /// A type and/or contract annotation.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone, Default, rkyv::Archive)]
 pub struct TypeAnnotation {
     /// The type annotation (using `:`).
     pub typ: Option<LabeledType>,
@@ -879,7 +880,7 @@ impl Term {
 /// elseBlock`, `if-then-else` can be seen as a unary operator taking a `Bool` argument and
 /// evaluating to either the first projection `fun x y => x` or the second projection `fun x y =>
 /// y`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub enum UnaryOp {
     /// If-then-else.
     IfThenElse,
@@ -1289,6 +1290,18 @@ impl From<regex::Regex> for CompiledRegex {
     }
 }
 
+// We archive regexes as strings and then re-compile them when deserializing.
+// There might be a better way, but the regex crate doesn't seem to expose
+// an interface that would allow us to serialize a pre-compiled regex.
+impl rkyv::Archive for CompiledRegex {
+    type Archived = ArchivedString;
+    type Resolver = StringResolver;
+
+    fn resolve(&self, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        ArchivedString::resolve_from_str(self.0.as_str(), resolver, out)
+    }
+}
+
 /// Position of a unary operator
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpPos {
@@ -1313,14 +1326,14 @@ impl UnaryOp {
 
 /// The kind of a dynamic record extension. Kind indicates if a definition is expected for the
 /// field being inserted, or if the inserted field doesn't have a definition.
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, rkyv::Archive)]
 pub enum RecordExtKind {
     WithValue,
     WithoutValue,
 }
 
 /// Primitive binary operators
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus,
@@ -1602,7 +1615,7 @@ impl fmt::Display for BinaryOp {
 
 /// Primitive n-ary operators. Unary and binary operator make up for most of operators and are
 /// hence special cased. `NAryOp` handles strict operations of arity greater than 2.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, rkyv::Archive)]
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StringReplace,

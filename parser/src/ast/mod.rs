@@ -54,7 +54,7 @@ use serde::{Serialize, Serializer};
 use typ::*;
 
 /// Supported input formats.
-#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash)]
+#[derive(Default, Clone, Copy, Eq, Debug, PartialEq, Hash, rkyv::Archive)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum InputFormat {
     #[default]
@@ -120,7 +120,7 @@ impl std::str::FromStr for InputFormat {
 
 /// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
 /// interpolated expression.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, rkyv::Archive)]
 pub enum StringChunk<E> {
     /// A string literal.
     Literal(String),
@@ -156,7 +156,8 @@ impl<E> StringChunk<E> {
             })
     }
 }
-#[derive(Debug, Clone, Default)]
+
+#[derive(Debug, Clone, Default, rkyv::Archive)]
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
@@ -170,7 +171,7 @@ pub enum MergePriority {
     Neutral,
 
     /// A numeral priority.
-    Numeral(Number),
+    Numeral(#[rkyv(with = crate::stash::NumberStash)] Number),
 
     /// The priority of values that override everything else and can't be overridden.
     Top,
@@ -243,7 +244,7 @@ impl Serialize for MergePriority {
 }
 
 /// Possible origins of a merge operation.
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default, rkyv::Archive)]
 pub enum MergeKind {
     /// A standard, user-written merge operation (or a merge operation descending from a
     /// user-written merge operation).
@@ -263,7 +264,7 @@ pub enum MergeKind {
 ///
 /// However, it's sometimes useful and even necessary to take them into account. This behavior is
 /// controlled by [RecordOpKind].
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Default, rkyv::Archive)]
 pub enum RecordOpKind {
     #[default]
     IgnoreEmptyOpt,

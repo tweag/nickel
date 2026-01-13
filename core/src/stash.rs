@@ -11,7 +11,10 @@ use rkyv::{
     de::Pooling,
     rc::{ArchivedRc, RcResolver},
     ser::{Allocator, Positional, Sharing, Writer},
+    vec::{ArchivedVec, VecResolver},
+    with::ArchiveWith,
 };
+use smallvec::SmallVec;
 
 use crate::{
     eval::value::NickelValue,
@@ -147,5 +150,23 @@ impl<E: rkyv::rancor::Source> Pooling<E> for Unstasher {
         // Safety: we're just wrapping the inner pool so our safety requirements
         // are the same as theirs.
         unsafe { self.pool.finish_pooling(address, ptr, drop) }
+    }
+}
+
+pub(crate) struct ArchiveSmallVec;
+
+impl<A: smallvec::Array> ArchiveWith<SmallVec<A>> for ArchiveSmallVec
+where
+    A::Item: Archive,
+{
+    type Archived = ArchivedVec<A::Item>;
+    type Resolver = VecResolver;
+
+    fn resolve_with(
+        field: &SmallVec<A>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        ArchivedVec::resolve_from_len(field.len(), resolver, out);
     }
 }

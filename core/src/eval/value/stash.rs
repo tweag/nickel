@@ -5,7 +5,7 @@ use rkyv::{
     rc::{ArchivedRc, Flavor, RcResolver},
 };
 
-use crate::position::PosIdx;
+use crate::{position::PosIdx, term::Term};
 
 use super::{
     ArrayData, CustomContractData, EnumVariantData, ForeignIdData, LabelData, NickelValue,
@@ -13,6 +13,7 @@ use super::{
     lens::TermContent,
 };
 
+#[derive(Archive)]
 pub struct ValueOwned {
     pos_idx: PosIdx,
     payload: ValuePayload,
@@ -27,7 +28,7 @@ pub enum ValuePayload {
     Record(RecordData),
     String(StringData),
     Thunk(Thunk),
-    Term(TermContent),
+    Term(Term),
     Label(LabelData),
     EnumVariant(EnumVariantData),
     ForeignId(ForeignIdData),
@@ -47,7 +48,7 @@ impl From<NickelValue> for ValueOwned {
             ValueContent::Record(lens) => ValuePayload::Record(lens.take().unwrap_or_alloc()),
             ValueContent::String(lens) => ValuePayload::String(lens.take()),
             ValueContent::Thunk(lens) => ValuePayload::Thunk(lens.take()),
-            ValueContent::Term(term) => ValuePayload::Term(term),
+            ValueContent::Term(term) => ValuePayload::Term(term.take()),
             ValueContent::Label(lens) => ValuePayload::Label(lens.take()),
             ValueContent::EnumVariant(lens) => ValuePayload::EnumVariant(lens.take()),
             ValueContent::ForeignId(lens) => ValuePayload::ForeignId(lens.take()),
