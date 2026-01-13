@@ -61,7 +61,7 @@ use std::{collections::HashSet, convert::Infallible};
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub struct RecordRowF<Ty> {
     pub id: LocIdent,
     pub typ: Ty,
@@ -76,7 +76,7 @@ pub struct RecordRowF<Ty> {
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub struct EnumRowF<Ty> {
     pub id: LocIdent,
     pub typ: Option<Ty>,
@@ -93,7 +93,7 @@ pub struct EnumRowF<Ty> {
 ///   wrapper around an instantiation of `TypeF`.
 /// - `RRows` is the recursive unfolding of record rows (the tail of this row sequence). In
 ///   practice, a wrapper around an instantiation of `RecordRowsF`.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum RecordRowsF<Ty, RRows> {
     Empty,
     Extend { row: RecordRowF<Ty>, tail: RRows },
@@ -110,7 +110,7 @@ pub enum RecordRowsF<Ty, RRows> {
 ///
 /// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
 ///   a wrapper around `EnumRowsF`.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum EnumRowsF<Ty, ERows> {
     Empty,
     Extend { row: EnumRowF<Ty>, tail: ERows },
@@ -171,7 +171,7 @@ impl From<&VarKind> for VarKindDiscriminant {
 /// blame, etc.).
 ///
 /// Dictionary contracts might get a proper AST node later on.
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+#[derive(Clone, Debug, Copy, Eq, PartialEq, rkyv::Archive)]
 pub enum DictTypeFlavour {
     /// Dictionary type (`{_ : T}`)
     Type,

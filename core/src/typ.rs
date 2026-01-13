@@ -81,21 +81,25 @@ pub use nickel_lang_parser::typ::{
 /// This is a newtype just so that we can implement `Display` on it (because
 /// `EnumRowF` is from a different crate).
 pub struct EnumRow(pub EnumRowF<Box<Type>>);
+
 /// Concrete, recursive definition for enum rows.
-#[derive(Clone, PartialEq, Debug)]
-pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
+#[derive(Clone, PartialEq, Debug, rkyv::Archive)]
+pub struct EnumRows(#[rkyv(omit_bounds)] pub EnumRowsF<Box<Type>, Box<EnumRows>>);
+
 /// Concrete, recursive definition for a record row.
 ///
 /// This is a newtype just so that we can implement `Display` on it (because
 /// `RecordRowF` is from a different crate).
 pub struct RecordRow(pub RecordRowF<Box<Type>>);
-#[derive(Clone, PartialEq, Debug)]
+
+#[derive(Clone, PartialEq, Debug, rkyv::Archive)]
 /// Concrete, recursive definition for record rows.
-pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
+pub struct RecordRows(#[rkyv(omit_bounds)] pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug, rkyv::Archive)]
 pub struct Type {
+    #[rkyv(omit_bounds)]
     pub typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,
     pub pos: TermPos,
 }

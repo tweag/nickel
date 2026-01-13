@@ -7,7 +7,7 @@
 pub use nickel_lang_parser::position::{RawPos, RawSpan, TermPos};
 
 /// An index into the position table.
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, rkyv::Archive)]
 pub struct PosIdx(u32);
 
 impl From<PosIdx> for usize {

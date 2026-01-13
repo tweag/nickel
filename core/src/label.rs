@@ -65,7 +65,7 @@ pub mod ty_path {
     use nickel_lang_vector::Vector;
 
     /// An element of a path type.
-    #[derive(Debug, Clone, PartialEq, Eq, Copy)]
+    #[derive(Debug, Clone, PartialEq, Eq, Copy, rkyv::Archive)]
     pub enum Elem {
         Domain,
         Codomain,
@@ -323,7 +323,7 @@ pub struct Label {
 
 /// Data about type variables that is needed for polymorphic contracts to decide which actions to
 /// take.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, rkyv::Archive)]
 pub struct TypeVarData {
     pub polarity: Polarity,
 }
@@ -343,7 +343,7 @@ impl From<&TypeVarData> for NickelValue {
 }
 
 /// A polarity. See [`Label`]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, rkyv::Archive)]
 pub enum Polarity {
     Positive,
     Negative,

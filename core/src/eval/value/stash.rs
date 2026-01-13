@@ -1,5 +1,9 @@
+use malachite::Natural;
 use nickel_lang_parser::ast::Number;
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{
+    Archive, Deserialize, Serialize,
+    rc::{ArchivedRc, Flavor, RcResolver},
+};
 
 use crate::position::PosIdx;
 
@@ -66,9 +70,10 @@ struct NumberStash {
 
 impl From<Number> for NumberStash {
     fn from(n: Number) -> Self {
+        let sign = n >= 0;
         let (num, denom) = n.into_numerator_and_denominator();
         NumberStash {
-            sign: n >= 0,
+            sign,
             num_limbs: num.into_limbs_asc(),
             denom_limbs: denom.into_limbs_asc(),
         }
@@ -76,7 +81,7 @@ impl From<Number> for NumberStash {
 }
 
 impl From<NumberStash> for Number {
-    fn from(nd: NumberDef) -> Self {
+    fn from(nd: NumberStash) -> Self {
         Number::from_sign_and_naturals(
             nd.sign,
             Natural::from_owned_limbs_asc(nd.num_limbs),
@@ -87,8 +92,13 @@ impl From<NumberStash> for Number {
 
 pub struct NickelValueFlavor;
 
+impl Flavor for NickelValueFlavor {
+    // FIXME: what does this actually enable?
+    const ALLOW_CYCLES: bool = true;
+}
+
 impl Archive for NickelValue {
-    type Archived = ArchivedRc<i32, NickelValueFlavor>; // FIXME
+    type Archived = ArchivedRc<ValueOwned, NickelValueFlavor>;
 
     type Resolver = RcResolver;
 

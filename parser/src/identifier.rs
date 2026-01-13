@@ -155,7 +155,7 @@ impl From<Ident> for &'static str {
 ///
 /// The location is ignored for equality comparison and hashing; it's mainly
 /// intended for error messages.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, rkyv::Archive)]
 #[serde(into = "String", from = "String")]
 pub struct LocIdent {
     ident: Ident,
