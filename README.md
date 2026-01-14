@@ -23,7 +23,7 @@ Nickel's salient traits are:
 - **Composable data**: the basic building blocks for data are records (JSON's
     *objects*). Records can be composed through the merge operator, combining
     metadata as well (documentation, default values, type contracts, etc).
-- **Typed, but only when it helps**: one one hand, static types improve code
+- **Typed, but only when it helps**: on the one hand, static types improve code
     quality, serve as documentation and eliminate bugs early, in particular for
     functions.
 
