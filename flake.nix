@@ -552,6 +552,7 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; profile = "dev"; }).cargoArtifactsDeps ];
 
         buildInputs = [
+          pkgs.cargo-expand
           pkgs.cargo-flamegraph
           pkgs.cargo-insta
           pkgs.cargo-nextest
@@ -564,10 +565,10 @@
           pkgs.python3
         ];
 
-        shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
-          echo "=== Nickel development shell ==="
-          echo "Info: Git hooks can be installed using \`pre-commit install\`"
-        '';
+        # shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
+        #   echo "=== Nickel development shell ==="
+        #   echo "Info: Git hooks can be installed using \`pre-commit install\`"
+        # '';
 
         RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
       };

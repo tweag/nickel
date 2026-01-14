@@ -14,7 +14,7 @@ use crate::{
 /// The callstack length is assumed to be smaller at most `u32::MAX`, which allows to store indices
 /// in a more compact way on the eval stack. Any method leading to a push that reaches this size
 /// will currently panic.
-#[derive(PartialEq, Eq, Clone, Default, Debug)]
+#[derive(PartialEq, Eq, Clone, Default, Debug, rkyv::Archive)]
 pub struct CallStack(pub Vec<StackElem>);
 
 /// Basic description of a function call. Used for error reporting.
@@ -26,7 +26,7 @@ pub struct CallDescr {
 }
 
 /// A call stack element.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, rkyv::Archive)]
 pub enum StackElem {
     /// A function body was entered. The position is the position of the original application.
     Fun(PosIdx),

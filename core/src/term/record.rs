@@ -9,7 +9,7 @@ use crate::{
 use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
-#[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Copy, Clone, rkyv::Archive)]
 pub struct RecordAttrs {
     /// If the record is an open record, ie ending with `..`. Open records have a different
     /// behavior when used as a record contract: they allow additional fields to be present.
@@ -53,7 +53,7 @@ impl Combine for RecordAttrs {
 
 /// Dependencies of a field or a cache element over the other recursive fields of a recursive
 /// record.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, rkyv::Archive)]
 pub enum FieldDeps {
     /// The set of dependencies is fixed and has been computed. When attached to an element, an
     /// empty set of dependency means that the element isn't revertible, but standard.
@@ -101,7 +101,7 @@ impl From<HashSet<Ident>> for FieldDeps {
 /// Store field interdependencies in a recursive record. Map each static, dynamic and included
 /// field to the set of recursive fields that syntactically appear in their definition as free
 /// variables.
-#[derive(Debug, Default, Eq, PartialEq, Clone)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, rkyv::Archive)]
 pub struct RecordDeps {
     /// Must have exactly the same keys as the static fields map of the recursive record and the
     /// include expressions. Static fields and include expressions are combined because at the time
@@ -112,7 +112,7 @@ pub struct RecordDeps {
     pub dyn_fields: Vec<FieldDeps>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 /// An include expression (see [crate::ast::record::Include]).
 pub struct Include {
     /// The included identifier.
@@ -122,7 +122,7 @@ pub struct Include {
 }
 
 /// The metadata attached to record fields.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone, Default, rkyv::Archive)]
 pub struct FieldMetadata {
     pub doc: Option<Rc<str>>,
     pub annotation: TypeAnnotation,
@@ -204,7 +204,7 @@ impl From<TypeAnnotation> for FieldMetadata {
 ///
 /// Converting from [`FieldMetadata`] or `Rc<FieldMetadata>` will automatically set `self.0` to
 /// `None` and discard the metadata if they are empty.
-#[derive(Clone, Default, PartialEq, Debug)]
+#[derive(Clone, Default, PartialEq, Debug, rkyv::Archive)]
 pub struct SharedMetadata(pub Option<Rc<FieldMetadata>>);
 
 impl From<FieldMetadata> for SharedMetadata {
@@ -283,7 +283,7 @@ impl SharedMetadata {
 }
 
 /// A record field with its metadata.
-#[derive(Clone, Default, PartialEq, Debug)]
+#[derive(Clone, Default, PartialEq, Debug, rkyv::Archive)]
 pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<NickelValue>,
@@ -411,7 +411,7 @@ impl Traverse<NickelValue> for Field {
 ///
 /// Used to group together fields common to both the [NickelValue] evaluated record and the
 /// [super::Term::RecRecord] term.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, rkyv::Archive)]
 pub struct RecordData {
     /// Fields whose names are known statically.
     pub fields: IndexMap<LocIdent, Field>,
@@ -650,7 +650,7 @@ impl RecordData {
 ///
 /// Note that access to the enclosed term must only be allowed when a matching sealing key is
 /// provided. If this is not enforced it will lead to parametricity violations.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct SealedTail {
     /// The key with which the tail is sealed.
     sealing_key: SealingKey,

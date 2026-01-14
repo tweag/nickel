@@ -35,6 +35,7 @@ pub use super::cache::lazy::{self, Thunk};
 pub use crate::term::record::RecordData;
 
 pub mod lens;
+pub mod stash;
 
 /// A Nickel array.
 pub type Array = Slice<NickelValue, 32>;
@@ -1770,7 +1771,7 @@ pub trait ValueBlockData {
 pub type NumberData = Number;
 pub type StringData = NickelString;
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, rkyv::Archive)]
 pub struct ArrayData {
     pub array: Array,
     /// Arrays implement lazy contract application for performance reasons: contracts applied to
@@ -1783,7 +1784,7 @@ pub type ThunkData = RefCell<lazy::ThunkData>;
 pub type TermData = Term;
 pub type LabelData = Label;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct EnumVariantData {
     pub tag: LocIdent,
     pub arg: Option<NickelValue>,
@@ -1793,7 +1794,7 @@ pub type ForeignIdData = ForeignIdPayload;
 pub type CustomContractData = NickelValue;
 pub type SealingKeyData = SealingKey;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, rkyv::Archive)]
 pub struct TypeData {
     /// The static type.
     pub typ: Type,

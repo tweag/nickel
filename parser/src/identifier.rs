@@ -1,4 +1,5 @@
 //! Define the type of an identifier.
+use rkyv::string::ArchivedString;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -22,6 +23,16 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "&'static str", from = "String")]
 pub struct Ident(interner::Symbol);
+
+impl rkyv::Archive for Ident {
+    type Archived = ArchivedString;
+    type Resolver = ();
+
+    fn resolve(&self, _resolver: (), _out: rkyv::Place<Self::Archived>) {
+        // FIXME: generated?
+        todo!()
+    }
+}
 
 impl Ident {
     pub fn new(s: impl AsRef<str>) -> Self {
@@ -144,7 +155,7 @@ impl From<Ident> for &'static str {
 ///
 /// The location is ignored for equality comparison and hashing; it's mainly
 /// intended for error messages.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, rkyv::Archive)]
 #[serde(into = "String", from = "String")]
 pub struct LocIdent {
     ident: Ident,

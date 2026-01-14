@@ -61,7 +61,7 @@ use std::{collections::HashSet, convert::Infallible};
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub struct RecordRowF<Ty> {
     pub id: LocIdent,
     pub typ: Ty,
@@ -76,7 +76,7 @@ pub struct RecordRowF<Ty> {
 ///
 /// As other types with the `F` suffix, this type is parametrized by one or more recursive
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub struct EnumRowF<Ty> {
     pub id: LocIdent,
     pub typ: Option<Ty>,
@@ -93,7 +93,7 @@ pub struct EnumRowF<Ty> {
 ///   wrapper around an instantiation of `TypeF`.
 /// - `RRows` is the recursive unfolding of record rows (the tail of this row sequence). In
 ///   practice, a wrapper around an instantiation of `RecordRowsF`.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum RecordRowsF<Ty, RRows> {
     Empty,
     Extend { row: RecordRowF<Ty>, tail: RRows },
@@ -110,7 +110,7 @@ pub enum RecordRowsF<Ty, RRows> {
 ///
 /// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
 ///   a wrapper around `EnumRowsF`.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum EnumRowsF<Ty, ERows> {
     Empty,
     Extend { row: EnumRowF<Ty>, tail: ERows },
@@ -125,7 +125,7 @@ pub enum EnumRowsF<Ty, ERows> {
 /// users to write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is
 /// required for the typechecker. It is thus determined during parsing and stored as `VarKind` where
 /// type variables are introduced, that is, on forall quantifiers.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default, rkyv::Archive)]
 pub enum VarKind {
     #[default]
     Type,
@@ -140,7 +140,7 @@ pub enum VarKind {
 // TODO: this seems overly complicated, and it's anyways more space-efficient to store the
 // `excluded` information separately like we do in the `State` field constr. Probably we can store
 // it that way during parsing too.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, rkyv::Archive)]
 pub enum VarKindDiscriminant {
     Type,
     EnumRows,
@@ -171,7 +171,7 @@ impl From<&VarKind> for VarKindDiscriminant {
 /// blame, etc.).
 ///
 /// Dictionary contracts might get a proper AST node later on.
-#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+#[derive(Clone, Debug, Copy, Eq, PartialEq, rkyv::Archive)]
 pub enum DictTypeFlavour {
     /// Dictionary type (`{_ : T}`)
     Type,
@@ -251,7 +251,7 @@ pub enum DictTypeFlavour {
 /// - `RRows`: the recursive unfolding of record rows
 /// - `ERows`: the recursive unfolding of enum rows
 /// - `Te`: the type of a term (used to store contracts)
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, rkyv::Archive)]
 pub enum TypeF<Ty, RRows, ERows, Te> {
     /// The dynamic type, or unitype. Assigned to values whose actual type is not statically known
     /// or checked.

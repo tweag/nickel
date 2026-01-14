@@ -163,11 +163,13 @@ fn iter_starting_at() {
             let idx: usize = u.arbitrary()?;
             let idx = idx % vec.len();
 
+            let claimed_len = vector.iter_starting_at(idx).len();
             let result: Vec<u32> = vector.iter_starting_at(idx).copied().collect();
             let into_result: Vec<u32> = vector.into_iter_starting_at(idx).collect();
             vec.drain(..idx);
             assert_eq!(result, vec);
             assert_eq!(into_result, vec);
+            assert_eq!(claimed_len, vec.len());
         }
 
         Ok(())

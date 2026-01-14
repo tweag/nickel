@@ -7,7 +7,7 @@
 pub use nickel_lang_parser::position::{RawPos, RawSpan, TermPos};
 
 /// An index into the position table.
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, rkyv::Archive)]
 pub struct PosIdx(u32);
 
 impl From<PosIdx> for usize {
@@ -48,9 +48,7 @@ impl PosIdx {
     pub const fn to_usize(self) -> usize {
         self.0 as usize
     }
-}
 
-impl PosIdx {
     /// Creates a position index from a usize, truncating the higher bits if set.
     pub fn from_usize_truncate(value: usize) -> Self {
         Self(value as u32)

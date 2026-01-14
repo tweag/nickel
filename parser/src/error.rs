@@ -33,7 +33,7 @@ pub enum LexicalError {
 /// record type in a strict way.
 ///
 /// See `parser::uniterm::UniRecord::into_type_strict`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, rkyv::Archive)]
 pub enum InvalidRecordTypeError {
     /// The record type had an invalid field, for example because it had a contract,
     /// an assigned value, or lacked a type annotation.
@@ -94,7 +94,7 @@ impl InvalidRecordTypeError {
 }
 
 /// An error occurring during parsing.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, rkyv::Archive)]
 pub enum ParseError {
     /// Unexpected end of file.
     UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
