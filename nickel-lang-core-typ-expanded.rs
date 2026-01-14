@@ -1,0 +1,1891 @@
+pub mod typ {
+    //! Nickel static types.
+    //!
+    //! The type system of Nickel is comprised of primitive types, arrays, records, functions, and
+    //! opaque types (contracts). This is a structural type system with row polymorphism for both
+    //! records and enums.
+    //!
+    //! ## Record types (rows)
+    //!
+    //! A row type for a record is represented as a linked list of pairs `(id, type)` indicating the
+    //! name and the type of each field. Row-polymorphism means that the tail of this list can be a
+    //! type variable which can be abstracted over, leaving the row open for future extension. A simple
+    //! illustration is record field access:
+    //!
+    //! ```nickel
+    //! let f : forall a. { some_field : Number; a} -> Number =
+    //!   fun record => record.some_field
+    //! ```
+    //!
+    //! The type `{ some_field: Number; a }` indicates that an argument to this function must have at
+    //! least the field `some_field` of type `Number`, but may contain other fields (or not).
+    //!
+    //! ## Dictionaries
+    //!
+    //! A dictionary type `{ _ : Type }` represents a record whose fields all have the type `Type`. The
+    //! count and the name of the fields aren't constrained. Dictionaries can be mapped over, extended,
+    //! shrinked and accessed in a type-safe manner.
+    //!
+    //! # Enum types
+    //!
+    //! An enum type is also a row type where each element is a tag, such as `[| 'foo, 'bar, 'baz |]`.
+    //! This type represent values that can be either `'foo`, `'bar` or `'baz`. Enums support row
+    //! polymorphism as well.
+    //!
+    //! # Contracts
+    //!
+    //! To each type corresponds a contract, which is equivalent to a Nickel function which checks at
+    //! runtime that its argument is of the given type. Contract checks are introduced by a contract
+    //! annotation or propagated via merging. They ensure sane interaction between typed and untyped
+    //! parts.
+    //!
+    //! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
+    //! only be equated with itself.
+    use crate::{
+        environment::Environment,
+        error::{EvalErrorKind, ParseError, ParseErrors, TypecheckErrorData},
+        eval::value::{Array, NickelValue},
+        identifier::{Ident, LocIdent},
+        impl_display_from_pretty, label::Polarity, metrics::increment, mk_app, mk_fun,
+        position::{PosIdx, PosTable, TermPos},
+        pretty::PrettyPrintCap, stdlib::internals,
+        term::{
+            IndexMap, make as mk_term,
+            pattern::compile::{Compile, MatchBranch, MatchData},
+            record::RecordData,
+        },
+        traverse::*,
+    };
+    use std::{collections::HashSet, convert::Infallible};
+    use nickel_lang_parser::ast::AstAlloc;
+    pub use nickel_lang_parser::typ::{
+        DictTypeFlavour, EnumRowF, EnumRowsF, RecordRowF, RecordRowsF, TypeF, VarKind,
+        VarKindDiscriminant,
+    };
+    /// Concrete, recursive definition for an enum row.
+    ///
+    /// This is a newtype just so that we can implement `Display` on it (because
+    /// `EnumRowF` is from a different crate).
+    pub struct EnumRow(pub EnumRowF<Box<Type>>);
+    /// Concrete, recursive definition for enum rows.
+    #[rkyv(
+        bytecheck(
+            bounds(
+                __C:rkyv::validation::ArchiveContext,
+                __C:rkyv::validation::shared::SharedContext,
+                <__C
+                as
+                rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+            )
+        )
+    )]
+    pub struct EnumRows(#[rkyv(omit_bounds)] pub EnumRowsF<Box<Type>, Box<EnumRows>>);
+    #[automatically_derived]
+    impl ::core::clone::Clone for EnumRows {
+        #[inline]
+        fn clone(&self) -> EnumRows {
+            EnumRows(::core::clone::Clone::clone(&self.0))
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for EnumRows {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for EnumRows {
+        #[inline]
+        fn eq(&self, other: &EnumRows) -> bool {
+            self.0 == other.0
+        }
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for EnumRows {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_tuple_field1_finish(f, "EnumRows", &&self.0)
+        }
+    }
+    #[automatically_derived]
+    ///An archived [`EnumRows`]
+    #[bytecheck(crate = ::rkyv::bytecheck)]
+    #[bytecheck(
+        bounds(
+            __C:rkyv::validation::ArchiveContext,
+            __C:rkyv::validation::shared::SharedContext,
+            <__C
+            as
+            rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+        )
+    )]
+    #[repr(C)]
+    pub struct ArchivedEnumRows(
+        ///The archived counterpart of [`EnumRows::0`]
+        #[bytecheck(omit_bounds)]
+        pub <EnumRowsF<Box<Type>, Box<EnumRows>> as ::rkyv::Archive>::Archived,
+    );
+    #[automatically_derived]
+    unsafe impl<
+        __C: ::rkyv::bytecheck::rancor::Fallible + ?::core::marker::Sized,
+    > ::rkyv::bytecheck::CheckBytes<__C> for ArchivedEnumRows
+    where
+        <__C as ::rkyv::bytecheck::rancor::Fallible>::Error: ::rkyv::bytecheck::rancor::Trace,
+        __C: rkyv::validation::ArchiveContext,
+        __C: rkyv::validation::shared::SharedContext,
+        <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+    {
+        unsafe fn check_bytes(
+            value: *const Self,
+            context: &mut __C,
+        ) -> ::core::result::Result<
+            (),
+            <__C as ::rkyv::bytecheck::rancor::Fallible>::Error,
+        > {
+            <<EnumRowsF<
+                Box<Type>,
+                Box<EnumRows>,
+            > as ::rkyv::Archive>::Archived as ::rkyv::bytecheck::CheckBytes<
+                __C,
+            >>::check_bytes(&raw const (*value).0, context)
+                .map_err(|e| {
+                    <<__C as ::rkyv::bytecheck::rancor::Fallible>::Error as ::rkyv::bytecheck::rancor::Trace>::trace(
+                        e,
+                        ::rkyv::bytecheck::TupleStructCheckContext {
+                            tuple_struct_name: "ArchivedEnumRows",
+                            field_index: 0usize,
+                        },
+                    )
+                })?;
+            ::core::result::Result::Ok(())
+        }
+    }
+    #[automatically_derived]
+    ///The resolver for an archived [`EnumRows`]
+    pub struct EnumRowsResolver(
+        <EnumRowsF<Box<Type>, Box<EnumRows>> as ::rkyv::Archive>::Resolver,
+    );
+    impl ::rkyv::Archive for EnumRows {
+        type Archived = ArchivedEnumRows;
+        type Resolver = EnumRowsResolver;
+        const COPY_OPTIMIZATION: ::rkyv::traits::CopyOptimization<Self> = unsafe {
+            ::rkyv::traits::CopyOptimization::enable_if(
+                0 + ::core::mem::size_of::<EnumRowsF<Box<Type>, Box<EnumRows>>>()
+                    == ::core::mem::size_of::<EnumRows>()
+                    && <EnumRowsF<
+                        Box<Type>,
+                        Box<EnumRows>,
+                    > as ::rkyv::Archive>::COPY_OPTIMIZATION
+                        .is_enabled()
+                    && const { builtin # offset_of(EnumRows, 0) }
+                        == const { builtin # offset_of(ArchivedEnumRows, 0) },
+            )
+        };
+        #[allow(clippy::unit_arg)]
+        fn resolve(&self, resolver: Self::Resolver, out: ::rkyv::Place<Self::Archived>) {
+            let field_ptr = unsafe { &raw mut (*out.ptr()).0 };
+            let field_out = unsafe {
+                ::rkyv::Place::from_field_unchecked(out, field_ptr)
+            };
+            <EnumRowsF<
+                Box<Type>,
+                Box<EnumRows>,
+            > as ::rkyv::Archive>::resolve(&self.0, resolver.0, field_out);
+        }
+    }
+    unsafe impl ::rkyv::traits::Portable for ArchivedEnumRows
+    where
+        <EnumRowsF<
+            Box<Type>,
+            Box<EnumRows>,
+        > as ::rkyv::Archive>::Archived: ::rkyv::traits::Portable,
+    {}
+    /// Concrete, recursive definition for a record row.
+    ///
+    /// This is a newtype just so that we can implement `Display` on it (because
+    /// `RecordRowF` is from a different crate).
+    pub struct RecordRow(pub RecordRowF<Box<Type>>);
+    /// Concrete, recursive definition for record rows.
+    #[rkyv(
+        bytecheck(
+            bounds(
+                __C:rkyv::validation::ArchiveContext,
+                __C:rkyv::validation::shared::SharedContext,
+                <__C
+                as
+                rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+            )
+        )
+    )]
+    pub struct RecordRows(
+        #[rkyv(omit_bounds)]
+        pub RecordRowsF<Box<Type>, Box<RecordRows>>,
+    );
+    #[automatically_derived]
+    impl ::core::clone::Clone for RecordRows {
+        #[inline]
+        fn clone(&self) -> RecordRows {
+            RecordRows(::core::clone::Clone::clone(&self.0))
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for RecordRows {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for RecordRows {
+        #[inline]
+        fn eq(&self, other: &RecordRows) -> bool {
+            self.0 == other.0
+        }
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for RecordRows {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_tuple_field1_finish(f, "RecordRows", &&self.0)
+        }
+    }
+    #[automatically_derived]
+    ///An archived [`RecordRows`]
+    #[bytecheck(crate = ::rkyv::bytecheck)]
+    #[bytecheck(
+        bounds(
+            __C:rkyv::validation::ArchiveContext,
+            __C:rkyv::validation::shared::SharedContext,
+            <__C
+            as
+            rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+        )
+    )]
+    #[repr(C)]
+    pub struct ArchivedRecordRows(
+        ///The archived counterpart of [`RecordRows::0`]
+        #[bytecheck(omit_bounds)]
+        pub <RecordRowsF<Box<Type>, Box<RecordRows>> as ::rkyv::Archive>::Archived,
+    );
+    #[automatically_derived]
+    unsafe impl<
+        __C: ::rkyv::bytecheck::rancor::Fallible + ?::core::marker::Sized,
+    > ::rkyv::bytecheck::CheckBytes<__C> for ArchivedRecordRows
+    where
+        <__C as ::rkyv::bytecheck::rancor::Fallible>::Error: ::rkyv::bytecheck::rancor::Trace,
+        __C: rkyv::validation::ArchiveContext,
+        __C: rkyv::validation::shared::SharedContext,
+        <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+    {
+        unsafe fn check_bytes(
+            value: *const Self,
+            context: &mut __C,
+        ) -> ::core::result::Result<
+            (),
+            <__C as ::rkyv::bytecheck::rancor::Fallible>::Error,
+        > {
+            <<RecordRowsF<
+                Box<Type>,
+                Box<RecordRows>,
+            > as ::rkyv::Archive>::Archived as ::rkyv::bytecheck::CheckBytes<
+                __C,
+            >>::check_bytes(&raw const (*value).0, context)
+                .map_err(|e| {
+                    <<__C as ::rkyv::bytecheck::rancor::Fallible>::Error as ::rkyv::bytecheck::rancor::Trace>::trace(
+                        e,
+                        ::rkyv::bytecheck::TupleStructCheckContext {
+                            tuple_struct_name: "ArchivedRecordRows",
+                            field_index: 0usize,
+                        },
+                    )
+                })?;
+            ::core::result::Result::Ok(())
+        }
+    }
+    #[automatically_derived]
+    ///The resolver for an archived [`RecordRows`]
+    pub struct RecordRowsResolver(
+        <RecordRowsF<Box<Type>, Box<RecordRows>> as ::rkyv::Archive>::Resolver,
+    );
+    impl ::rkyv::Archive for RecordRows {
+        type Archived = ArchivedRecordRows;
+        type Resolver = RecordRowsResolver;
+        const COPY_OPTIMIZATION: ::rkyv::traits::CopyOptimization<Self> = unsafe {
+            ::rkyv::traits::CopyOptimization::enable_if(
+                0 + ::core::mem::size_of::<RecordRowsF<Box<Type>, Box<RecordRows>>>()
+                    == ::core::mem::size_of::<RecordRows>()
+                    && <RecordRowsF<
+                        Box<Type>,
+                        Box<RecordRows>,
+                    > as ::rkyv::Archive>::COPY_OPTIMIZATION
+                        .is_enabled()
+                    && const { builtin # offset_of(RecordRows, 0) }
+                        == const { builtin # offset_of(ArchivedRecordRows, 0) },
+            )
+        };
+        #[allow(clippy::unit_arg)]
+        fn resolve(&self, resolver: Self::Resolver, out: ::rkyv::Place<Self::Archived>) {
+            let field_ptr = unsafe { &raw mut (*out.ptr()).0 };
+            let field_out = unsafe {
+                ::rkyv::Place::from_field_unchecked(out, field_ptr)
+            };
+            <RecordRowsF<
+                Box<Type>,
+                Box<RecordRows>,
+            > as ::rkyv::Archive>::resolve(&self.0, resolver.0, field_out);
+        }
+    }
+    unsafe impl ::rkyv::traits::Portable for ArchivedRecordRows
+    where
+        <RecordRowsF<
+            Box<Type>,
+            Box<RecordRows>,
+        > as ::rkyv::Archive>::Archived: ::rkyv::traits::Portable,
+    {}
+    /// Concrete, recursive type for a Nickel type.
+    #[rkyv(
+        bytecheck(
+            bounds(
+                __C:rkyv::validation::ArchiveContext,
+                __C:rkyv::validation::shared::SharedContext,
+                <__C
+                as
+                rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+            )
+        )
+    )]
+    pub struct Type {
+        #[rkyv(omit_bounds)]
+        pub typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,
+        pub pos: TermPos,
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for Type {
+        #[inline]
+        fn clone(&self) -> Type {
+            Type {
+                typ: ::core::clone::Clone::clone(&self.typ),
+                pos: ::core::clone::Clone::clone(&self.pos),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl ::core::marker::StructuralPartialEq for Type {}
+    #[automatically_derived]
+    impl ::core::cmp::PartialEq for Type {
+        #[inline]
+        fn eq(&self, other: &Type) -> bool {
+            self.typ == other.typ && self.pos == other.pos
+        }
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for Type {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_struct_field2_finish(
+                f,
+                "Type",
+                "typ",
+                &self.typ,
+                "pos",
+                &&self.pos,
+            )
+        }
+    }
+    #[automatically_derived]
+    ///An archived [`Type`]
+    #[bytecheck(crate = ::rkyv::bytecheck)]
+    #[bytecheck(
+        bounds(
+            __C:rkyv::validation::ArchiveContext,
+            __C:rkyv::validation::shared::SharedContext,
+            <__C
+            as
+            rkyv::rancor::Fallible>::Error:rkyv::rancor::Source,
+        )
+    )]
+    #[repr(C)]
+    pub struct ArchivedType
+    where
+        TermPos: ::rkyv::Archive,
+    {
+        ///The archived counterpart of [`Type::typ`]
+        #[bytecheck(omit_bounds)]
+        pub typ: <TypeF<
+            Box<Type>,
+            RecordRows,
+            EnumRows,
+            NickelValue,
+        > as ::rkyv::Archive>::Archived,
+        ///The archived counterpart of [`Type::pos`]
+        pub pos: <TermPos as ::rkyv::Archive>::Archived,
+    }
+    #[automatically_derived]
+    unsafe impl<
+        __C: ::rkyv::bytecheck::rancor::Fallible + ?::core::marker::Sized,
+    > ::rkyv::bytecheck::CheckBytes<__C> for ArchivedType
+    where
+        TermPos: ::rkyv::Archive,
+        <__C as ::rkyv::bytecheck::rancor::Fallible>::Error: ::rkyv::bytecheck::rancor::Trace,
+        __C: rkyv::validation::ArchiveContext,
+        __C: rkyv::validation::shared::SharedContext,
+        <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+        <TermPos as ::rkyv::Archive>::Archived: ::rkyv::bytecheck::CheckBytes<__C>,
+    {
+        unsafe fn check_bytes(
+            value: *const Self,
+            context: &mut __C,
+        ) -> ::core::result::Result<
+            (),
+            <__C as ::rkyv::bytecheck::rancor::Fallible>::Error,
+        > {
+            <<TypeF<
+                Box<Type>,
+                RecordRows,
+                EnumRows,
+                NickelValue,
+            > as ::rkyv::Archive>::Archived as ::rkyv::bytecheck::CheckBytes<
+                __C,
+            >>::check_bytes(&raw const (*value).typ, context)
+                .map_err(|e| {
+                    <<__C as ::rkyv::bytecheck::rancor::Fallible>::Error as ::rkyv::bytecheck::rancor::Trace>::trace(
+                        e,
+                        ::rkyv::bytecheck::StructCheckContext {
+                            struct_name: "ArchivedType",
+                            field_name: "typ",
+                        },
+                    )
+                })?;
+            <<TermPos as ::rkyv::Archive>::Archived as ::rkyv::bytecheck::CheckBytes<
+                __C,
+            >>::check_bytes(&raw const (*value).pos, context)
+                .map_err(|e| {
+                    <<__C as ::rkyv::bytecheck::rancor::Fallible>::Error as ::rkyv::bytecheck::rancor::Trace>::trace(
+                        e,
+                        ::rkyv::bytecheck::StructCheckContext {
+                            struct_name: "ArchivedType",
+                            field_name: "pos",
+                        },
+                    )
+                })?;
+            ::core::result::Result::Ok(())
+        }
+    }
+    #[automatically_derived]
+    ///The resolver for an archived [`Type`]
+    pub struct TypeResolver
+    where
+        TermPos: ::rkyv::Archive,
+    {
+        typ: <TypeF<
+            Box<Type>,
+            RecordRows,
+            EnumRows,
+            NickelValue,
+        > as ::rkyv::Archive>::Resolver,
+        pos: <TermPos as ::rkyv::Archive>::Resolver,
+    }
+    impl ::rkyv::Archive for Type
+    where
+        TermPos: ::rkyv::Archive,
+    {
+        type Archived = ArchivedType;
+        type Resolver = TypeResolver;
+        const COPY_OPTIMIZATION: ::rkyv::traits::CopyOptimization<Self> = unsafe {
+            ::rkyv::traits::CopyOptimization::enable_if(
+                0
+                    + ::core::mem::size_of::<
+                        TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,
+                    >() + ::core::mem::size_of::<TermPos>()
+                    == ::core::mem::size_of::<Type>()
+                    && <TypeF<
+                        Box<Type>,
+                        RecordRows,
+                        EnumRows,
+                        NickelValue,
+                    > as ::rkyv::Archive>::COPY_OPTIMIZATION
+                        .is_enabled()
+                    && const { builtin # offset_of(Type, typ) }
+                        == const { builtin # offset_of(ArchivedType, typ) }
+                    && <TermPos as ::rkyv::Archive>::COPY_OPTIMIZATION.is_enabled()
+                    && const { builtin # offset_of(Type, pos) }
+                        == const { builtin # offset_of(ArchivedType, pos) },
+            )
+        };
+        #[allow(clippy::unit_arg)]
+        fn resolve(&self, resolver: Self::Resolver, out: ::rkyv::Place<Self::Archived>) {
+            let field_ptr = unsafe { &raw mut (*out.ptr()).typ };
+            let field_out = unsafe {
+                ::rkyv::Place::from_field_unchecked(out, field_ptr)
+            };
+            <TypeF<
+                Box<Type>,
+                RecordRows,
+                EnumRows,
+                NickelValue,
+            > as ::rkyv::Archive>::resolve(&self.typ, resolver.typ, field_out);
+            let field_ptr = unsafe { &raw mut (*out.ptr()).pos };
+            let field_out = unsafe {
+                ::rkyv::Place::from_field_unchecked(out, field_ptr)
+            };
+            <TermPos as ::rkyv::Archive>::resolve(&self.pos, resolver.pos, field_out);
+        }
+    }
+    unsafe impl ::rkyv::traits::Portable for ArchivedType
+    where
+        TermPos: ::rkyv::Archive,
+        <TypeF<
+            Box<Type>,
+            RecordRows,
+            EnumRows,
+            NickelValue,
+        > as ::rkyv::Archive>::Archived: ::rkyv::traits::Portable,
+        <TermPos as ::rkyv::Archive>::Archived: ::rkyv::traits::Portable,
+    {}
+    impl Traverse<Type> for RecordRows {
+        fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RecordRows, E>
+        where
+            F: FnMut(Type) -> Result<Type, E>,
+        {
+            let rows = self
+                .0
+                .try_map_state(
+                    |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+                    |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
+                    f,
+                )?;
+            Ok(RecordRows(rows))
+        }
+        fn traverse_ref<S, U>(
+            &self,
+            f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+            state: &S,
+        ) -> Option<U> {
+            match &self.0 {
+                RecordRowsF::Extend { row, tail } => {
+                    row.typ
+                        .traverse_ref(f, state)
+                        .or_else(|| tail.traverse_ref(f, state))
+                }
+                _ => None,
+            }
+        }
+    }
+    impl Traverse<Type> for EnumRows {
+        fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<EnumRows, E>
+        where
+            F: FnMut(Type) -> Result<Type, E>,
+        {
+            let rows = self
+                .0
+                .try_map_state(
+                    |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+                    |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
+                    f,
+                )?;
+            Ok(EnumRows(rows))
+        }
+        fn traverse_ref<S, U>(
+            &self,
+            f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+            state: &S,
+        ) -> Option<U> {
+            match &self.0 {
+                EnumRowsF::Extend { row, tail } => {
+                    row.typ
+                        .as_ref()
+                        .and_then(|ty| ty.traverse_ref(f, state))
+                        .or_else(|| tail.traverse_ref(f, state))
+                }
+                _ => None,
+            }
+        }
+    }
+    pub struct UnboundTypeVariableError(pub LocIdent);
+    #[automatically_derived]
+    impl ::core::clone::Clone for UnboundTypeVariableError {
+        #[inline]
+        fn clone(&self) -> UnboundTypeVariableError {
+            UnboundTypeVariableError(::core::clone::Clone::clone(&self.0))
+        }
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for UnboundTypeVariableError {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_tuple_field1_finish(
+                f,
+                "UnboundTypeVariableError",
+                &&self.0,
+            )
+        }
+    }
+    impl From<UnboundTypeVariableError> for EvalErrorKind {
+        fn from(err: UnboundTypeVariableError) -> Self {
+            let UnboundTypeVariableError(id) = err;
+            let pos = id.pos;
+            EvalErrorKind::UnboundIdentifier(id, pos)
+        }
+    }
+    impl From<UnboundTypeVariableError> for TypecheckErrorData {
+        fn from(err: UnboundTypeVariableError) -> Self {
+            use crate::{ast::alloc::AstAlloc, error::TypecheckErrorKind};
+            TypecheckErrorData::new(
+                AstAlloc::new(),
+                |_alloc| { TypecheckErrorKind::UnboundTypeVariable(err.0) },
+            )
+        }
+    }
+    impl From<UnboundTypeVariableError> for ParseError {
+        fn from(err: UnboundTypeVariableError) -> Self {
+            ParseError::UnboundTypeVariables(
+                <[_]>::into_vec(::alloc::boxed::box_new([err.0])),
+            )
+        }
+    }
+    impl From<UnboundTypeVariableError> for ParseErrors {
+        fn from(err: UnboundTypeVariableError) -> Self {
+            ParseErrors::from(ParseError::from(err))
+        }
+    }
+    pub struct RecordRowsIterator<'a, Ty, RRows> {
+        pub(crate) rrows: Option<&'a RRows>,
+        pub(crate) ty: std::marker::PhantomData<Ty>,
+    }
+    pub enum RecordRowsIteratorItem<'a, Ty> {
+        TailDyn,
+        TailVar(&'a LocIdent),
+        Row(RecordRowF<&'a Ty>),
+    }
+    impl<'a> Iterator for RecordRowsIterator<'a, Type, RecordRows> {
+        type Item = RecordRowsIteratorItem<'a, Type>;
+        fn next(&mut self) -> Option<Self::Item> {
+            self.rrows
+                .and_then(|next| match next.0 {
+                    RecordRowsF::Empty => {
+                        self.rrows = None;
+                        None
+                    }
+                    RecordRowsF::TailDyn => {
+                        self.rrows = None;
+                        Some(RecordRowsIteratorItem::TailDyn)
+                    }
+                    RecordRowsF::TailVar(ref id) => {
+                        self.rrows = None;
+                        Some(RecordRowsIteratorItem::TailVar(id))
+                    }
+                    RecordRowsF::Extend { ref row, ref tail } => {
+                        self.rrows = Some(tail);
+                        Some(
+                            RecordRowsIteratorItem::Row(RecordRowF {
+                                id: row.id,
+                                typ: row.typ.as_ref(),
+                            }),
+                        )
+                    }
+                })
+        }
+    }
+    pub struct EnumRowsIterator<'a, Ty, ERows> {
+        pub(crate) erows: Option<&'a ERows>,
+        pub(crate) ty: std::marker::PhantomData<Ty>,
+    }
+    pub enum EnumRowsIteratorItem<'a, Ty> {
+        TailVar(&'a LocIdent),
+        Row(EnumRowF<&'a Ty>),
+    }
+    impl<'a> Iterator for EnumRowsIterator<'a, Type, EnumRows> {
+        type Item = EnumRowsIteratorItem<'a, Type>;
+        fn next(&mut self) -> Option<Self::Item> {
+            self.erows
+                .and_then(|next| match next.0 {
+                    EnumRowsF::Empty => {
+                        self.erows = None;
+                        None
+                    }
+                    EnumRowsF::TailVar(ref id) => {
+                        self.erows = None;
+                        Some(EnumRowsIteratorItem::TailVar(id))
+                    }
+                    EnumRowsF::Extend { ref row, ref tail } => {
+                        self.erows = Some(tail);
+                        Some(
+                            EnumRowsIteratorItem::Row(EnumRowF {
+                                id: row.id,
+                                typ: row.typ.as_ref().map(AsRef::as_ref),
+                            }),
+                        )
+                    }
+                })
+        }
+    }
+    trait Subcontract {
+        /// Return the contract corresponding to a type component of a larger type.
+        ///
+        /// # Arguments
+        ///
+        /// - `pos_table` is the table to be used to convert position index to actual positions, or to
+        ///   allocate new ones, in the generated contracts.
+        /// - `vars` is an environment mapping type variables to contracts. Type variables are
+        ///   introduced locally when opening a `forall`. Note that we don't need to keep separate
+        ///   environments for different kind of type variables, as by shadowing, one name can only
+        ///   refer to one type of variable at any given time.
+        /// - `pol` is the current polarity, which is toggled when generating a contract for the
+        ///   argument of an arrow type (see [`crate::label::Label`]).
+        /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
+        ///   [`crate::term::Term::Sealed`]).
+        fn subcontract(
+            &self,
+            pos_table: &mut PosTable,
+            vars: Environment<Ident, NickelValue>,
+            pol: Polarity,
+            sy: &mut i32,
+        ) -> Result<NickelValue, UnboundTypeVariableError>;
+    }
+    /// Retrieve the contract corresponding to a type variable occurrence in a type as a `NickelValue`.
+    /// Helper used by the `subcontract` functions.
+    fn get_var_contract(
+        vars: &Environment<Ident, NickelValue>,
+        sym: Ident,
+        pos: TermPos,
+    ) -> Result<NickelValue, UnboundTypeVariableError> {
+        Ok(
+            vars
+                .get(&sym)
+                .ok_or(UnboundTypeVariableError(LocIdent::from(sym).with_pos(pos)))?
+                .clone(),
+        )
+    }
+    impl Subcontract for Type {
+        fn subcontract(
+            &self,
+            pos_table: &mut PosTable,
+            mut vars: Environment<Ident, NickelValue>,
+            pol: Polarity,
+            sy: &mut i32,
+        ) -> Result<NickelValue, UnboundTypeVariableError> {
+            let ctr = match self.typ {
+                TypeF::Dyn => internals::dynamic(),
+                TypeF::Number => internals::num(),
+                TypeF::Bool => internals::bool(),
+                TypeF::String => internals::string(),
+                TypeF::ForeignId => internals::foreign_id(),
+                TypeF::Array(ref ty) if #[allow(non_exhaustive_omitted_patterns)]
+                match ty.typ {
+                    TypeF::Dyn => true,
+                    _ => false,
+                } => internals::array_dyn(),
+                TypeF::Array(ref ty) => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(internals::array()),
+                            crate::eval::value::NickelValue::from(
+                                ty.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Symbol => {
+                    ::core::panicking::panic_fmt(
+                        format_args!(
+                            "unexpected Symbol type during contract elaboration",
+                        ),
+                    );
+                }
+                TypeF::Arrow(ref s, ref t) if #[allow(non_exhaustive_omitted_patterns)]
+                match (&s.typ, &t.typ) {
+                    (TypeF::Dyn, TypeF::Dyn) => true,
+                    _ => false,
+                } => internals::func_dyn(),
+                TypeF::Arrow(ref s, ref t) if #[allow(non_exhaustive_omitted_patterns)]
+                match s.typ {
+                    TypeF::Dyn => true,
+                    _ => false,
+                } => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                internals::func_codom(),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                t.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Arrow(ref s, ref t) if #[allow(non_exhaustive_omitted_patterns)]
+                match t.typ {
+                    TypeF::Dyn => true,
+                    _ => false,
+                } => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(internals::func_dom()),
+                            crate::eval::value::NickelValue::from(
+                                s.subcontract(pos_table, vars.clone(), pol.flip(), sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Arrow(ref s, ref t) => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                crate::eval::value::NickelValue::from(
+                                    crate::term::Term::app(
+                                        crate::eval::value::NickelValue::from(internals::func()),
+                                        crate::eval::value::NickelValue::from(
+                                            s.subcontract(pos_table, vars.clone(), pol.flip(), sy)?,
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                t.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Contract(ref t) => return Ok(t.clone()),
+                TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
+                TypeF::Forall { ref var, ref body, ref var_kind } => {
+                    let sealing_key = NickelValue::sealing_key_posless(*sy);
+                    let contract = match var_kind {
+                        VarKind::Type => {
+                            crate::eval::value::NickelValue::from(
+                                crate::term::Term::app(
+                                    crate::eval::value::NickelValue::from(
+                                        internals::forall_var(),
+                                    ),
+                                    crate::eval::value::NickelValue::from(sealing_key.clone()),
+                                ),
+                            )
+                        }
+                        VarKind::EnumRows { .. } => internals::forall_enum_tail(),
+                        VarKind::RecordRows { excluded } => {
+                            let excluded_ncl: NickelValue = NickelValue::array_posless(
+                                Array::from_iter(
+                                    excluded
+                                        .iter()
+                                        .map(|id| NickelValue::string_posless(id.into_label())),
+                                ),
+                                Vec::new(),
+                            );
+                            crate::eval::value::NickelValue::from(
+                                crate::term::Term::app(
+                                    crate::eval::value::NickelValue::from(
+                                        crate::eval::value::NickelValue::from(
+                                            crate::term::Term::app(
+                                                crate::eval::value::NickelValue::from(
+                                                    internals::forall_record_tail(),
+                                                ),
+                                                crate::eval::value::NickelValue::from(sealing_key.clone()),
+                                            ),
+                                        ),
+                                    ),
+                                    crate::eval::value::NickelValue::from(excluded_ncl),
+                                ),
+                            )
+                        }
+                    };
+                    vars.insert(var.ident(), contract);
+                    *sy += 1;
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                crate::eval::value::NickelValue::from(
+                                    crate::term::Term::app(
+                                        crate::eval::value::NickelValue::from(
+                                            crate::eval::value::NickelValue::from(
+                                                crate::term::Term::app(
+                                                    crate::eval::value::NickelValue::from(internals::forall()),
+                                                    crate::eval::value::NickelValue::from(sealing_key),
+                                                ),
+                                            ),
+                                        ),
+                                        crate::eval::value::NickelValue::from(
+                                            NickelValue::from(pol),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                body.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Enum(ref erows) => erows.subcontract(pos_table, vars, pol, sy)?,
+                TypeF::Record(ref rrows) => rrows.subcontract(pos_table, vars, pol, sy)?,
+                TypeF::Dict {
+                    ref type_fields,
+                    flavour: _,
+                } if #[allow(non_exhaustive_omitted_patterns)]
+                match type_fields.typ {
+                    TypeF::Dyn => true,
+                    _ => false,
+                } => internals::dict_dyn(),
+                TypeF::Dict { ref type_fields, flavour: DictTypeFlavour::Contract } => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                internals::dict_contract(),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                type_fields.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Dict { ref type_fields, flavour: DictTypeFlavour::Type } => {
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                internals::dict_type(),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                type_fields.subcontract(pos_table, vars, pol, sy)?,
+                            ),
+                        ),
+                    )
+                }
+                TypeF::Wildcard(_) => internals::dynamic(),
+            };
+            Ok(mk_term::custom_contract(ctr))
+        }
+    }
+    impl EnumRows {
+        /// Find the row with the given identifier in the enum type. Return `None` if there is no such
+        /// row.
+        pub fn find_row(&self, id: Ident) -> Option<EnumRow> {
+            self.iter()
+                .find_map(|row_item| match row_item {
+                    EnumRowsIteratorItem::Row(row) if row.id.ident() == id => {
+                        Some(
+                            EnumRow(EnumRowF {
+                                id: row.id,
+                                typ: row.typ.cloned().map(Box::new),
+                            }),
+                        )
+                    }
+                    _ => None,
+                })
+        }
+        pub fn iter(&self) -> EnumRowsIterator<'_, Type, EnumRows> {
+            EnumRowsIterator {
+                erows: Some(self),
+                ty: std::marker::PhantomData,
+            }
+        }
+        /// Simplify enum rows for contract generation when the rows are part of a static type
+        /// annotation. See [Type::contract_static].
+        ///
+        /// The following simplification are applied:
+        ///
+        /// - the type of the argument of each enum variant is simplified as well
+        /// - if the polarity is positive and the rows are composed entirely of enum tags and enum
+        ///   variants whose argument's simplified type is `Dyn`, the entire rows are elided by returning
+        ///   `None`
+        /// - a tail variable in tail position is currently left unchanged, because it doesn't give
+        ///   rise to any sealing at runtime currently (see documentation of `$forall_enum_tail` in the
+        ///   internals module of the stdlib)
+        fn simplify(
+            self,
+            contract_env: &mut Environment<Ident, NickelValue>,
+            simplify_vars: SimplifyVars,
+            polarity: Polarity,
+        ) -> Option<Self> {
+            fn do_simplify(
+                rows: EnumRows,
+                contract_env: &mut Environment<Ident, NickelValue>,
+                simplify_vars: SimplifyVars,
+                polarity: Polarity,
+            ) -> (EnumRows, bool) {
+                match rows {
+                    EnumRows(EnumRowsF::Empty) => (EnumRows(EnumRowsF::Empty), true),
+                    EnumRows(EnumRowsF::TailVar(id)) => {
+                        (EnumRows(EnumRowsF::TailVar(id)), false)
+                    }
+                    EnumRows(EnumRowsF::Extend { row, tail }) => {
+                        let (tail, mut elide) = do_simplify(
+                            *tail,
+                            contract_env,
+                            simplify_vars.clone(),
+                            polarity,
+                        );
+                        let typ = row
+                            .typ
+                            .map(|mut typ| {
+                                *typ = typ.simplify(contract_env, simplify_vars, polarity);
+                                elide = elide && #[allow(non_exhaustive_omitted_patterns)]
+                                    match typ.typ {
+                                        TypeF::Dyn => true,
+                                        _ => false,
+                                    };
+                                typ
+                            });
+                        let row = EnumRowF { id: row.id, typ };
+                        (
+                            EnumRows(EnumRowsF::Extend {
+                                row,
+                                tail: Box::new(tail),
+                            }),
+                            elide,
+                        )
+                    }
+                }
+            }
+            let (result, elide) = do_simplify(
+                self,
+                contract_env,
+                simplify_vars,
+                polarity,
+            );
+            if #[allow(non_exhaustive_omitted_patterns)]
+            match (elide, polarity) {
+                (true, Polarity::Positive) => true,
+                _ => false,
+            } {
+                None
+            } else {
+                Some(result)
+            }
+        }
+    }
+    impl Subcontract for EnumRows {
+        fn subcontract(
+            &self,
+            pos_table: &mut PosTable,
+            vars: Environment<Ident, NickelValue>,
+            pol: Polarity,
+            sy: &mut i32,
+        ) -> Result<NickelValue, UnboundTypeVariableError> {
+            use crate::ast::pattern::{EnumPattern, Pattern, PatternData};
+            use crate::term::BinaryOp;
+            let alloc = AstAlloc::new();
+            let mut branches = Vec::new();
+            let mut tail_var = None;
+            let value_arg = LocIdent::fresh();
+            let label_arg = LocIdent::fresh();
+            let variant_arg = LocIdent::fresh();
+            for row in self.iter() {
+                match row {
+                    EnumRowsIteratorItem::Row(row) => {
+                        let arg_pattern = row
+                            .typ
+                            .as_ref()
+                            .map(|_| Pattern {
+                                data: PatternData::Any(variant_arg),
+                                alias: None,
+                                pos: TermPos::None,
+                            });
+                        let body = if let Some(ty) = row.typ.as_ref() {
+                            let arg = crate::eval::value::NickelValue::from(
+                                crate::term::Term::app(
+                                    crate::eval::value::NickelValue::from(
+                                        mk_term::op2(
+                                            BinaryOp::ContractApply,
+                                            ty.subcontract(pos_table, vars.clone(), pol, sy)?,
+                                            mk_term::var(label_arg),
+                                        ),
+                                    ),
+                                    crate::eval::value::NickelValue::from(
+                                        mk_term::var(variant_arg),
+                                    ),
+                                ),
+                            );
+                            mk_term::enum_variant(row.id, arg)
+                        } else {
+                            mk_term::var(value_arg)
+                        };
+                        let body = mk_term::enum_variant("Ok", body);
+                        let pattern = Pattern {
+                            data: PatternData::Enum(
+                                alloc
+                                    .alloc(EnumPattern {
+                                        tag: row.id,
+                                        pattern: arg_pattern,
+                                        pos: row.id.pos,
+                                    }),
+                            ),
+                            alias: None,
+                            pos: row.id.pos,
+                        };
+                        branches
+                            .push(MatchBranch {
+                                pattern,
+                                guard: None,
+                                body,
+                            });
+                    }
+                    EnumRowsIteratorItem::TailVar(var) => {
+                        tail_var = Some(var);
+                    }
+                }
+            }
+            let (default, default_pos) = if let Some(var) = tail_var {
+                (
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                mk_term::op2(
+                                    BinaryOp::ContractApply,
+                                    get_var_contract(&vars, var.ident(), var.pos)?,
+                                    mk_term::var(label_arg),
+                                ),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                mk_term::var(value_arg),
+                            ),
+                        ),
+                    ),
+                    var.pos,
+                )
+            } else {
+                (
+                    crate::eval::value::NickelValue::from(
+                        crate::term::Term::app(
+                            crate::eval::value::NickelValue::from(
+                                internals::enum_fail(),
+                            ),
+                            crate::eval::value::NickelValue::from(
+                                mk_term::var(label_arg),
+                            ),
+                        ),
+                    ),
+                    TermPos::None,
+                )
+            };
+            branches
+                .push(MatchBranch {
+                    pattern: Pattern {
+                        data: PatternData::Wildcard,
+                        alias: None,
+                        pos: default_pos,
+                    },
+                    guard: None,
+                    body: default,
+                });
+            let match_expr = MatchData { branches }
+                .compile(pos_table, mk_term::var(value_arg), PosIdx::NONE);
+            let case = crate::eval::value::NickelValue::from(
+                crate::term::Term::fun(
+                    crate::identifier::LocIdent::from(
+                        crate::identifier::LocIdent::from(label_arg),
+                    ),
+                    crate::eval::value::NickelValue::from(
+                        crate::eval::value::NickelValue::from(
+                            crate::term::Term::fun(
+                                crate::identifier::LocIdent::from(value_arg),
+                                crate::eval::value::NickelValue::from(match_expr),
+                            ),
+                        ),
+                    ),
+                ),
+            );
+            Ok(
+                crate::eval::value::NickelValue::from(
+                    crate::term::Term::app(
+                        crate::eval::value::NickelValue::from(internals::enumeration()),
+                        crate::eval::value::NickelValue::from(case),
+                    ),
+                ),
+            )
+        }
+    }
+    impl RecordRows {
+        /// Find a nested binding in a record row type. The nested field is given as a list of
+        /// successive fields, that is, as a path. Return `None` if there is no such binding.
+        ///
+        /// # Example
+        ///
+        /// - self: ` {a : {b : Number }}`
+        /// - path: `["a", "b"]`
+        /// - result: `Some(Number)`
+        pub fn find_path(&self, path: &[Ident]) -> Option<RecordRow> {
+            if path.is_empty() {
+                return None;
+            }
+            fn find_path_ref<'a>(
+                rrows: &'a RecordRows,
+                path: &[Ident],
+            ) -> Option<RecordRowF<&'a Type>> {
+                let next = rrows
+                    .iter()
+                    .find_map(|item| match item {
+                        RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => {
+                            Some(row.clone())
+                        }
+                        _ => None,
+                    });
+                if path.len() == 1 {
+                    next
+                } else {
+                    match next.map(|row| &row.typ.typ) {
+                        Some(TypeF::Record(rrows)) => find_path_ref(rrows, &path[1..]),
+                        _ => None,
+                    }
+                }
+            }
+            find_path_ref(self, path)
+                .map(|row| {
+                    RecordRow(RecordRowF {
+                        id: row.id,
+                        typ: Box::new(row.typ.clone()),
+                    })
+                })
+        }
+        /// Find the row with the given identifier in the record type. Return `None` if there is no such
+        /// row.
+        ///
+        /// Equivalent to `find_path(&[id])`.
+        pub fn find_row(&self, id: Ident) -> Option<RecordRow> {
+            self.find_path(&[id])
+        }
+        pub fn iter(&self) -> RecordRowsIterator<'_, Type, RecordRows> {
+            RecordRowsIterator {
+                rrows: Some(self),
+                ty: std::marker::PhantomData,
+            }
+        }
+        /// Simplify record rows for contract generation when the rows are part of a static type
+        /// annotation. See [Type::contract_static].
+        ///
+        /// The following simplifications are applied:
+        ///
+        /// - the type of each field is simplified
+        /// - if the polarity is positive and the tail is known to be simplified to `Dyn`, any field
+        ///   whose simplified type is `Dyn` is entirely elided from the final result. That is, `{foo :
+        ///   Number, bar : Number -> Number}` in positive position is simplified to `{bar : Number ->
+        ///   Dyn; Dyn}`. `{foo : Number, bar : Dyn}` is simplified to `{; Dyn}` which is simplified
+        ///   further to `Dyn` by [Type::simplify].
+        ///
+        ///   We can't do that when the tail can't be simplified to `Dyn` (this is the case when the
+        ///   tail variable has been introduced by a forall in negative position).
+        /// - The case of a tail variable is a bit more complex and is detailed below.
+        ///
+        /// # Simplification of tail variable
+        ///
+        /// The following paragraphs distinguish between a tail variable (and thus an enclosing record
+        /// type) in positive position and a tail variable in negative position (the polarity of the
+        /// introducing forall is yet another dimension, covered in each paragraph).
+        ///
+        /// ## Negative polarity
+        ///
+        /// The simplification of record row variables is made harder by the presence of excluded
+        /// fields. It's tempting to replace all `r` in tail position by `Dyn` if the introducing
+        /// `forall r` was in positive position, as we do for regular type variables, but it's
+        /// unfortunately not sound. For example:
+        ///
+        /// ```nickel
+        /// inject_meta: forall r. {; r} -> {meta : String; r}
+        /// ```
+        ///
+        /// In this case, the `forall r` is in positive position, but the `r` in `{; r}` in negative
+        /// position can't be entirely elided, because it checks that `meta` isn't already present in
+        /// the original argument. In particular, the original contract rejects `inject_meta {meta =
+        /// "hello"}`, but blindly simplifying the type of `inject_meta` to `{; Dyn} -> {; Dyn}`
+        /// would allow this argument.
+        ///
+        /// We can simplify it to something like `{; $forall_record_tail_excluded_only ["meta"]} -> {;
+        /// Dyn}` (further simplified to `{; $forall_record_tail_excluded_only ["meta"]} -> Dyn` by
+        /// `Type::simplify`). `$forall_record_tail_excluded_only` is a specialized version of the
+        /// record tail contract `$forall_record_tail$ which doesn't seal but still check for the
+        /// absence of excluded fields.
+        ///
+        /// Note that we can't actually put an arbitrary contract in the tail of a record type. This is
+        /// why the `simplify()` methods take a mutable reference to an environment `contract_env`
+        /// which will be passed to the contract generation methods. What we do in practice is to bind
+        /// a fresh record row variable to `$forall_record_tail_excluded_only ["meta"]` in this
+        /// environment and we substitute the tail var for this fresh variable.
+        ///
+        /// On the other hand, in
+        ///
+        /// ```nickel
+        /// update_meta: forall r. {meta : String; r} -> {meta : String; r}
+        /// ```
+        ///
+        /// The contract can be simplified to `{meta : String; Dyn} -> Dyn`. To detect this case, we
+        /// record the set of fields that are present in the current rows and check if this set is
+        /// equal to the excluded fields for this row variable (it's always a subset of the excluded
+        /// fields by definition of row constraints), or if there are some excluded fields left to
+        /// check.
+        ///
+        /// ## Positive polarity
+        ///
+        /// In a positive position, we can replace the tail with `Dyn` if the tail isn't a variable
+        /// introduced in negative position, because a typed term can never violate row constraints.
+        ///
+        /// For a variable introduced by a forall in negative position, we need to keep the unsealing
+        /// operation to make sure the corresponding forall type doesn't blame. But the unsealing
+        /// operation needs prior sealing to work out, so we need to keep the tail even for record
+        /// types in positive position. What's more, _we can't elide any field in this case_. Indeed,
+        /// eliding fields can change what goes in the tail, and can only be done when the tail is
+        /// ensured to be `Dyn`.
+        fn simplify(
+            self,
+            contract_env: &mut Environment<Ident, NickelValue>,
+            simplify_vars: SimplifyVars,
+            polarity: Polarity,
+        ) -> Self {
+            fn peek_tail(
+                rrows: &RecordRows,
+                simplify_vars: &SimplifyVars,
+            ) -> (HashSet<Ident>, bool) {
+                let mut fields = HashSet::new();
+                let mut can_elide = true;
+                for row in rrows.iter() {
+                    match row {
+                        RecordRowsIteratorItem::Row(row) => {
+                            fields.insert(row.id.ident());
+                        }
+                        RecordRowsIteratorItem::TailVar(
+                            id,
+                        ) if simplify_vars
+                            .rrows_vars_elide
+                            .get(&id.ident())
+                            .is_none() => {
+                            can_elide = false;
+                        }
+                        _ => {}
+                    }
+                }
+                (fields, can_elide)
+            }
+            fn do_simplify(
+                rrows: RecordRows,
+                contract_env: &mut Environment<Ident, NickelValue>,
+                simplify_vars: SimplifyVars,
+                polarity: Polarity,
+                fields: &HashSet<Ident>,
+                can_elide: bool,
+            ) -> RecordRows {
+                let rrows = match rrows.0 {
+                    RecordRowsF::Empty if #[allow(non_exhaustive_omitted_patterns)]
+                    match polarity {
+                        Polarity::Positive => true,
+                        _ => false,
+                    } => RecordRowsF::TailDyn,
+                    RecordRowsF::Empty => RecordRowsF::Empty,
+                    RecordRowsF::Extend { row, tail } => {
+                        let typ_simplified = row
+                            .typ
+                            .simplify(contract_env, simplify_vars.clone(), polarity);
+                        let elide_field = #[allow(non_exhaustive_omitted_patterns)]
+                        match (&typ_simplified.typ, polarity) {
+                            (TypeF::Dyn, Polarity::Positive) => true,
+                            _ => false,
+                        } && can_elide;
+                        let row = RecordRowF {
+                            id: row.id,
+                            typ: Box::new(typ_simplified),
+                        };
+                        let tail = Box::new(
+                            do_simplify(
+                                *tail,
+                                contract_env,
+                                simplify_vars,
+                                polarity,
+                                fields,
+                                can_elide,
+                            ),
+                        );
+                        if elide_field {
+                            tail.0
+                        } else {
+                            RecordRowsF::Extend { row, tail }
+                        }
+                    }
+                    RecordRowsF::TailDyn => RecordRowsF::TailDyn,
+                    RecordRowsF::TailVar(id) => {
+                        let excluded = simplify_vars.rrows_vars_elide.get(&id.ident());
+                        match (excluded, polarity) {
+                            (Some(_), Polarity::Positive) => RecordRowsF::TailDyn,
+                            (None, Polarity::Positive | Polarity::Negative) => {
+                                RecordRowsF::TailVar(id)
+                            }
+                            (Some(excluded), Polarity::Negative) => {
+                                let excluded = excluded - fields;
+                                if excluded.is_empty() {
+                                    RecordRowsF::TailDyn
+                                } else {
+                                    let fresh_var = LocIdent::fresh();
+                                    let excluded_ncl = NickelValue::array_posless(
+                                        Array::from_iter(
+                                            excluded
+                                                .iter()
+                                                .map(|id| { NickelValue::string_posless(id.into_label()) }),
+                                        ),
+                                        Vec::new(),
+                                    );
+                                    contract_env
+                                        .insert(
+                                            fresh_var.ident(),
+                                            crate::eval::value::NickelValue::from(
+                                                crate::term::Term::app(
+                                                    crate::eval::value::NickelValue::from(
+                                                        internals::forall_record_tail_excluded_only(),
+                                                    ),
+                                                    crate::eval::value::NickelValue::from(excluded_ncl),
+                                                ),
+                                            ),
+                                        );
+                                    RecordRowsF::TailVar(fresh_var)
+                                }
+                            }
+                        }
+                    }
+                };
+                RecordRows(rrows)
+            }
+            let (fields, can_elide) = peek_tail(&self, &simplify_vars);
+            do_simplify(self, contract_env, simplify_vars, polarity, &fields, can_elide)
+        }
+    }
+    impl Subcontract for RecordRows {
+        fn subcontract(
+            &self,
+            pos_table: &mut PosTable,
+            vars: Environment<Ident, NickelValue>,
+            pol: Polarity,
+            sy: &mut i32,
+        ) -> Result<NickelValue, UnboundTypeVariableError> {
+            let mut rrows = self;
+            let mut fcs = IndexMap::new();
+            while let RecordRowsF::Extend { row: RecordRowF { id, typ: ty }, tail } = &rrows
+                .0
+            {
+                fcs.insert(*id, ty.subcontract(pos_table, vars.clone(), pol, sy)?);
+                rrows = tail;
+            }
+            let has_tail = !#[allow(non_exhaustive_omitted_patterns)]
+            match &rrows.0 {
+                RecordRowsF::Empty => true,
+                _ => false,
+            };
+            let tail = match &rrows.0 {
+                RecordRowsF::Empty => internals::empty_tail(),
+                RecordRowsF::TailDyn => internals::dyn_tail(),
+                RecordRowsF::TailVar(id) => get_var_contract(&vars, id.ident(), id.pos)?,
+                RecordRowsF::Extend { .. } => {
+                    ::core::panicking::panic("internal error: entered unreachable code")
+                }
+            };
+            let rec = NickelValue::record_posless(RecordData::with_field_values(fcs));
+            Ok(
+                crate::eval::value::NickelValue::from(
+                    crate::term::Term::app(
+                        crate::eval::value::NickelValue::from(
+                            crate::eval::value::NickelValue::from(
+                                crate::term::Term::app(
+                                    crate::eval::value::NickelValue::from(
+                                        crate::eval::value::NickelValue::from(
+                                            crate::term::Term::app(
+                                                crate::eval::value::NickelValue::from(
+                                                    internals::record_type(),
+                                                ),
+                                                crate::eval::value::NickelValue::from(rec),
+                                            ),
+                                        ),
+                                    ),
+                                    crate::eval::value::NickelValue::from(tail),
+                                ),
+                            ),
+                        ),
+                        crate::eval::value::NickelValue::from(
+                            NickelValue::bool_value_posless(has_tail),
+                        ),
+                    ),
+                ),
+            )
+        }
+    }
+    impl From<TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>> for Type {
+        fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>) -> Self {
+            Type { typ, pos: TermPos::None }
+        }
+    }
+    impl Type {
+        /// Creates a `Type` with the specified position
+        pub fn with_pos(self, pos: TermPos) -> Type {
+            Type { pos, ..self }
+        }
+        /// Returns the same type with the position cleared (set to `None`).
+        ///
+        /// This is currently only used in test code, but because it's used from integration
+        /// tests we cannot hide it behind `#[cfg(test)]`.
+        pub fn without_pos(self) -> Type {
+            self.traverse(
+                    &mut |t: Type| {
+                        Ok::<_, Infallible>(Type { pos: TermPos::None, ..t })
+                    },
+                    TraverseOrder::BottomUp,
+                )
+                .unwrap()
+                .traverse(
+                    &mut |val: NickelValue| Ok::<
+                        _,
+                        Infallible,
+                    >(val.with_pos_idx(PosIdx::NONE)),
+                    TraverseOrder::BottomUp,
+                )
+                .unwrap()
+        }
+        /// Variant of [Self::contract] that returns the contract corresponding to a type which appears
+        /// in a static type annotation. [Self::contract_static] uses the fact that the checked term
+        /// has been typechecked to optimize the generated contract thanks to the guarantee of static
+        /// typing.
+        pub fn contract_static(
+            self,
+            pos_table: &mut PosTable,
+        ) -> Result<NickelValue, UnboundTypeVariableError> {
+            let mut sy = 0;
+            let mut contract_env = Environment::new();
+            self.simplify(&mut contract_env, SimplifyVars::new(), Polarity::Positive)
+                .subcontract(pos_table, contract_env, Polarity::Positive, &mut sy)
+        }
+        /// Return the contract corresponding to a type. Said contract must then be applied using the
+        /// `ApplyContract` primitive operation.
+        pub fn contract(
+            &self,
+            pos_table: &mut PosTable,
+        ) -> Result<NickelValue, UnboundTypeVariableError> {
+            let mut sy = 0;
+            self.subcontract(pos_table, Environment::new(), Polarity::Positive, &mut sy)
+        }
+        /// Returns true if this type is a function type (including a polymorphic one), false
+        /// otherwise.
+        pub fn is_function_type(&self) -> bool {
+            match &self.typ {
+                TypeF::Forall { body, .. } => body.is_function_type(),
+                TypeF::Arrow(..) => true,
+                _ => false,
+            }
+        }
+        /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or
+        /// a type delimited by specific markers (such as a row type). Used in formatting to decide if
+        /// parentheses need to be inserted during pretty pretting.
+        pub fn fmt_is_atom(&self) -> bool {
+            match &self.typ {
+                TypeF::Dyn
+                | TypeF::Number
+                | TypeF::Bool
+                | TypeF::String
+                | TypeF::Var(_)
+                | TypeF::Record(_)
+                | TypeF::Enum(_) => true,
+                TypeF::Contract(ctr) => ctr.fmt_is_atom(),
+                _ => false,
+            }
+        }
+        /// Searches for a `TypeF::Contract`. If one is found, returns the term it contains.
+        pub fn find_contract(&self) -> Option<NickelValue> {
+            self.find_map(|ty: &Type| match &ty.typ {
+                TypeF::Contract(f) => Some(f.clone()),
+                _ => None,
+            })
+        }
+        /// Static typing guarantees make some of the contract checks useless, assuming that blame
+        /// safety holds. This function simplifies `self` for contract generation, assuming it is part
+        /// of a static type annotation, by eliding some of these useless subcontracts.
+        ///
+        /// # Simplifications
+        ///
+        /// - `forall`s of a type variable in positive positions are removed, and the corresponding type
+        ///   variable is substituted for a `Dyn` contract. In consequence, [Self::contract()] will generate
+        ///   simplified contracts as well. For example, `forall a. Array a -> a` becomes `Array Dyn -> Dyn`,
+        ///   and `Array Dyn` will then be specialized to `$array_dyn` which has a constant-time overhead
+        ///   (while `Array a` is linear in the size of the array). The final contract will just check that
+        ///   the argument is an array.
+        /// - `forall`s of a row variable (either record or enum) are removed as well. The substitution of
+        ///   the corresponding row variable is a bit more complex than in the type variable case and depends
+        ///   on the situation. See [RecordRows::simplify] and [EnumRows::simplify] for more details.
+        /// - `forall`s in negative position are left unchanged.
+        /// - All positive occurrences of type constructors that aren't a function type are recursively
+        ///   simplified. If they are simplified to a trivial type, such as `{; Dyn}` for a record or `Array
+        ///   Dyn` for an array, they are further simplified to `Dyn`.
+        ///   are turned to `Dyn` contracts. However, we must be careful here: type constructors might
+        ///   have function types somewhere inside, as in `{foo : Number, bar : Array (String ->
+        ///   String) }`. In this case, we can elide `foo`, but not `bar`.
+        fn simplify(
+            self,
+            contract_env: &mut Environment<Ident, NickelValue>,
+            mut simplify_vars: SimplifyVars,
+            polarity: Polarity,
+        ) -> Self {
+            let mut pos = self.pos;
+            let simplified = match self.typ {
+                TypeF::Arrow(dom, codom) => {
+                    TypeF::Arrow(
+                        Box::new(
+                            dom
+                                .simplify(
+                                    contract_env,
+                                    simplify_vars.clone(),
+                                    polarity.flip(),
+                                ),
+                        ),
+                        Box::new(codom.simplify(contract_env, simplify_vars, polarity)),
+                    )
+                }
+                TypeF::Forall {
+                    var,
+                    var_kind: VarKind::Type,
+                    body,
+                } if polarity == Polarity::Positive => {
+                    simplify_vars.type_vars_elide.insert(var.ident(), ());
+                    let result = body.simplify(contract_env, simplify_vars, polarity);
+                    pos = result.pos;
+                    result.typ
+                }
+                TypeF::Forall {
+                    var,
+                    var_kind: VarKind::RecordRows { excluded },
+                    body,
+                } if polarity == Polarity::Positive => {
+                    simplify_vars.rrows_vars_elide.insert(var.ident(), excluded);
+                    let result = body.simplify(contract_env, simplify_vars, polarity);
+                    pos = result.pos;
+                    result.typ
+                }
+                TypeF::Forall { var, var_kind, body } => {
+                    TypeF::Forall {
+                        var,
+                        var_kind,
+                        body: Box::new(
+                            body.simplify(contract_env, simplify_vars, polarity),
+                        ),
+                    }
+                }
+                TypeF::Var(id) if simplify_vars.type_vars_elide.get(&id).is_some() => {
+                    TypeF::Dyn
+                }
+                TypeF::Number
+                | TypeF::String
+                | TypeF::Bool
+                | TypeF::Symbol
+                | TypeF::ForeignId if #[allow(non_exhaustive_omitted_patterns)]
+                match polarity {
+                    Polarity::Positive => true,
+                    _ => false,
+                } => TypeF::Dyn,
+                TypeF::Record(rrows) => {
+                    let rrows_simplified = rrows
+                        .simplify(contract_env, simplify_vars, polarity);
+                    if #[allow(non_exhaustive_omitted_patterns)]
+                    match (&rrows_simplified, polarity) {
+                        (
+                            RecordRows(RecordRowsF::TailDyn)
+                            | RecordRows(RecordRowsF::Empty),
+                            Polarity::Positive,
+                        ) => true,
+                        _ => false,
+                    } {
+                        TypeF::Dyn
+                    } else {
+                        TypeF::Record(rrows_simplified)
+                    }
+                }
+                TypeF::Enum(erows) => {
+                    let erows = erows.simplify(contract_env, simplify_vars, polarity);
+                    erows.map(TypeF::Enum).unwrap_or(TypeF::Dyn)
+                }
+                TypeF::Dict { type_fields, flavour } => {
+                    let type_fields = Box::new(
+                        type_fields.simplify(contract_env, simplify_vars, polarity),
+                    );
+                    if #[allow(non_exhaustive_omitted_patterns)]
+                    match (&type_fields.typ, polarity) {
+                        (TypeF::Dyn, Polarity::Positive) => true,
+                        _ => false,
+                    } {
+                        TypeF::Dyn
+                    } else {
+                        TypeF::Dict {
+                            type_fields,
+                            flavour,
+                        }
+                    }
+                }
+                TypeF::Array(t) => {
+                    let type_elts = t.simplify(contract_env, simplify_vars, polarity);
+                    if #[allow(non_exhaustive_omitted_patterns)]
+                    match (&type_elts.typ, polarity) {
+                        (TypeF::Dyn, Polarity::Positive) => true,
+                        _ => false,
+                    } {
+                        TypeF::Dyn
+                    } else {
+                        TypeF::Array(Box::new(type_elts))
+                    }
+                }
+                t => t,
+            };
+            Type { typ: simplified, pos }
+        }
+    }
+    impl Traverse<Type> for Type {
+        fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
+        where
+            F: FnMut(Type) -> Result<Type, E>,
+        {
+            let pre_map = match order {
+                TraverseOrder::TopDown => f(self)?,
+                TraverseOrder::BottomUp => self,
+            };
+            let typ = pre_map
+                .typ
+                .try_map_state(
+                    |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+                    |rrows, f| rrows.traverse(f, order),
+                    |erows, f| erows.traverse(f, order),
+                    |ctr, _| Ok(ctr),
+                    f,
+                )?;
+            let post_map = Type { typ, ..pre_map };
+            match order {
+                TraverseOrder::TopDown => Ok(post_map),
+                TraverseOrder::BottomUp => f(post_map),
+            }
+        }
+        fn traverse_ref<S, U>(
+            &self,
+            f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+            state: &S,
+        ) -> Option<U> {
+            let child_state = match f(self, state) {
+                TraverseControl::Continue => None,
+                TraverseControl::ContinueWithScope(s) => Some(s),
+                TraverseControl::SkipBranch => {
+                    return None;
+                }
+                TraverseControl::Return(ret) => {
+                    return Some(ret);
+                }
+            };
+            let state = child_state.as_ref().unwrap_or(state);
+            match &self.typ {
+                TypeF::Dyn
+                | TypeF::Number
+                | TypeF::Bool
+                | TypeF::String
+                | TypeF::ForeignId
+                | TypeF::Symbol
+                | TypeF::Var(_)
+                | TypeF::Wildcard(_) => None,
+                TypeF::Contract(rt) => rt.traverse_ref(f, state),
+                TypeF::Arrow(t1, t2) => {
+                    t1.traverse_ref(f, state).or_else(|| t2.traverse_ref(f, state))
+                }
+                TypeF::Forall { body: t, .. }
+                | TypeF::Dict { type_fields: t, .. }
+                | TypeF::Array(t) => t.traverse_ref(f, state),
+                TypeF::Record(rrows) => rrows.traverse_ref(f, state),
+                TypeF::Enum(erows) => erows.traverse_ref(f, state),
+            }
+        }
+    }
+    impl Traverse<NickelValue> for Type {
+        fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
+        where
+            F: FnMut(NickelValue) -> Result<NickelValue, E>,
+        {
+            self.traverse(
+                &mut |ty: Type| match ty.typ {
+                    TypeF::Contract(t) => {
+                        t.traverse(f, order)
+                            .map(|t| Type::from(TypeF::Contract(t)).with_pos(ty.pos))
+                    }
+                    _ => Ok(ty),
+                },
+                order,
+            )
+        }
+        fn traverse_ref<S, U>(
+            &self,
+            f: &mut dyn FnMut(&NickelValue, &S) -> TraverseControl<S, U>,
+            state: &S,
+        ) -> Option<U> {
+            self.traverse_ref(
+                &mut |ty: &Type, s: &S| match &ty.typ {
+                    TypeF::Contract(t) => {
+                        if let Some(ret) = t.traverse_ref(f, s) {
+                            TraverseControl::Return(ret)
+                        } else {
+                            TraverseControl::SkipBranch
+                        }
+                    }
+                    _ => TraverseControl::Continue,
+                },
+                state,
+            )
+        }
+    }
+    /// Some context storing various type variables that can be simplified during static contract
+    /// simplification (see the various `simplify()` methods).
+    struct SimplifyVars {
+        /// Environment used as a persistent HashSet to record type variables that can be elided
+        /// (replaced by `Dyn`) because they were introduced by a forall in positive position.
+        type_vars_elide: Environment<Ident, ()>,
+        /// Record record rows variables that were introduced by a forall in positive position and
+        /// their corresponding `excluded` field. They will be substituted for different simplified
+        /// contracts depending on where the variable appears and the surrounding record.
+        rrows_vars_elide: Environment<Ident, HashSet<Ident>>,
+    }
+    #[automatically_derived]
+    impl ::core::clone::Clone for SimplifyVars {
+        #[inline]
+        fn clone(&self) -> SimplifyVars {
+            SimplifyVars {
+                type_vars_elide: ::core::clone::Clone::clone(&self.type_vars_elide),
+                rrows_vars_elide: ::core::clone::Clone::clone(&self.rrows_vars_elide),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl ::core::fmt::Debug for SimplifyVars {
+        #[inline]
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            ::core::fmt::Formatter::debug_struct_field2_finish(
+                f,
+                "SimplifyVars",
+                "type_vars_elide",
+                &self.type_vars_elide,
+                "rrows_vars_elide",
+                &&self.rrows_vars_elide,
+            )
+        }
+    }
+    #[automatically_derived]
+    impl ::core::default::Default for SimplifyVars {
+        #[inline]
+        fn default() -> SimplifyVars {
+            SimplifyVars {
+                type_vars_elide: ::core::default::Default::default(),
+                rrows_vars_elide: ::core::default::Default::default(),
+            }
+        }
+    }
+    impl SimplifyVars {
+        fn new() -> Self {
+            Self::default()
+        }
+    }
+    impl std::fmt::Display for Type {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::pretty::fmt_pretty(&self, f)
+        }
+    }
+    impl std::fmt::Display for EnumRow {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::pretty::fmt_pretty(&self, f)
+        }
+    }
+    impl std::fmt::Display for EnumRows {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::pretty::fmt_pretty(&self, f)
+        }
+    }
+    impl std::fmt::Display for RecordRow {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::pretty::fmt_pretty(&self, f)
+        }
+    }
+    impl std::fmt::Display for RecordRows {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            crate::pretty::fmt_pretty(&self, f)
+        }
+    }
+    impl PrettyPrintCap for Type {}
+}

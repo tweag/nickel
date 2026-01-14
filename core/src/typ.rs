@@ -84,6 +84,11 @@ pub struct EnumRow(pub EnumRowF<Box<Type>>);
 
 /// Concrete, recursive definition for enum rows.
 #[derive(Clone, PartialEq, Debug, rkyv::Archive)]
+#[rkyv(bytecheck(bounds(
+    __C: rkyv::validation::ArchiveContext,
+    __C: rkyv::validation::shared::SharedContext,
+    <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+)))]
 pub struct EnumRows(#[rkyv(omit_bounds)] pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 
 /// Concrete, recursive definition for a record row.
@@ -92,12 +97,22 @@ pub struct EnumRows(#[rkyv(omit_bounds)] pub EnumRowsF<Box<Type>, Box<EnumRows>>
 /// `RecordRowF` is from a different crate).
 pub struct RecordRow(pub RecordRowF<Box<Type>>);
 
-#[derive(Clone, PartialEq, Debug, rkyv::Archive)]
 /// Concrete, recursive definition for record rows.
+#[derive(Clone, PartialEq, Debug, rkyv::Archive)]
+#[rkyv(bytecheck(bounds(
+    __C: rkyv::validation::ArchiveContext,
+    __C: rkyv::validation::shared::SharedContext,
+    <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+)))]
 pub struct RecordRows(#[rkyv(omit_bounds)] pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug, rkyv::Archive)]
+#[rkyv(bytecheck(bounds(
+    __C: rkyv::validation::ArchiveContext,
+    __C: rkyv::validation::shared::SharedContext,
+    <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+)))]
 pub struct Type {
     #[rkyv(omit_bounds)]
     pub typ: TypeF<Box<Type>, RecordRows, EnumRows, NickelValue>,

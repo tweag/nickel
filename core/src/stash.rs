@@ -159,7 +159,7 @@ impl<A: smallvec::Array> ArchiveWith<SmallVec<A>> for ArchiveSmallVec
 where
     A::Item: Archive,
 {
-    type Archived = ArchivedVec<A::Item>;
+    type Archived = ArchivedVec<<A::Item as Archive>::Archived>;
     type Resolver = VecResolver;
 
     fn resolve_with(

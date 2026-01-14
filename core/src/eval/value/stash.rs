@@ -14,8 +14,14 @@ use super::{
 };
 
 #[derive(Archive)]
+#[rkyv(bytecheck(bounds(
+    __C: rkyv::validation::ArchiveContext,
+    __C: rkyv::validation::shared::SharedContext,
+    <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+)))]
 pub struct ValueOwned {
     pos_idx: PosIdx,
+    #[rkyv(omit_bounds)]
     payload: ValuePayload,
 }
 
@@ -99,7 +105,7 @@ impl Flavor for NickelValueFlavor {
 }
 
 impl Archive for NickelValue {
-    type Archived = ArchivedRc<ValueOwned, NickelValueFlavor>;
+    type Archived = ArchivedRc<<ValueOwned as Archive>::Archived, NickelValueFlavor>;
 
     type Resolver = RcResolver;
 

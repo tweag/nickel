@@ -299,7 +299,7 @@ where
     Const<N>: ValidBranchingConstant,
     T: Archive + Clone,
 {
-    type Archived = ArchivedVec<T>;
+    type Archived = ArchivedVec<T::Archived>;
     type Resolver = VecResolver;
 
     fn resolve(&self, resolver: VecResolver, out: rkyv::Place<Self::Archived>) {
