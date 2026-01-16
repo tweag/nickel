@@ -34,16 +34,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Free disk space
-      # This hash is a recent main version, because v6 (the latest release as of
-      # this comment) doesn't work with the cachix install action.
-      uses: wimpysworld/nothing-but-nix@10c936d9e46521bf923f75458e0cbd4fa309300d
-      with:
-        hatchet-protocol: 'holster'
-      # Currently broken on macos:
-      # https://github.com/wimpysworld/nothing-but-nix/issues/39
-      if: runner.os == 'Linux'
-
     - name: Install Nix
       uses: cachix/install-nix-action@v31
       with:
@@ -58,9 +48,15 @@ jobs:
         name: tweag-nickel
         authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
 
+    - name: Check disk space
+      run: df -h
+
     - name: Run all checks
       run: |
         nix flake check --print-build-logs
+
+    - name: Check disk space again
+      run: df -h
 
     - name: Typecheck benchmarks
       run: find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
