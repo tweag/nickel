@@ -1,0 +1,18 @@
+[package]
+name = "nickel-check-fmt"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+publish = false
+
+[dependencies]
+
+topiary-core.workspace = true
+topiary-queries.workspace = true
+tree-sitter-nickel.workspace = true

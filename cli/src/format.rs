@@ -118,6 +118,7 @@ impl FormatCommand {
 
         fn check(mut input: impl Read, on_fmt_error: FormatError) -> CliResult<()> {
             let mut input_buf = vec![];
+
             input.read_to_end(&mut input_buf)?;
             let cursor = std::io::Cursor::new(&input_buf);
             let mut output = vec![];

@@ -3,6 +3,7 @@ members = [
     "cli",
     "core",
     "flock",
+    "fmt",
     "git",
     "lsp/lsp-harness",
     "lsp/nls",

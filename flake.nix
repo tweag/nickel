@@ -3,7 +3,7 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     pre-commit-hooks = {
-      url = "github:cachix/pre-commit-hooks.nix";
+      url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     rust-overlay = {
@@ -96,8 +96,7 @@
         let
           inherit (pkgs.stdenv) hostPlatform;
         in
-        { rustProfile ? "minimal"
-        , rustExtensions ? [
+        { rustExtensions ? [
             "rustfmt"
             "clippy"
           ]
@@ -146,7 +145,7 @@
           nickel-format = {
             name = "nickel-format";
             description = "The nickel formatter";
-            entry = "${pkgs.lib.getExe self.packages."${system}".default} format";
+            entry = "${pkgs.lib.getExe self.packages."${system}".nickel-check-fmt}";
             types = [ "text" ];
             enable = true;
             # Some tests are currently failing the idempotency check, and
@@ -321,7 +320,7 @@
                 [ git ]
                   ++ pkgs.lib.optionals
                   (builtins.elem "nix-experimental" extraNickelFeatures)
-                  ([ boost nix ]);
+                  [ boost nix ];
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${featuresArg} ${extraBuildArgs} --workspace";
               CARGO_PROFILE = profile;
@@ -497,6 +496,16 @@
             checkPhase = ''
               $out/bin/run_tests
             '';
+          };
+
+          nickel-check-fmt = craneLib.buildPackage {
+            pname = "nickel-check-fmt";
+            cargoArtifacts = null;
+            cargoExtraArgs = "--package nickel-check-fmt";
+            src = craneLib.cleanCargoSource ./.;
+            doCheck = false;
+            meta.mainProgram = "nickel-check-fmt";
+            CARGO_PROFILE = "dev";
           };
 
           benchmarks = craneLib.mkCargoDerivation {
@@ -712,7 +721,7 @@
 
       stdlibTests = pkgs.runCommandLocal "stdlib-test" { }
         ''
-          ${pkgs.lib.getExe self.packages."${system}".default} test ${./core/stdlib/std.ncl} && mkdir $out
+          ${pkgs.lib.getExe self.checks."${system}".nickel-lang} test ${./core/stdlib/std.ncl} && mkdir $out
         '';
 
       # This flake used to build nickel-lang-cli and nickel-lang-lsp packages with separate
@@ -733,6 +742,7 @@
           nickel-lang-pkg
           nickel-lang-nix
           nickel-lang-c
+          nickel-check-fmt
           benchmarks
           cargoArtifacts;
         default = packages.nickel-lang;
@@ -760,7 +770,6 @@
 
       devShells.default = makeDevShell {
         rust = mkRust {
-          rustProfile = "default";
           targets = [ "wasm32-unknown-unknown" ];
           rustExtensions = [
             "rustfmt"

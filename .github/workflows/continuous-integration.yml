@@ -20,12 +20,9 @@ jobs:
             name: linux
           - os: macos-15
             name: macos
-            continue-on-error: true
 
     name: build-and-test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    # The `== true` makes it work whether continue-on-error has been defined or not.
-    continue-on-error: ${{ matrix.continue-on-error == true }}
 
     steps:
 
@@ -34,15 +31,16 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Free disk space
-      # This hash is a recent main version, because v6 (the latest release as of
-      # this comment) doesn't work with the cachix install action.
-      uses: wimpysworld/nothing-but-nix@10c936d9e46521bf923f75458e0cbd4fa309300d
-      with:
-        hatchet-protocol: 'holster'
-      # Currently broken on macos:
-      # https://github.com/wimpysworld/nothing-but-nix/issues/39
+    # Last I checked, the ubuntu runners have a root filesystem with 23G free
+    # and a /mnt with 66G free. Putting /nix in /mnt seems to stop us from
+    # running out of disk space. (There are also actions available that do
+    # more drastic things.)
+    - name: Loop mount
       if: runner.os == 'Linux'
+      run: |
+        sudo mkdir /mnt/nix
+        sudo mkdir /nix
+        sudo mount --bind /mnt/nix /nix
 
     - name: Install Nix
       uses: cachix/install-nix-action@v31
@@ -52,15 +50,17 @@ jobs:
           experimental-features = nix-command flakes
           accept-flake-config = true
 
-    - name: Setup Cachix
-      uses: cachix/cachix-action@v16
+    - name: Magic Nix cache
+      uses: DeterminateSystems/magic-nix-cache-action@18f387d6764e62a1ef95201d3ad9d594a2b0a455
       with:
-        name: tweag-nickel
-        authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
+        use-flakehub: false
 
     - name: Run all checks
       run: |
         nix flake check --print-build-logs
+
+    - name: Check disk space
+      run: df -h
 
     - name: Typecheck benchmarks
       run: find core/benches -type f -name "*.ncl" -exec nickel typecheck '{}' \;
