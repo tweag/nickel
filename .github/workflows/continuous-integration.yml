@@ -50,12 +50,10 @@ jobs:
           experimental-features = nix-command flakes
           accept-flake-config = true
 
-    - name: Setup Cachix
-      uses: cachix/cachix-action@v16
+    - name: Magic Nix cache
+      uses: DeterminateSystems/magic-nix-cache-action@18f387d6764e62a1ef95201d3ad9d594a2b0a455
       with:
-        name: tweag-nickel
-        authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
-
+        use-flakehub: false
 
     - name: Run all checks
       run: |
