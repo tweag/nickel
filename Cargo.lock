@@ -3479,6 +3479,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-check-fmt"
+version = "0.1.0"
+dependencies = [
+ "topiary-core",
+ "topiary-queries",
+ "tree-sitter-nickel",
+]
+
+[[package]]
 name = "nickel-lang"
 version = "2.0.0"
 dependencies = [
