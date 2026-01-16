@@ -20,12 +20,9 @@ jobs:
             name: linux
           - os: macos-15
             name: macos
-            continue-on-error: true
 
     name: build-and-test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    # The `== true` makes it work whether continue-on-error has been defined or not.
-    continue-on-error: ${{ matrix.continue-on-error == true }}
 
     steps:
 
@@ -33,6 +30,17 @@ jobs:
       uses: actions/checkout@v6
       with:
         fetch-depth: 0
+
+    # Last I checked, the ubuntu runners have a root filesystem with 23G free
+    # and a /mnt with 66G free. Putting /nix in /mnt seems to stop us from
+    # running out of disk space. (There are also actions available that do
+    # more drastic things.)
+    - name: Loop mount
+      if: runner.os == 'Linux'
+      run: |
+        sudo mkdir /mnt/nix
+        sudo mkdir /nix
+        sudo mount --bind /mnt/nix /nix
 
     - name: Install Nix
       uses: cachix/install-nix-action@v31
@@ -48,14 +56,12 @@ jobs:
         name: tweag-nickel
         authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
 
-    - name: Check disk space
-      run: df -h
 
     - name: Run all checks
       run: |
         nix flake check --print-build-logs
 
-    - name: Check disk space again
+    - name: Check disk space
       run: df -h
 
     - name: Typecheck benchmarks

@@ -27,6 +27,7 @@ use crate::package::PackageCommand;
 #[command(
     author,
     about,
+
     long_about = None,
     version = format!(
         "{} {} (rev {})",
