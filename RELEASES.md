@@ -1,3 +1,26 @@
+Version 1.17 (2026-06-03)
+=========================
+
+Maintenance release.
+
+Tooling
+-------
+
+* Add --no-format flag to nickel convert by @costajohnt in https://github.com/nickel-lang/nickel/pull/2529
+* feat(export): add YAML document start marker to export output by @costajohnt in https://github.com/nickel-lang/nickel/pull/2544
+
+LSP
+---
+
+* Clear out diagnostics for deleted files in nls by @L0r3m1p5um in https://github.com/nickel-lang/nickel/pull/2532
+* Fix create `Analysis` even when typechecking fails in nls by @L0r3m1p5um in https://github.com/nickel-lang/nickel/pull/2605
+
+Others
+------
+
+* Apply pending contracts in the public API by @jneem in https://github.com/nickel-lang/nickel/pull/2518
+* feat(experimental): skeleton of an incremental evaluator by @yannham in https://github.com/nickel-lang/nickel/pull/2484
+
 Version 1.16 (2026-02-26)
 =========================
 
