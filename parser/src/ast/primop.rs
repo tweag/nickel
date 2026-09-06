@@ -955,6 +955,20 @@ pub enum PrimOp {
     /// 2. The end index of the slice (excluded).
     /// 3. The array to slice.
     ArraySlice,
+
+    /// Yield a pending external side-effect to the driver of the virtual machine.
+    ///
+    /// The effect name is fixed at parse time; the payload is deep-evaluated and handed to the
+    /// caller of `VirtualMachine::eval_step`, which performs the effect in Rust and resumes
+    /// evaluation with the result. Multi-argument effects should wrap their payload in a record.
+    ///
+    /// Effects are considered commutative and idempotent by contract, and firing an effect from
+    /// inside a contract check is forbidden.
+    ///
+    /// # Arguments
+    ///
+    /// 1. The payload to hand to the effect handler.
+    Effect(LocIdent),
 }
 
 /// Syntactic positioning of a primitive operator.
@@ -1090,6 +1104,7 @@ impl fmt::Display for PrimOp {
             RecordUnsealTail => write!(f, "record/unseal_tail"),
             LabelInsertTypeVar => write!(f, "label/insert_type_variable"),
             ArraySlice => write!(f, "array/slice"),
+            Effect(name) => write!(f, "effect/{}", name.ident()),
         }
     }
 }
@@ -1150,7 +1165,8 @@ impl PrimOp {
             | NumberArcTan
             | NumberCos
             | NumberSin
-            | NumberTan => 1,
+            | NumberTan
+            | Effect(_) => 1,
             #[cfg(feature = "nix-experimental")]
             EvalNix => 1,
 

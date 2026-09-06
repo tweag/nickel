@@ -7,7 +7,7 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    Cache, Closure, Environment, ErrorKind, ImportResolver, VirtualMachine,
+    Cache, Closure, Environment, ErrorKind, EvalOutcome, ImportResolver, VirtualMachine,
     cache::lazy::Thunk,
     contract_eq::contract_eq,
     merge::{self, MergeMode, split},
@@ -124,7 +124,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the next argument
     /// or finally proceed with the operation if all arguments are evaluated.
-    pub fn continue_op(&mut self, closure: Closure) -> Result<Closure, ErrorKind> {
+    pub fn continue_op(&mut self, closure: Closure) -> Result<EvalOutcome, ErrorKind> {
         if let Some(op1_cont) = self.stack.pop_op1_cont() {
             self.call_stack
                 .truncate(op1_cont.app_info.call_stack_size as usize);
@@ -135,6 +135,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 orig_pos_arg: op1_cont.orig_pos_arg,
                 pos_op: op1_cont.app_info.pos_idx,
             })
+            .map(EvalOutcome::Closure)
         } else if let Some(op2_fst_cont) = self.stack.pop_op2_first_cont() {
             self.call_stack
                 .truncate(op2_fst_cont.app_info.call_stack_size as usize);
@@ -147,7 +148,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 orig_pos_arg2: op2_fst_cont.arg2.value.pos_idx(),
             });
 
-            Ok(op2_fst_cont.arg2)
+            Ok(EvalOutcome::Closure(op2_fst_cont.arg2))
         } else if let Some(op2_snd_cont) = self.stack.pop_op2_second_cont() {
             self.call_stack
                 .truncate(op2_snd_cont.app_info.call_stack_size as usize);
@@ -160,6 +161,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 orig_pos_arg2: op2_snd_cont.orig_pos_arg2,
                 pos_op: op2_snd_cont.app_info.pos_idx,
             })
+            .map(EvalOutcome::Closure)
         } else if let Some(mut opn_cont) = self.stack.pop_opn_cont() {
             self.call_stack
                 .truncate(opn_cont.app_info.call_stack_size as usize);
@@ -170,13 +172,28 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 opn_cont.current_pos_idx = next.value.pos_idx();
                 self.stack.push_opn_cont(opn_cont);
 
-                Ok(next)
+                Ok(EvalOutcome::Closure(next))
+            } else if let crate::term::NAryOp::EffectRaw(name) = opn_cont.op {
+                // All args were wrapped in `Force` when the effect was lowered from `Term::OpN`
+                // (see the `Term::OpN` branch in `eval_closure_impl`), so their evaluated values
+                // are the deep-forced payloads the caller expects.
+                let args = opn_cont
+                    .evaluated
+                    .into_iter()
+                    .map(|(cl, _)| cl.value)
+                    .collect();
+                Ok(EvalOutcome::Effect {
+                    name,
+                    args,
+                    pos: opn_cont.app_info.pos_idx,
+                })
             } else {
                 self.eval_opn(OpNEvalData {
                     op: opn_cont.op,
                     args: opn_cont.evaluated,
                     pos_op: opn_cont.app_info.pos_idx,
                 })
+                .map(EvalOutcome::Closure)
             }
         } else {
             panic!("unexpected state of eval stack in continue_op()");
@@ -1414,6 +1431,15 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: Environment::new(),
                 })
             }
+            UnaryOp::ContractExit => {
+                // Decrement the counter which tracks whether a contract body is being evaluated.
+                debug_assert!(
+                    self.contract_depth > 0,
+                    "ContractExit fired with contract_depth == 0",
+                );
+                self.contract_depth = self.contract_depth.saturating_sub(1);
+                Ok(Closure { value, env })
+            }
             UnaryOp::NumberArcCos => self.number_op1(
                 f64::acos,
                 Op1EvalData {
@@ -1864,6 +1890,16 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     .get_then(idx.clone(), |c| c.value.pos_idx());
                 label.arg_idx = Some(idx.clone());
                 let new_label = NickelValue::label(label, pos2);
+
+                // Increment contract_depth (used to track whether the vm is currently evaluating
+                // a contract body), and wrap the body in an op which performs the corresponding
+                // decrement.
+                self.contract_depth = self.contract_depth.saturating_add(1);
+                self.stack.push_op1_cont(Op1ContItem {
+                    op: UnaryOp::ContractExit,
+                    app_info,
+                    orig_pos_arg: pos1.to_inherited(),
+                });
 
                 // If we're evaluating a plain contract application but we are applying
                 // something with the signature of a custom contract, we need to setup some
@@ -3712,6 +3748,13 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     env: env3,
                 })
             }
+            NAryOp::EffectRaw(name) => Err(Box::new(EvalErrorKind::InternalError(
+                format!(
+                    "effect `{name}` reached eval_opn — the EffectRaw op should be intercepted \
+                    in continue_op before dispatch"
+                ),
+                pos_op,
+            ))),
         }
     }
 }
@@ -4126,7 +4169,7 @@ mod tests {
 
             assert_eq!(
                 vm.continue_op(NickelValue::bool_true().into()),
-                Ok(mk_term::integer(46).into())
+                Ok(EvalOutcome::Closure(mk_term::integer(46).into()))
             );
             assert_eq!(0, vm.stack.count_args());
         });
@@ -4147,7 +4190,7 @@ mod tests {
 
             assert_eq!(
                 vm.continue_op(mk_term::integer(7).into()),
-                Ok(mk_term::integer(6).into())
+                Ok(EvalOutcome::Closure(mk_term::integer(6).into()))
             );
             assert_eq!(1, vm.stack.count_conts());
             assert_eq!(
@@ -4178,10 +4221,10 @@ mod tests {
 
             assert_eq!(
                 vm.continue_op(mk_term::integer(6).into()),
-                Ok(Closure {
+                Ok(EvalOutcome::Closure(Closure {
                     value: mk_term::integer(13),
                     env: Environment::new()
-                })
+                }))
             );
         });
     }

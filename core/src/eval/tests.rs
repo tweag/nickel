@@ -500,3 +500,137 @@ mod extras {
         assert_eq!(with_empty, mk_term::integer(3));
     }
 }
+
+mod effects {
+    use super::*;
+    use crate::{identifier::Ident, term::NAryOp};
+
+    /// Build `Term::OpN(EffectRaw(name), args)` — the mainloop's OpN branch will wrap each arg
+    /// in `Force` before dispatching, giving us deep-evaluated payloads on the yield side.
+    fn effect(name: &str, args: Vec<NickelValue>) -> NickelValue {
+        mk_term::opn(NAryOp::EffectRaw(Ident::new(name)), args)
+    }
+
+    #[test]
+    fn effect_deep_forces_args() {
+        let mut vm_ctxt = vm_ctxt();
+        let mut vm = new_no_unwind_vm(&mut vm_ctxt);
+        // Args should be deep-forced when handed to us — a `1 + 1` payload should arrive
+        // already reduced to `2`.
+        let payload = mk_term::op2(BinaryOp::Plus, mk_term::integer(1), mk_term::integer(1));
+        let expr = effect("test/echo", vec![payload]);
+
+        match vm.eval_step(expr.into()) {
+            Ok(EvalOutcome::Effect { name, args, .. }) => {
+                assert_eq!(name, Ident::new("test/echo"));
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0].clone().without_pos(), mk_term::integer(2));
+            }
+            other => panic!("expected Effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn effect_resumes_into_surrounding_op() {
+        let mut vm_ctxt = vm_ctxt();
+        let mut vm = new_no_unwind_vm(&mut vm_ctxt);
+        // `10 + (effect "get" 0)`. When the effect fires we hand back 32, expecting the
+        // outer `+` to resume and produce 42.
+        let expr = mk_term::op2(
+            BinaryOp::Plus,
+            mk_term::integer(10),
+            effect("get", vec![mk_term::integer(0)]),
+        );
+
+        let Ok(EvalOutcome::Effect { name, .. }) = vm.eval_step(expr.into()) else {
+            panic!("first step should yield Effect")
+        };
+        assert_eq!(name, Ident::new("get"));
+
+        // Resume with 32; the outer `+` continuation is still on the stack, so 10 + 32 = 42.
+        let resumed = vm.eval_step(mk_term::integer(32).into()).unwrap();
+        let EvalOutcome::Closure(closure) = resumed else {
+            panic!("resumed step should be Closure, got {resumed:?}")
+        };
+        assert_eq!(closure.value.without_pos(), mk_term::integer(42));
+    }
+
+    #[test]
+    fn unhandled_effect_errors() {
+        let expr = effect("net/get", vec![NickelValue::string_posless("http://x")]);
+        let err = eval_no_import(expr).unwrap_err();
+        assert_matches!(err.error, EvalErrorKind::UnhandledEffect { .. });
+    }
+
+    #[test]
+    fn effect_in_contract_errors() {
+        // Build a contract whose body invokes an effect:
+        //   fun _label value => (%seq% (effect "leak" value)) value
+        // We use `seq` so the effect is actually forced — a lazy `let _ = effect ... in value`
+        // would never touch the effect since Nickel bindings are call-by-need.
+        let contract_body = mk_app!(
+            mk_term::op1(UnaryOp::Seq, effect("leak", vec![mk_term::var("value")])),
+            mk_term::var("value")
+        );
+        let contract = mk_fun!("_label", mk_fun!("value", contract_body));
+
+        // Apply the contract to `42`: (%contract/apply% contract dummy_label) 42
+        let expr = mk_app!(
+            mk_term::op2(
+                BinaryOp::ContractApply,
+                contract,
+                NickelValue::label_posless(Label::dummy())
+            ),
+            mk_term::integer(42)
+        );
+
+        let mut vm_ctxt = vm_ctxt();
+        let mut vm = new_no_unwind_vm(&mut vm_ctxt);
+        match vm.eval_step(expr.into()) {
+            Err(err) => {
+                assert_matches!(err.error, EvalErrorKind::EffectInContract { .. });
+            }
+            other => panic!("expected EffectInContract error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn effect_from_source_parses() {
+        // `%effect% my_op { url = "https://x" }` should parse and yield an Effect on eval_step
+        // with name `my_op` and the record as the (deep-forced) payload.
+        let src = r#"%effect% my_op { url = "https://x" }"#;
+        let expr = parse(src).expect("source should parse");
+
+        let mut vm_ctxt = vm_ctxt();
+        let mut vm = new_no_unwind_vm(&mut vm_ctxt);
+        match vm.eval_step(expr.into()) {
+            Ok(EvalOutcome::Effect { name, args, .. }) => {
+                assert_eq!(name, Ident::new("my_op"));
+                assert_eq!(args.len(), 1);
+                // Payload should be a record.
+                assert!(args[0].as_record().is_some(), "payload should be a record");
+            }
+            other => panic!("expected Effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn effect_from_source_resumes() {
+        // `10 + (%effect% get 0)` — resume with 32, expect 42.
+        let expr = parse("10 + (%effect% get 0)").expect("source should parse");
+
+        let mut vm_ctxt = vm_ctxt();
+        let mut vm = new_no_unwind_vm(&mut vm_ctxt);
+
+        let Ok(EvalOutcome::Effect { name, .. }) = vm.eval_step(expr.into()) else {
+            panic!("first step should yield Effect")
+        };
+        assert_eq!(name, Ident::new("get"));
+
+        let resumed = vm.eval_step(mk_term::integer(32).into()).unwrap();
+        let EvalOutcome::Closure(closure) = resumed else {
+            panic!("resumed step should be Closure, got {resumed:?}")
+        };
+        assert_eq!(closure.value.without_pos(), mk_term::integer(42));
+    }
+}

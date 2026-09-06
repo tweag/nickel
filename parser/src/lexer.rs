@@ -240,6 +240,8 @@ pub enum NormalToken<'input> {
     Unseal,
     #[token("%enum/embed%")]
     EnumEmbed,
+    #[token("%effect%")]
+    Effect,
     #[token("%record/map%")]
     RecordMap,
     #[token("%record/insert%")]
