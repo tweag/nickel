@@ -1,7 +1,7 @@
 [package]
 name = "nickel-lang"
 description = "Stable library interface to the Nickel language"
-version = "2.1.0"
+version = "2.2.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
