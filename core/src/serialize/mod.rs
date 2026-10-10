@@ -1,5 +1,6 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
+    ast::compat,
     error::{ExportErrorKind, PointedExportErrorData},
     eval::value::{ArrayData, Container, EnumVariantData, NickelValue, ValueContentRef},
     identifier::{Ident, LocIdent},
@@ -333,10 +334,10 @@ impl<'de> Deserialize<'de> for NickelValue {
                     elts.push(elem);
                 }
 
-                Ok(NickelValue::array_posless(
+                Ok(compat::closurize(NickelValue::array_posless(
                     elts.into_iter().collect(),
                     Vec::new(),
-                ))
+                )))
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -349,8 +350,8 @@ impl<'de> Deserialize<'de> for NickelValue {
                     fields.insert(key.into(), value);
                 }
 
-                Ok(NickelValue::record_posless(RecordData::with_field_values(
-                    fields,
+                Ok(compat::closurize(NickelValue::record_posless(
+                    RecordData::with_field_values(fields),
                 )))
             }
         }
