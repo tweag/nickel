@@ -1,0 +1,8 @@
+{
+  "attachment_ref": {
+    "token_id": 1
+  },
+  "data": {
+    "string": "value"
+  }
+}

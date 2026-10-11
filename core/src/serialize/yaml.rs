@@ -743,6 +743,8 @@ fn load<'ast>(
 // normal Records. This is important for std.deserialize, since it expects deserialized data to be
 // evaluated.
 fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
+    use crate::ast::compat::closurize;
+
     let value: NickelValue = ast.to_mainline(pos_table);
     value
         .traverse::<_, Infallible>(
@@ -751,7 +753,12 @@ fn ast_to_term(pos_table: &mut PosTable, ast: Ast<'_>) -> NickelValue {
 
                 Ok(match value.content() {
                     ValueContent::Term(TermContent::RecRecord(lens)) => {
-                        NickelValue::record(lens.take().record, pos_idx)
+                        // The compat translation layer takes care of wrapping plain arrays and
+                        // records in `Closurize` operations, but not for `RecRecords`, because they
+                        // are implicitly closurized once evaluated. Since we're creating a new
+                        // plain record, we have to manually wrap it into a `Closurize` operation to
+                        // avoid breaking the closurization invariant.
+                        closurize(NickelValue::record(lens.take().record, pos_idx))
                     }
                     lens => lens.restore(),
                 })
