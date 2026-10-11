@@ -32,6 +32,23 @@ use crate::{
     traverse::Traverse,
 };
 
+use super::{MINUS_INF_TAG, NOT_A_NUMBER_TAG, PLUS_INF_TAG};
+
+/// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
+fn plus_inf(alloc: &AstAlloc) -> ast::Node<'_> {
+    alloc.enum_variant(PLUS_INF_TAG.into(), None)
+}
+
+/// The constant Nickel value we use to deserialize `-inf` float values.
+fn minus_inf(alloc: &AstAlloc) -> ast::Node<'_> {
+    alloc.enum_variant(MINUS_INF_TAG.into(), None)
+}
+
+/// The constant Nickel value we use to deserialize `NaN` float values.
+fn not_a_number(alloc: &AstAlloc) -> ast::Node<'_> {
+    alloc.enum_variant(NOT_A_NUMBER_TAG.into(), None)
+}
+
 fn mk_pos(file_id: Option<FileId>, start: usize, end: usize, char_index_map: &[usize]) -> TermPos {
     let start_byte = char_index_map.get(start).copied().unwrap_or(start);
     let end_byte = char_index_map.get(end).copied().unwrap_or(end);
@@ -267,42 +284,32 @@ impl<'ast> Loader<'ast> {
         tag: Option<&Cow<'_, Tag>>,
         pos: TermPos,
     ) -> Result<(), ParseError> {
-        // Returns Ok(Some(f)) if it succeeds, Ok(None) if the argument wasn't a float, or
-        // Err it it was a float that Nickel doesn't support (i.e. inf or nan).
+        // Returns `Some(f)` if parsing `v` as a number succeed, or `None` if the argument wasn't a
+        // float. If the argument is a special float value that is not representable as a Nickel
+        // number (inf or NaN), this generates an enum tag instead: `'PlusInfinity, 'MinusInfinity,
+        // or 'NotANumber`.
         //
-        // The motivation here is that we want an error on ".inf" instead of silently treating
-        // it as a string.
-        fn parse_float<'a>(
-            v: &str,
-            fmt: &str,
-            pos: TermPos,
-            alloc: &'a AstAlloc,
-        ) -> Result<Option<ast::Node<'a>>, ParseError> {
+        // The rationale is to let the user deal with such values. They will break a `Number`
+        // contract, but they can also handle them differently. We also don't want to silently
+        // treating them as a string.
+        fn parse_float<'a>(v: &str, alloc: &'a AstAlloc) -> Option<ast::Node<'a>> {
             match v {
-                ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" | "-.inf" | "-.Inf"
-                | "-.INF" | ".nan" | ".NaN" | ".NAN" => Err(ParseError::ExternalFormatError(
-                    fmt.to_owned(),
-                    "Nickel numbers cannot be inf or NaN".into(),
-                    pos.into_opt(),
-                )),
+                ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => Some(plus_inf(alloc)),
+                "-.inf" | "-.Inf" | "-.INF" => Some(minus_inf(alloc)),
+                ".nan" | ".NaN" | ".NAN" => Some(not_a_number(alloc)),
                 // `f64::from_str` will succeed on "NaN" and "inf". Since those aren't
                 // valid YAML floats, we want to skip them.
                 _ if v.as_bytes().iter().any(u8::is_ascii_digit) => {
                     use malachite::base::num::conversion::traits::FromSciString;
                     let n = Number::from_sci_string(v);
-                    Ok(n.map(|n| alloc.number(n)))
+                    n.map(|n| alloc.number(n))
                 }
-                _ => Ok(None),
+                _ => None,
             }
         }
 
         // Parse a YAML scalar, inferring the type from the value itself.
-        fn parse<'a>(
-            v: &str,
-            fmt: &str,
-            pos: TermPos,
-            alloc: &'a AstAlloc,
-        ) -> Result<ast::Node<'a>, ParseError> {
+        fn parse<'a>(v: &str, alloc: &'a AstAlloc) -> Result<ast::Node<'a>, ParseError> {
             if let Some(number) = v.strip_prefix("0x")
                 && let Ok(i) = i64::from_str_radix(number, 16)
             {
@@ -323,7 +330,7 @@ impl<'ast> Loader<'ast> {
                 _ => {
                     if let Ok(i) = v.parse::<i64>() {
                         Ok(alloc.number(i.into()))
-                    } else if let Some(f) = parse_float(v, fmt, pos, alloc)? {
+                    } else if let Some(f) = parse_float(v, alloc) {
                         Ok(f)
                     } else {
                         Ok(alloc.string(v))
@@ -335,41 +342,36 @@ impl<'ast> Loader<'ast> {
         let t = if style != ScalarStyle::Plain {
             // Any quoted scalar is a string.
             ast::Node::String(self.alloc.alloc_str(value))
-        } else if let Some(tag) = tag.map(Cow::as_ref) {
-            // TODO: once we switch to edition 2024, see if this test can be folded into the `if let`
-            if tag.is_yaml_core_schema() {
-                let t = match tag.suffix.as_ref() {
-                    "bool" => value
-                        .parse::<bool>()
-                        .map(ast::Node::Bool)
-                        .map_err(|_| "invalid bool scalar"),
-                    "int" => value
-                        .parse::<i64>()
-                        .map(|i| self.alloc.number(i.into()))
-                        .map_err(|_| "invalid int scalar"),
-                    "float" => parse_float(value, self.format_name, pos, self.alloc)?
-                        .ok_or("invalid float scalar"),
-                    "null" => match value {
-                        "~" | "null" => Ok(ast::Node::Null),
-                        _ => Err("invalid null scalar"),
-                    },
-                    "str" => Ok(ast::Node::String(self.alloc.alloc_str(value))),
-                    _ => Err("unknown tag"),
-                };
-                t.map_err(|msg| {
-                    ParseError::ExternalFormatError(
-                        self.format_name.to_owned(),
-                        msg.into(),
-                        pos.into_opt(),
-                    )
-                })?
-            } else {
-                // If it isn't a core schema tag, try to infer the type.
-                parse(value, self.format_name, pos, self.alloc)?
-            }
+        } else if let Some(tag) = tag.map(Cow::as_ref)
+            && tag.is_yaml_core_schema()
+        {
+            let t = match tag.suffix.as_ref() {
+                "bool" => value
+                    .parse::<bool>()
+                    .map(ast::Node::Bool)
+                    .map_err(|_| "invalid bool scalar"),
+                "int" => value
+                    .parse::<i64>()
+                    .map(|i| self.alloc.number(i.into()))
+                    .map_err(|_| "invalid int scalar"),
+                "float" => parse_float(value, self.alloc).ok_or("invalid float scalar"),
+                "null" => match value {
+                    "~" | "null" => Ok(ast::Node::Null),
+                    _ => Err("invalid null scalar"),
+                },
+                "str" => Ok(ast::Node::String(self.alloc.alloc_str(value))),
+                _ => Err("unknown tag"),
+            };
+            t.map_err(|msg| {
+                ParseError::ExternalFormatError(
+                    self.format_name.to_owned(),
+                    msg.into(),
+                    pos.into_opt(),
+                )
+            })?
         } else {
             // If there's no tag, try to infer the type.
-            parse(value, self.format_name, pos, self.alloc)?
+            parse(value, self.alloc)?
         };
 
         let node = Node::Scalar(Ast { node: t, pos });

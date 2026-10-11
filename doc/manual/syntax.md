@@ -42,6 +42,12 @@ fit exactly into a 64-bit signed integer or a 64-bit unsigned integer. They
 are serialized as a 64-bit float otherwise. The latter conversion might lose
 precision as well, for example when serializing `1/3`.
 
+Nickel numbers don't support the special float values `+inf`, `-inf` and `NaN`.
+Some configuration format such as YAML and TOML allow for such values. When
+importing data from an external format in Nickel, those special values are
+converted to the enum tags `'PlusInfinity`, `'MinusInfinity`, and `'NotANumber`
+instead of a number.
+
 Number literals can be written in:
 
 - decimal representation
