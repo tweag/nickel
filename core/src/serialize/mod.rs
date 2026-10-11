@@ -139,7 +139,7 @@ where
 ///
 /// Returns special non-number constants (enum tags) if the floating point value is either
 /// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
-fn deserialize_float<F: PrimitiveFloat, E: serde::de::Error>(float_value: F) -> NickelValue
+fn deserialize_float<F: PrimitiveFloat>(float_value: F) -> NickelValue
 where
     Number: TryFrom<
             F,
@@ -302,14 +302,14 @@ impl<'de> Deserialize<'de> for NickelValue {
             where
                 E: serde::de::Error,
             {
-                Ok(deserialize_float::<f32, E>(v))
+                Ok(deserialize_float(v))
             }
 
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(deserialize_float::<f64, E>(v))
+                Ok(deserialize_float(v))
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
