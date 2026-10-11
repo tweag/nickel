@@ -589,8 +589,8 @@ impl<EC: EvalCache> Program<EC> {
     /// Load, parse, and typecheck the program (together with additional contracts) and the
     /// standard library, if not already done.
     pub fn typecheck(&mut self, initial_mode: TypecheckMode) -> Result<(), Error> {
-        // If the main file is known to not be Nickel, we don't bother parsing it into an AST
-        // (`cache.typecheck()` will ignore it anyway)
+        // If the main file is known to not be Nickel, we don't bother parsing it into an AST, and
+        // there is nothing to typecheck for it: non-Nickel inputs aren't typechecked.
         let is_nickel = matches!(
             self.vm_ctxt.import_resolver.input_format(self.main_id),
             None | Some(InputFormat::Nickel)
@@ -612,12 +612,23 @@ impl<EC: EvalCache> Program<EC> {
         self.vm_ctxt.import_resolver.load_stdlib()?;
         self.vm_ctxt.register_extend_env_for_typecheck();
 
-        self.vm_ctxt
-            .import_resolver
-            .typecheck(self.main_id, initial_mode)
-            .map_err(|cache_err| {
-                cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
-            })?;
+        if is_nickel {
+            self.vm_ctxt
+                .import_resolver
+                .typecheck(self.main_id, initial_mode)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
+                })?;
+        } else {
+            eprintln!(
+                "Warning: skipping {} because it is not a Nickel source file (JSON-like data is always well typed)",
+                self.vm_ctxt
+                    .import_resolver
+                    .sources
+                    .name(self.main_id)
+                    .to_string_lossy()
+            );
+        }
 
         for source in self.contracts.iter() {
             match source {
