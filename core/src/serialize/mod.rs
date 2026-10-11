@@ -86,6 +86,26 @@ impl fmt::Display for ParseFormatError {
     }
 }
 
+// Enum tags used for non-representable float values.
+const PLUS_INF_TAG: &str = "PlusInfinity";
+const MINUS_INF_TAG: &str = "MinusInfinity";
+const NOT_A_NUMBER_TAG: &str = "NotANumber";
+
+/// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
+fn plus_inf() -> NickelValue {
+    NickelValue::enum_tag_posless(PLUS_INF_TAG)
+}
+
+/// The constant Nickel value we use to deserialize `-inf` float values.
+fn minus_inf() -> NickelValue {
+    NickelValue::enum_tag_posless(MINUS_INF_TAG)
+}
+
+/// The constant Nickel value we use to deserialize `NaN` float values.
+fn not_a_number() -> NickelValue {
+    NickelValue::enum_tag_posless(NOT_A_NUMBER_TAG)
+}
+
 /// Implicitly convert numbers to primitive integers when possible, and serialize an exact
 /// representation. Note that `u128` and `i128` aren't supported for common configuration formats in
 /// serde, so we rather pick `i64` and `u64`, even if the former couple theoretically allows for a
@@ -115,29 +135,28 @@ where
         .serialize(serializer)
 }
 
-/// Helper function to convert a serialized primitive float to a Nickel number. Return a deserialize error if
-/// the floating point value is either NaN or infinity.
-fn number_from_float<F: PrimitiveFloat, E: serde::de::Error>(float_value: F) -> Result<Number, E>
+/// Helper function to convert a serialized primitive float to a Nickel number.
+///
+/// Returns special non-number constants (currently enum tags) if the floating point value is either
+/// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
+fn deserialize_float<F: PrimitiveFloat, E: serde::de::Error>(float_value: F) -> NickelValue
 where
     Number: TryFrom<
             F,
             Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
         >,
 {
-    Number::try_from_float_simplest(float_value).map_err(|_| {
-        E::custom(format!(
-            "couldn't convert {float_value} to a Nickel number: Nickel doesn't support NaN nor infinity"
-        ))
-    })
-}
-
-/// Deserialize a Nickel number. As for parsing, we convert the number from a 64bits float.
-pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Number, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let as_f64 = f64::deserialize(deserializer)?;
-    number_from_float::<f64, D::Error>(as_f64)
+    Number::try_from_float_simplest(float_value)
+        .map(NickelValue::number_posless)
+        .unwrap_or_else(|_| if float_value.is_nan() {
+            not_a_number()
+        } else if float_value.is_infinite() && float_value.is_sign_negative() {
+            minus_inf()
+        } else if float_value.is_infinite() {
+            plus_inf()
+        } else {
+            unreachable!("conversion from float value {float_value} failed, but it was neither +inf, -inf nor NaN")
+        })
 }
 
 /// Serializer for annotated values.
@@ -283,16 +302,14 @@ impl<'de> Deserialize<'de> for NickelValue {
             where
                 E: serde::de::Error,
             {
-                let n = number_from_float::<f32, E>(v)?;
-                Ok(NickelValue::number_posless(n))
+                Ok(deserialize_float::<f32, E>(v))
             }
 
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                let n = number_from_float::<f64, E>(v)?;
-                Ok(NickelValue::number_posless(n))
+                Ok(deserialize_float::<f64, E>(v))
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
