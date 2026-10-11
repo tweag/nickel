@@ -619,6 +619,15 @@ impl<EC: EvalCache> Program<EC> {
                 .map_err(|cache_err| {
                     cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
                 })?;
+        } else {
+            eprintln!(
+                "Warning: skipping {} because it is not a Nickel source file (JSON-like data is always well typed)",
+                self.vm_ctxt
+                    .import_resolver
+                    .sources
+                    .name(self.main_id)
+                    .to_string_lossy()
+            );
         }
 
         for source in self.contracts.iter() {
