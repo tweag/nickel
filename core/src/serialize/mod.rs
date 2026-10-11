@@ -137,7 +137,7 @@ where
 
 /// Helper function to convert a serialized primitive float to a Nickel number.
 ///
-/// Returns special non-number constants (currently enum tags) if the floating point value is either
+/// Returns special non-number constants (enum tags) if the floating point value is either
 /// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
 fn deserialize_float<F: PrimitiveFloat, E: serde::de::Error>(float_value: F) -> NickelValue
 where
