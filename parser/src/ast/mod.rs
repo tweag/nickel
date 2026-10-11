@@ -31,10 +31,10 @@ use crate::{
 /// operands to 64-bits floats, performing the floating-point power operation, and converting back
 /// to rationals, which can incur a loss of precision.
 ///
-/// [^number-serialization]: Conversion to string and serialization try to first convert the
-///     rational as an exact signed or unsigned 64-bits integer. If this succeeds, such operations
-///     don't lose precision. Otherwise, the number is converted to the nearest 64bit float and then
-///     serialized/printed, which can incur a loss of information.
+/// During serialization, we try to first convert the rational as an exact signed or unsigned
+/// 64-bits integer. If this succeeds, such operations don't lose precision. Otherwise, the number
+/// is converted to the nearest 64bit float and then serialized/printed, which can incur a loss of
+/// information.
 pub type Number = malachite::rational::Rational;
 
 pub mod alloc;

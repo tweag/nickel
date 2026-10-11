@@ -1180,7 +1180,7 @@ mod tests {
         ast::{AstAlloc, Node},
         files::Files,
         identifier::Ident,
-        parser::{FullyErrorTolerantParser as _, grammar, lexer},
+        parser::{grammar, lexer},
     };
 
     use crate::{

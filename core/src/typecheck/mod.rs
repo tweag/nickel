@@ -63,7 +63,6 @@ use crate::{
     environment::Environment,
     error::{TypecheckError, TypecheckErrorData, TypecheckErrorKind},
     identifier::{Ident, LocIdent},
-    mk_uty_arrow, mk_uty_enum, mk_uty_record, mk_uty_record_row,
     position::TermPos,
     stdlib as nickel_stdlib,
     traverse::TraverseAlloc,
@@ -2726,7 +2725,7 @@ impl<'ast> Infer<'ast> for Ast<'ast> {
 
                 visitor.visit_term(self, codomain.clone());
 
-                for (arg, arg_type) in args.iter().zip(arg_types.into_iter()) {
+                for (arg, arg_type) in args.iter().zip(arg_types) {
                     arg.check(state, ctxt.clone(), visitor, arg_type)?;
                 }
 

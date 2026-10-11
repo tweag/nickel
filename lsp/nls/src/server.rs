@@ -367,7 +367,7 @@ impl Server {
             warn!("tried to issue diagnostics for unknown file id {file_id:?}");
             return;
         };
-        debug!("Issuing diagnostics for {} with ID {:?}", &uri, file_id);
+        debug!("Issuing diagnostics for {} with ID {:?}", uri, file_id);
         let diagnostics = diagnostics.into_iter().map(Into::into).collect();
         self.publish_diagnostics(uri, diagnostics)
     }

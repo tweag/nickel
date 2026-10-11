@@ -894,7 +894,7 @@ impl<'a> Pretty<'a, Allocator> for &Term {
                         ]
                         .group(),
                     _ => {
-                        panic!("pretty print is not implemented for {:?}", &data.op)
+                        panic!("pretty print is not implemented for {:?}", data.op)
                     }
                 }
             }

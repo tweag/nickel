@@ -216,13 +216,10 @@ impl CallStack {
                 StackElem::Fun(pos) => {
                     let span = pos_table.get(*pos).unwrap();
 
-                    if pending
-                        .last()
-                        .map(|cdescr| cdescr.span == span)
-                        .unwrap_or(false)
-                    {
-                        entered.push(pending.pop().unwrap());
+                    if let Some(last) = pending.pop_if(|cdescr| cdescr.span == span) {
+                        entered.push(last);
                     }
+
                     // Otherwise, we are most probably entering a subcall () of the currently
                     // active call (e.g. in an multi-ary application `f g h`, a subcall would be `f
                     // g`). In any case, we do nothing.
