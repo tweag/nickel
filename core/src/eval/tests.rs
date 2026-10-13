@@ -1,7 +1,4 @@
-use super::{
-    cache::{Cache as _, CacheImpl},
-    *,
-};
+use super::{cache::CacheImpl, *};
 use crate::{
     cache::resolvers::{DummyResolver, SimpleResolver},
     error::{ImportError, ImportErrorKind, NullReporter},

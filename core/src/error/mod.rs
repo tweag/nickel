@@ -1472,7 +1472,7 @@ impl IntoDiagnostics for EvalErrorData {
                 contract_label,
                 evaluated_arg,
                 &self.ctxt.call_stack,
-                &format!(": {}", &action.message()),
+                &format!(": {}", action.message()),
             ),
             EvalErrorKind::UnaryPrimopTypeError {
                 primop,
@@ -1881,7 +1881,7 @@ is None but last_arrow_elem is Some"
             .and_then(|diag| diag.message.as_ref())
         {
             // unwrap(): write shouldn't fail on a String
-            write!(&mut msg, "{new_msg_block}{}", &super::escape(contract_msg)).unwrap();
+            write!(&mut msg, "{new_msg_block}{}", super::escape(contract_msg)).unwrap();
         }
 
         let contract_notes = head_contract_diagnostic

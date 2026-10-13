@@ -212,7 +212,7 @@ impl Package {
     /// actually local paths. Writes an index entry into the "remote" index
     /// and puts the package contents in the appropriate place on "github"
     pub fn publish(&self, config: &Config) {
-        eprintln!("publishing {}", &self.id);
+        eprintln!("publishing {}", self.id);
         let pkg = index::scrape::read_from_manifest(&self.id, &self.manifest).unwrap();
 
         // We don't put the package in config.index_dir, because that's where our downloaded index

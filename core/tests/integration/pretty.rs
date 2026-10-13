@@ -50,8 +50,8 @@ fn check_idempotent(path: &str) {
     // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
     // only proceed with samples that do.
     if let Ok(ast) = parse_bytecode_ast(&alloc, &buffer) {
-        let pretty_ast = format!("{}", &ast);
-        let double_pretty = format!("{}", &parse_bytecode_ast(&alloc, &pretty_ast).unwrap());
+        let pretty_ast = format!("{}", ast);
+        let double_pretty = format!("{}", parse_bytecode_ast(&alloc, &pretty_ast).unwrap());
 
         diff(&pretty_ast, &double_pretty);
     }

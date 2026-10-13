@@ -86,8 +86,10 @@ impl NameReg {
             let mut suffix = 1;
 
             name = format!("{name}{suffix}");
+
             while self.taken(&name) {
                 suffix += 1;
+                name = format!("{name}{suffix}");
             }
         }
 
