@@ -139,7 +139,7 @@ semver = { version = "1", features = ["serde"] }
 arbitrary = { version = "1", features = ["derive"] }
 arbtest = "0.3"
 rpds = "1"
-imbl-sized-chunks = "0.1"
+imbl-sized-chunks = "0.2"
 
 [profile.dev.package.lalrpop]
 opt-level = 3
