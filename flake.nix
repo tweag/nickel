@@ -686,7 +686,7 @@
 
         yarnOfflineCache = pkgs.fetchYarnDeps {
           yarnLock = finalAttrs.src + "/yarn.lock";
-          hash = "sha256-KDXFOPdwJAcW82m3bzsoILmIyolgxDDDi+tkVySb7u8=";
+          hash = "sha256-qYylcLdcuzxA18CUgkxzFNkajP/hKxz/hnaxGsNQ1jM=";
         };
 
         yarnBuildScript = "compile";
