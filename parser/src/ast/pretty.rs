@@ -20,7 +20,10 @@ use crate::{
     typ::{DictTypeFlavour, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };
 
-use malachite::base::num::{basic::traits::Zero, conversion::traits::ToSci};
+use malachite::base::num::{
+    basic::traits::Zero,
+    conversion::traits::{IsInteger, ToSci},
+};
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -831,6 +834,7 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
         match self {
             Node::Null => allocator.text("null"),
             Node::Bool(v) => allocator.as_string(v),
+            Node::Number(n) if n.is_integer() => allocator.as_string(n),
             Node::Number(n) => allocator.as_string(format!("{}", n.to_sci())),
             Node::String(v) => allocator.escaped_string(v).double_quotes(),
             Node::StringChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
@@ -1404,6 +1408,19 @@ mod tests {
 
         assert_eq!(long_lines, long);
         assert_eq!(short_lines, short);
+    }
+
+    #[test]
+    fn pretty_large_integers() {
+        for number in [
+            "10000000000000002",
+            "-10000000000000002",
+            "9223372036854775807",
+            "-9223372036854775808",
+            "18446744073709551615",
+        ] {
+            assert_long_short_term(number, number);
+        }
     }
 
     #[test]
