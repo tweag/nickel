@@ -697,24 +697,22 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 // Build a `NickelValue` that forces a given list of terms, and at the end resumes the
                 // evaluation of the argument on the top of the stack.
                 //
-                // Requires its first argument to be non-empty.
-                fn seq_terms<I>(mut it: I, pos_op_inh: PosIdx) -> NickelValue
+                // Returns `None` if there is nothing to force.
+                fn seq_terms<I>(mut it: I, pos_op_inh: PosIdx) -> Option<NickelValue>
                 where
                     I: Iterator<Item = NickelValue>,
                 {
-                    let first = it
-                        .next()
-                        .expect("expected the argument to be a non-empty iterator");
+                    let first = it.next()?;
 
-                    it.fold(
+                    Some(it.fold(
                         mk_term::op1(UnaryOp::DeepSeq, first).with_pos_idx(pos_op_inh),
                         |acc, t| {
                             mk_app!(mk_term::op1(UnaryOp::DeepSeq, t), acc).with_pos_idx(pos_op_inh)
                         },
-                    )
+                    ))
                 }
 
-                match value.content_ref() {
+                let forced = match value.content_ref() {
                     ValueContentRef::Record(Container::Alloc(record))
                         if !record.fields.is_empty() =>
                     {
@@ -726,43 +724,41 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                                 missing_def_err.into_eval_err(pos, pos_op)
                             })?;
 
+                        // `defined` may be empty even though the record isn't, when all of its
+                        // fields are optional fields without a definition.
                         let terms = defined.into_iter().map(|(_, field)| field);
 
-                        Ok(Closure {
-                            value: seq_terms(terms, pos_op),
-                            env,
-                        })
+                        seq_terms(terms, pos_op).map(|value| Closure { value, env })
                     }
                     ValueContentRef::Array(Container::Alloc(array_data))
                         if !array_data.array.is_empty() =>
                     {
-                        let terms = seq_terms(
+                        seq_terms(
                             array_data
                                 .iter_with_pending_contracts(pos.to_inherited())
                                 .map(|t| t.closurize(&mut self.context.cache, env.clone())),
                             pos_op,
-                        );
-
-                        Ok(terms.into())
+                        )
+                        .map(Closure::from)
                     }
                     ValueContentRef::EnumVariant(EnumVariantData {
                         tag: _,
                         arg: Some(arg),
-                    }) => Ok(Closure {
-                        value: seq_terms(std::iter::once(arg.clone()), pos_op),
-                        env,
-                    }),
-                    _ => {
-                        if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
-                            Ok(next)
-                        } else {
-                            Err(Box::new(EvalErrorKind::NotEnoughArgs(
-                                2,
-                                String::from("deep_seq"),
-                                pos_op,
-                            )))
-                        }
-                    }
+                    }) => seq_terms(std::iter::once(arg.clone()), pos_op)
+                        .map(|value| Closure { value, env }),
+                    _ => None,
+                };
+
+                if let Some(closure) = forced {
+                    Ok(closure)
+                } else if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
+                    Ok(next)
+                } else {
+                    Err(Box::new(EvalErrorKind::NotEnoughArgs(
+                        2,
+                        String::from("deep_seq"),
+                        pos_op,
+                    )))
                 }
             }
             UnaryOp::ArrayLength => {

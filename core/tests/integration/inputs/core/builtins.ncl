@@ -21,6 +21,12 @@
     let r = {a=(inj 1),b=(cat "a" "b")} in
     %deep_seq% r (r.a.b) == 3,
 
+  # records whose only fields are optional fields without a definition
+  %deep_seq% { a | optional } 0 == 0,
+  %deep_seq% { a | optional, b | optional } 0 == 0,
+  %deep_seq% { x = { a | optional } } 0 == 0,
+  std.deep_seq { a | optional } 0 == 0,
+
   [1,2,3]
    |> std.array.map (fun x => x + 1)
    |> std.array.filter (fun x => x > 2)
