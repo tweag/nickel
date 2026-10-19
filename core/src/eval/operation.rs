@@ -749,17 +749,19 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     _ => None,
                 };
 
-                if let Some(closure) = forced {
-                    Ok(closure)
-                } else if let Some((next, ..)) = self.stack.pop_arg(&self.context.cache) {
-                    Ok(next)
-                } else {
-                    Err(Box::new(EvalErrorKind::NotEnoughArgs(
-                        2,
-                        String::from("deep_seq"),
-                        pos_op,
-                    )))
-                }
+                forced
+                    .or_else(|| {
+                        self.stack
+                            .pop_arg(&self.context.cache)
+                            .map(|(next, ..)| next)
+                    })
+                    .ok_or_else(|| {
+                        Box::new(EvalErrorKind::NotEnoughArgs(
+                            2,
+                            String::from("deep_seq"),
+                            pos_op,
+                        ))
+                    })
             }
             UnaryOp::ArrayLength => {
                 //TODO[RFC007]: empty array
