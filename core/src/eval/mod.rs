@@ -87,8 +87,8 @@ use crate::{
     position::{PosIdx, PosTable},
     program::FieldPath,
     term::{
-        BinaryOp, BindingType, FunData, Import, RecordOpKind, RuntimeContract, StrChunk, Term,
-        UnaryOp, make as mk_term,
+        BinaryOp, BindingType, FunData, Import, NAryOp, RecordOpKind, RuntimeContract, StrChunk,
+        Term, UnaryOp, make as mk_term,
         record::{Field, RecordData},
         string::NickelString,
     },
@@ -291,6 +291,9 @@ pub struct VirtualMachine<'ctxt, R: ImportResolver, C: Cache> {
     call_stack: CallStack,
     /// The initial environment containing stdlib and builtin functions accessible from anywhere
     initial_env: Environment,
+    /// How many enclosing contract applications are currently on the stack. Incremented when
+    /// a contract's body is evaluated, decremented by [`UnaryOp::ContractExit`] once that body returns.
+    contract_depth: u32,
 }
 
 impl<'ctxt, R: ImportResolver, C: Cache> Drop for VirtualMachine<'ctxt, R, C> {
@@ -308,6 +311,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             initial_env: Environment::new(),
+            contract_depth: 0,
         }
     }
 
@@ -322,6 +326,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     pub fn reset(&mut self) {
         self.call_stack.0.clear();
         self.stack.unwind(&mut self.context.cache);
+        self.contract_depth = 0;
     }
 
     pub fn import_resolver(&self) -> &R {
@@ -695,13 +700,37 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
     ///  - the evaluated term with its final environment
     pub fn eval_closure(&mut self, closure: Closure) -> Result<Closure, EvalError> {
         self.eval_closure_impl(closure)
+            .and_then(EvalOutcome::into_closure_or_unhandled)
+            .map_err(|err| self.err_with_ctxt(*err))
+    }
+
+    /// Step the evaluator forward, yielding either a final [`Closure`] or a pending
+    /// [`EvalOutcome::Effect`] to be handled by the caller.
+    ///
+    /// This is the effect-aware sibling of [`Self::eval_closure`]. Callers drive evaluation as a
+    /// loop:
+    ///
+    /// 1. Call `eval_step(initial_closure)`.
+    /// 2. If the result is `Closure`, evaluation is done.
+    /// 3. If the result is `Effect { name, args, .. }`, perform the effect and call
+    ///    `eval_step` again with the effect's result value (`result.into()`).
+    ///
+    /// Non-effectful callers should keep using [`Self::eval_closure`]; it treats an unhandled
+    /// effect as [`EvalErrorKind::UnhandledEffect`].
+    pub fn eval_step(&mut self, closure: Closure) -> Result<EvalOutcome, EvalError> {
+        self.eval_closure_impl(closure)
             .map_err(|err| self.err_with_ctxt(*err))
     }
 
     /// Actual implementation of [Self::eval_closure]. We use this indirection mostly to use the
     /// `?` operator on [crate::error::EvalError], and only add the missing context to make it
     /// an [crate:error::EvalError] once at the end.
-    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<Closure, ErrorKind> {
+    ///
+    /// Returns [`EvalOutcome::Effect`] when the evaluator hits an `%effect%` call
+    /// ([`crate::term::NAryOp::EffectRaw`]); otherwise returns [`EvalOutcome::Closure`] with the
+    /// WHNF result. The stepwise resume protocol is described on [`EvalOutcome`] and
+    /// [`Self::eval_step`].
+    fn eval_closure_impl(&mut self, mut closure: Closure) -> Result<EvalOutcome, ErrorKind> {
         #[cfg(feature = "metrics")]
         let start_time = std::time::Instant::now();
 
@@ -747,7 +776,12 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     //   corresponding polymorphic contract has been violated: a function tried to
                     //   use a polymorphic sealed value.
                     match self.stack.peek_sealed_cont() {
-                        SealedCont::Unseal => self.continue_op(closure)?,
+                        SealedCont::Unseal | SealedCont::Passthrough => {
+                            match self.continue_op(closure)? {
+                                EvalOutcome::Closure(c) => c,
+                                eff @ EvalOutcome::Effect { .. } => break Ok(eff),
+                            }
+                        }
                         SealedCont::Seq => {
                             // evaluate / `Seq` the inner value.
                             Closure {
@@ -855,6 +889,36 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     }
                 }
                 ValueContentRef::Term(Term::OpN(data)) => {
+                    // For EffectRaw, we need to (a) forbid firing effects during a contract
+                    // check, and (b) deep-evaluate each argument before yielding the effect to
+                    // the caller. We achieve (b) by wrapping each argument in `UnaryOp::Force`
+                    // — the OpN machinery walks each pending argument to WHNF, and Force's WHNF
+                    // result is the deep-evaluated payload.
+                    let is_effect = matches!(&data.op, NAryOp::EffectRaw(_));
+
+                    if is_effect && self.contract_depth > 0 {
+                        let NAryOp::EffectRaw(name) = &data.op else {
+                            unreachable!()
+                        };
+                        break Err(Box::new(EvalErrorKind::EffectInContract {
+                            name: *name,
+                            pos: pos_idx,
+                        }));
+                    }
+
+                    let wrap = |value: NickelValue| {
+                        if is_effect {
+                            mk_term::op1(
+                                UnaryOp::Force {
+                                    ignore_not_exported: false,
+                                },
+                                value,
+                            )
+                        } else {
+                            value
+                        }
+                    };
+
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
                     let mut args_iter = data.args.iter();
@@ -865,7 +929,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     let pending: Vec<Closure> = args_iter
                         .rev()
                         .map(|value| Closure {
-                            value: value.clone(),
+                            value: wrap(value.clone()),
                             env: env.clone(),
                         })
                         .collect();
@@ -882,7 +946,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     });
 
                     Closure {
-                        value: fst_arg.clone(),
+                        value: wrap(fst_arg.clone()),
                         env,
                     }
                 }
@@ -1186,7 +1250,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                             env,
                         }
                     } else {
-                        break Ok(Closure { value, env });
+                        break Ok(EvalOutcome::Closure(Closure { value, env }));
                     }
                 }
                 // At this point, we've evaluated the current term to a weak head normal form.
@@ -1202,7 +1266,10 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // If there is a primitive operator continuation on the stack, we proceed with
                     // the continuation.
                     else if self.stack.is_top_cont() {
-                        self.continue_op(evaluated)?
+                        match self.continue_op(evaluated)? {
+                            EvalOutcome::Closure(c) => c,
+                            eff @ EvalOutcome::Effect { .. } => break Ok(eff),
+                        }
                     }
                     // Otherwise, if the stack is non-empty, this is an ill-formed application (we
                     // are supposed to evaluate an application, but the left hand side isn't a
@@ -1217,7 +1284,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     // Finally, if the stack is empty, it's all good: it just means we are done
                     // evaluating.
                     else {
-                        break Ok(evaluated);
+                        break Ok(EvalOutcome::Closure(evaluated));
                     }
                 }
             };
@@ -1317,6 +1384,7 @@ impl<'ctxt, C: Cache> VirtualMachine<'ctxt, ImportCaches, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             initial_env,
+            contract_depth: 0,
         }
     }
 }
@@ -1360,6 +1428,46 @@ impl<'ctxt, R: ImportResolver, C: Cache> DerefMut for NoUnwindVirtualMachine<'ct
 pub struct Closure {
     pub value: NickelValue,
     pub env: Environment,
+}
+
+/// The outcome of one step through the evaluator, produced by [`VirtualMachine::eval_step`].
+///
+/// [`Self::Effect`] is returned when the evaluator hits an `%effect%` call: its name and
+/// deep-evaluated args are handed to the caller for interpretation. The VM's stack, cache and
+/// call stack are preserved across the yield, so the caller resumes evaluation simply by calling
+/// [`VirtualMachine::eval_step`] again with the result.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EvalOutcome {
+    /// The success result of a single step of evaluation.
+    Closure(Closure),
+    /// The evaluator paused on an effect. The caller inspects `name`/`args`, performs the
+    /// corresponding side-effecting work, and resumes by calling
+    /// [`VirtualMachine::eval_step`] with the effect's result value.
+    Effect {
+        name: Ident,
+        args: Vec<NickelValue>,
+        pos: PosIdx,
+    },
+}
+
+impl From<Closure> for EvalOutcome {
+    fn from(closure: Closure) -> Self {
+        EvalOutcome::Closure(closure)
+    }
+}
+
+impl EvalOutcome {
+    /// Extract a [`Closure`] from an outcome, treating an [`EvalOutcome::Effect`] as
+    /// [`EvalErrorKind::UnhandledEffect`]. Used by the non-stepwise entry points (`eval_closure`,
+    /// `eval_full`, etc.) which don't expose the effect variant to their callers.
+    pub(crate) fn into_closure_or_unhandled(self) -> Result<Closure, ErrorKind> {
+        match self {
+            EvalOutcome::Closure(closure) => Ok(closure),
+            EvalOutcome::Effect { name, args, pos } => {
+                Err(Box::new(EvalErrorKind::UnhandledEffect { name, args, pos }))
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for Closure {

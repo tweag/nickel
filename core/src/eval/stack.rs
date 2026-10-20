@@ -278,6 +278,11 @@ pub(crate) enum SealedCont {
     /// The next operation is an [Op1ContItem] where the operator is
     /// [UnaryOp::Seq].
     Seq,
+    /// The next operation is an internal identity op (currently [UnaryOp::ContractExit])
+    /// that is required to fire on the sealed value without inspecting it — it only mutates VM
+    /// state and returns the value unchanged. After it runs, the sealed value re-enters the seal
+    /// check against whatever continuation now sits at the top of the stack.
+    Passthrough,
     /// All other cases.
     Other,
 }
@@ -689,10 +694,10 @@ impl<C: Cache> Stack<C> {
                 // Safety: we checked that the marker corresponds to what we read
                 let item: mem::ManuallyDrop<Op1ContItem> = unsafe { self.read_unchecked() };
 
-                if let UnaryOp::Seq = item.op {
-                    SealedCont::Seq
-                } else {
-                    SealedCont::Other
+                match item.op {
+                    UnaryOp::Seq => SealedCont::Seq,
+                    UnaryOp::ContractExit => SealedCont::Passthrough,
+                    _ => SealedCont::Other,
                 }
             }
             Some(Marker::Op2SecondCont) => {

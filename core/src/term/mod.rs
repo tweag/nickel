@@ -1171,6 +1171,13 @@ pub enum UnaryOp {
 
     ContractAttachDefaultLabel,
 
+    /// Wraps evaluation of a contract body, returning its argument unchanged. Used to track when
+    /// evaluation is within a contract.
+    ///
+    /// Internally, this decrements the `contract_depth` field of the virtual machine, which is
+    /// used to reject effects fired from contract code.
+    ContractExit,
+
     /// The cosinus function.
     NumberArcCos,
 
@@ -1253,6 +1260,7 @@ impl fmt::Display for UnaryOp {
             ContractCustom => write!(f, "contract/custom"),
             ContractPostprocessResult => write!(f, "contract/postprocess_result"),
             ContractAttachDefaultLabel => write!(f, "contract/attach_default_label"),
+            ContractExit => write!(f, "contract/exit"),
 
             NumberArcCos => write!(f, "number/arccos"),
             NumberArcSin => write!(f, "number/arcsin"),
@@ -1650,6 +1658,22 @@ pub enum NAryOp {
     /// hood, as long as the array isn't modified later, this operation is constant in time and
     /// memory.
     ArraySlice,
+
+    /// A request to handle a side-effect. When encountered, the eval loop / call stack
+    /// unwinds with the name and arguments of the effect for handling.
+    ///
+    /// Upon completion of the side-effect, the caller resumes evaluation by
+    /// re-entering [`crate::eval::VirtualMachine::eval_step`] with the effect result.
+    ///
+    /// Args are expected to be pre-wrapped in [`UnaryOp::Force`] at construction time, so the
+    /// caller can read arguments without needing any further evaluation.
+    ///
+    /// Effects are considered commutative and idempotent by contract; the evaluator does not
+    /// enforce either property, but may rely on them for correctness in the future.
+    ///
+    /// Firing an effect from inside a contract check is forbidden and produces
+    /// [`crate::error::EvalErrorKind::EffectInContract`].
+    EffectRaw(Ident),
 }
 
 impl NAryOp {
@@ -1663,6 +1687,9 @@ impl NAryOp {
             | NAryOp::LabelInsertTypeVar
             | NAryOp::ArraySlice => 3,
             NAryOp::RecordSealTail => 4,
+            // Variable arity; only used for the NotEnoughArgs error, which shouldn't fire for
+            // effect calls since the parser always emits at least one arg.
+            NAryOp::EffectRaw(_) => 0,
         }
     }
 }
@@ -1679,6 +1706,7 @@ impl fmt::Display for NAryOp {
             RecordUnsealTail => write!(f, "record/unseal_tail"),
             LabelInsertTypeVar => write!(f, "label/insert_type_variable"),
             ArraySlice => write!(f, "array/slice"),
+            EffectRaw(name) => write!(f, "effect/{name}"),
         }
     }
 }

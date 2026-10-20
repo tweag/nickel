@@ -310,6 +310,18 @@ pub enum EvalErrorKind {
     InternalError(String, PosIdx),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
     Other(String, PosIdx),
+    /// An effect (`%effect%`) fired but the caller only used the non-effectful entry points
+    /// (`eval`, `eval_closure`, `eval_full`, etc.). The stepwise
+    /// [`crate::eval::VirtualMachine::eval_step`] API must be used to observe and resolve effects.
+    UnhandledEffect {
+        name: Ident,
+        args: Vec<NickelValue>,
+        pos: PosIdx,
+    },
+    /// An effect was invoked from inside a contract check. Effects inside contracts are forbidden
+    /// because contracts are called speculatively (for boolean combinators and eager checks) and
+    /// their execution order is not observable.
+    EffectInContract { name: Ident, pos: PosIdx },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1570,6 +1582,42 @@ impl IntoDiagnostics for EvalErrorData {
                     Diagnostic::error()
                         .with_message("tried to query field of a non-record")
                         .with_labels(vec![label]),
+                ]
+            }
+            EvalErrorKind::UnhandledEffect { name, args: _, pos } => {
+                let labels = pos_table
+                    .get(pos)
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("effect fired here")])
+                    .unwrap_or_default();
+
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("unhandled effect: `{name}`"))
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "effects can only be observed through `VirtualMachine::eval_step`; \
+                             non-effectful evaluation entry points treat firing an effect as an error"
+                                .to_owned(),
+                        ]),
+                ]
+            }
+            EvalErrorKind::EffectInContract { name, pos } => {
+                let labels = pos_table
+                    .get(pos)
+                    .as_opt_ref()
+                    .map(|span| vec![primary(span).with_message("effect fired here")])
+                    .unwrap_or_default();
+
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!("effect `{name}` invoked inside a contract"))
+                        .with_labels(labels)
+                        .with_notes(vec![
+                            "effects are forbidden inside contract checks because contracts may \
+                             be called speculatively"
+                                .to_owned(),
+                        ]),
                 ]
             }
         }

@@ -594,6 +594,9 @@ impl PrimOpType for PrimOp {
                 ],
                 mk_uniftype::dynamic(),
             ),
+            // Effects are opaque to the type system: they accept any payload and their result
+            // (produced by the Rust-side handler) can be any value.
+            PrimOp::Effect(_) => (vec![mk_uniftype::dynamic()], mk_uniftype::dynamic()),
         })
     }
 }
