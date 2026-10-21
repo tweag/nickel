@@ -271,7 +271,13 @@ pub ExtendedTerm: ExtendedTerm<Ast<'ast>> = {
 
 LetBinding: LetBinding<'ast> = {
     <pattern: Pattern> <metadata: LetAnnot<FixedType>?> "=" <value: Term> => {
-        LetBinding { pattern, metadata: metadata.unwrap_or_default(), value }
+        LetBinding {
+            pattern,
+            metadata: metadata.unwrap_or_default(),
+            value,
+            #[cfg(feature = "incremental-experimental")]
+            semantic_hash: Default::default(),
+        }
     }
 }
 

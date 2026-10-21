@@ -11,9 +11,11 @@ repository.workspace = true
 readme.workspace = true
 
 [features]
+default = ["incremental-experimental"]
 metrics = ["dep:metrics", "dep:metrics-util"]
 clap = ["dep:clap"]
 nix-experimental = []
+incremental-experimental = []
 
 [dependencies]
 bumpalo.workspace = true

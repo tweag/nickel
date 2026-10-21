@@ -156,21 +156,44 @@ pub fn semantic_hash(closure: &Closure, cui: Option<SemanticHash>) -> Option<Sem
     } else {
         // If we don't have a cross-evaluation unique identifier, we still try to structurally
         // hash simple constants, that don't involve other expressions.
-        closure.value.tag().hash(&mut hasher);
-
-        match closure.value.content_ref() {
-            ValueContentRef::Null => 0.hash(&mut hasher),
-            ValueContentRef::Bool(b) => b.hash(&mut hasher),
-            ValueContentRef::Number(n) => n.hash(&mut hasher),
-            ValueContentRef::String(s) => s.hash(&mut hasher),
-            ValueContentRef::EnumVariant(EnumVariantData { tag, arg: None }) => {
-                tag.hash(&mut hasher)
-            }
-            ValueContentRef::Array(Container::Empty)
-            | ValueContentRef::Record(Container::Empty) => 0.hash(&mut hasher),
-            _ => return None,
-        }
+        shallow_semantic_hash(&closure.value, &mut hasher).ok()?;
     }
 
     Some(SemanticHash(hasher.finish()))
+}
+
+struct ComplexValueError;
+
+/// Compute a fast hash for simple values (mostly constants) with a given hasher, or return `Err` if
+/// the value is more complex.
+fn shallow_semantic_hash<H: Hasher>(
+    value: &NickelValue,
+    hasher: &mut H,
+) -> Result<(), ComplexValueError> {
+    // If we don't have a cross-evaluation unique identifier, we still try to structurally
+    // hash simple constants, that don't involve other expressions.
+    value.tag().hash(hasher);
+
+    match value.content_ref() {
+        ValueContentRef::Null => 0u8.hash(hasher),
+        ValueContentRef::Bool(b) => b.hash(hasher),
+        ValueContentRef::Number(n) => n.hash(hasher),
+        ValueContentRef::String(s) => s.hash(hasher),
+        ValueContentRef::EnumVariant(EnumVariantData { tag, arg }) => {
+            // We also compute a hash for a (nested) enum with constants inside, which is rather
+            // common. We start with the argument to avoid hashing the `tag` if the argument is not
+            // a simple value.
+            if let Some(arg) = arg {
+                shallow_semantic_hash(arg, hasher)?;
+            }
+
+            tag.hash(hasher);
+        }
+        ValueContentRef::Array(Container::Empty) | ValueContentRef::Record(Container::Empty) => {
+            0.hash(hasher)
+        }
+        _ => return Err(ComplexValueError),
+    }
+
+    Ok(())
 }

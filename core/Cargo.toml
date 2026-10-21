@@ -20,7 +20,7 @@ links = "nix"
 bench = false
 
 [features]
-default = ["markdown", "repl", "doc", "format"]
+default = ["markdown", "repl", "doc", "format", "incremental-experimental"]
 clap = ["dep:clap", "nickel-lang-parser/clap"]
 markdown = ["dep:termimad"]
 repl = ["dep:rustyline", "dep:rustyline-derive", "dep:anstyle"]
@@ -29,7 +29,7 @@ doc = ["dep:comrak"]
 format = ["dep:topiary-core", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
 nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config", "nickel-lang-parser/nix-experimental" ]
-incremental-experimental = []
+incremental-experimental = ["nickel-lang-parser/incremental-experimental"]
 benchmark-ci = []
 
 [build-dependencies]

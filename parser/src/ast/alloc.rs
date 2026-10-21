@@ -45,6 +45,9 @@ impl Allocable for typ::RecordRow<'_> {}
 impl Allocable for Ident {}
 impl Allocable for LocIdent {}
 
+#[cfg(feature = "incremental-experimental")]
+impl Allocable for SemanticHash {}
+
 /// Owns the arenas required to allocate new AST nodes and provide builder methods to create them.
 ///
 /// # Drop and arena allocation
@@ -519,6 +522,8 @@ impl CloneTo for LetBinding<'_> {
             pattern: Pattern::clone_to(data.pattern, dest),
             metadata: LetMetadata::clone_to(data.metadata, dest),
             value: Ast::clone_to(data.value, dest),
+            #[cfg(feature = "incremental-experimental")]
+            semantic_hash: Cell::new(data.semantic_hash.get().map(|hash| dest.alloc(*hash))),
         }
     }
 }
