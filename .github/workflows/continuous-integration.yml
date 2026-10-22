@@ -96,3 +96,39 @@ jobs:
 
       - name: Test
         run: cargo test --package nickel-lang-*
+
+  build-and-test-dashu:
+    name: "build-and-test (dashu)"
+    runs-on: ubuntu-24.04
+    env:
+      FEATURES: >-
+        nickel-lang-parser/dashu nickel-lang-core/dashu nickel-lang-core/markdown
+        nickel-lang/dashu nickel-lang-cli/dashu nickel-lang-cli/repl
+        nickel-lang-cli/doc nickel-lang-cli/format
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy
+
+      - name: Check that malachite is not a dependency
+        run: |
+          for target in nickel-lang-core:dashu nickel-lang:dashu nickel-lang-cli:dashu nickel-lang-cli:dashu,package-experimental; do
+            package=${target%%:*}
+            features=${target#*:}
+            tree=$(cargo tree --locked --edges normal --prefix none --package "$package" --no-default-features --features "$features")
+            if grep '^malachite ' <<< "$tree"; then
+              echo "$package depends on malachite with the features $features"
+              exit 1
+            fi
+          done
+
+      - name: Check the package manager and the language server
+        run: cargo check --locked --package nickel-lang-cli --package nickel-lang-lsp --no-default-features --features "nickel-lang-cli/dashu nickel-lang-cli/repl nickel-lang-cli/doc nickel-lang-cli/format nickel-lang-cli/package-experimental nickel-lang-lsp/dashu"
+
+      - name: Clippy
+        run: cargo clippy --locked --package nickel-lang-parser --package nickel-lang-core --package nickel-lang --package nickel-lang-cli --all-targets --no-default-features --features "$FEATURES" -- --deny warnings
+
+      - name: Test
+        run: cargo test --locked --package nickel-lang-parser --package nickel-lang-core --package nickel-lang --package nickel-lang-cli --no-default-features --features "$FEATURES"

@@ -24,6 +24,9 @@ mod dashu;
 #[cfg(all(feature = "dashu", not(feature = "malachite")))]
 use self::dashu as backend;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(not(any(feature = "malachite", feature = "dashu")))]
 compile_error!("nickel-lang-parser needs the `malachite` or the `dashu` feature");
 
