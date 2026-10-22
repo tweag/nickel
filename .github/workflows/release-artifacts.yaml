@@ -135,10 +135,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
-          gh release upload --clobber $RELEASE_TAG nickel-arm64-macos
-          gh release upload --clobber $RELEASE_TAG nls-arm64-macos
           gh release upload --clobber $RELEASE_TAG libnickel_lang-arm64-macos.a
           gh release upload --clobber $RELEASE_TAG libnickel_lang-arm64-macos.dylib
+          gh release upload --clobber $RELEASE_TAG nickel-arm64-macos
+          gh release upload --clobber $RELEASE_TAG nickel-pkg-arm64-macos
+          gh release upload --clobber $RELEASE_TAG nls-arm64-macos
 
   release-artifacts-windows:
     name: "Build Windows Nickel binaries"
