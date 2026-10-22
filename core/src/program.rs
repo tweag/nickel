@@ -1171,8 +1171,13 @@ impl<R, W> ProgramBuilder<R, W> {
         path: impl Into<OsString>,
         format: InputFormat,
     ) -> Self {
+        let mut virtual_path = OsString::new();
+        // See https://github.com/tweag/nickel/issues/2362 and the documentation of
+        // VIRTUAL_PATH_PREFIX
+        virtual_path.push(VIRTUAL_PATH_PREFIX);
+        virtual_path.push(path.into());
         self.virtual_files
-            .push((path.into(), content.into(), format));
+            .push((virtual_path, content.into(), format));
         self
     }
 
@@ -1298,13 +1303,21 @@ where
 
         // Insert virtual files first
         for (path, content, format) in virtual_files {
-            let src = normalize_path(&path).map_err(|error| BuilderError::Io {
-                path: Some(path.into()),
-                error,
-            })?;
+            // Require all virtual files be prefixed correctly, skipping conversion to UTF8
+            if !is_virtual_path(&path)
+            {
+                return Err(BuilderError::Io {
+                    path: Some(path.into()),
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Virtual file paths must be prefixed by {VIRTUAL_PATH_PREFIX}"),
+                    ),
+                });
+            }
+
             cache
                 .sources
-                .add_string(SourcePath::Path(src, format), content);
+                .add_string(SourcePath::Path(path.into(), format), content);
         }
 
         let main_id = if inputs.len() == 1 {
@@ -1426,13 +1439,13 @@ fn register_input_as_import(
         } => {
             let mut import_path = OsString::new();
             // See https://github.com/tweag/nickel/issues/2362 and the documentation of
-            // IN_MEMORY_SOURCE_PATH_PREFIX
-            import_path.push(IN_MEMORY_SOURCE_PATH_PREFIX);
+            // VIRTUAL_PATH_PREFIX
+            import_path.push(VIRTUAL_PATH_PREFIX);
             import_path.push(&name);
 
             cache
                 .sources
-                .add_source(SourcePath::Path(name.clone().into(), format), source)
+                .add_source(SourcePath::Path(import_path.clone().into(), format), source)
                 .map_err(|err| BuilderError::Io {
                     path: Some(name.into()),
                     error: err,
