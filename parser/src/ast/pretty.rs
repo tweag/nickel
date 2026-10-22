@@ -20,10 +20,6 @@ use crate::{
     typ::{DictTypeFlavour, EnumRowsF, RecordRowF, RecordRowsF, TypeF},
 };
 
-use malachite::base::num::{
-    basic::traits::Zero,
-    conversion::traits::{IsInteger, ToSci},
-};
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -66,7 +62,7 @@ impl IsAtom for Node<'_> {
         | Node::PrimOpApp { op: PrimOp::BoolAnd, args: _ }
         | Node::PrimOpApp { op: PrimOp::BoolOr, args: _ } => true,
         // A number with a minus sign as a prefix isn't a proper atom
-        Node::Number(n) => **n >= 0,
+        Node::Number(n) => **n >= Number::zero(),
         Node::Type(typ) => typ.is_atom(),
         Node::Let {..}
         | Node::IfThenElse {..}
@@ -981,7 +977,7 @@ impl<'a> Pretty<'a, Allocator> for &Node<'_> {
             Node::PrimOpApp {
                 op: PrimOp::Sub,
                 args: [left, right],
-            } if matches!(left.node, Node::Number(&Number::ZERO)) => {
+            } if matches!(left.node, Node::Number(n) if n.is_zero()) => {
                 docs![allocator, allocator.text("-"), allocator.atom(right)]
             }
             Node::PrimOpApp { op, args } => match op.positioning() {

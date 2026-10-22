@@ -3536,7 +3536,6 @@ dependencies = [
  "malachite-base",
  "malachite-nz",
  "malachite-q",
- "serde",
 ]
 
 [[package]]
@@ -3548,7 +3547,6 @@ dependencies = [
  "itertools 0.14.0",
  "libm",
  "malachite-base",
- "serde",
  "wide",
 ]
 
@@ -3561,7 +3559,6 @@ dependencies = [
  "itertools 0.14.0",
  "malachite-base",
  "malachite-nz",
- "serde",
 ]
 
 [[package]]
@@ -3727,7 +3724,6 @@ version = "2.2.0"
 dependencies = [
  "codespan-reporting 0.13.1",
  "indexmap",
- "malachite",
  "nickel-lang-core",
  "nickel-lang-vector",
  "serde",
@@ -3783,8 +3779,6 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "logos",
- "malachite",
- "malachite-q",
  "md-5",
  "metrics",
  "nickel-lang-parser",

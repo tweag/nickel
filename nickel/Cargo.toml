@@ -19,7 +19,6 @@ capi = []
 [dependencies]
 codespan-reporting.workspace = true
 indexmap.workspace = true
-malachite.workspace = true
 nickel-lang-core.workspace = true
 nickel-lang-vector.workspace = true
 serde.workspace = true

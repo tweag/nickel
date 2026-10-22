@@ -27,18 +27,6 @@ pub use crate::ast::{MergePriority, RecordOpKind, StringChunk as StrChunk};
 
 use crate::metrics::increment;
 
-pub use malachite::{
-    Integer,
-    base::{
-        num::{
-            basic::traits::Zero,
-            conversion::traits::{IsInteger, RoundingFrom, ToSci},
-        },
-        rounding_modes::RoundingMode,
-    },
-    rational::Rational,
-};
-
 pub use crate::ast::Number;
 
 use serde::{Serialize, Serializer};

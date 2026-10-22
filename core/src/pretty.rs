@@ -14,7 +14,6 @@ use crate::{
     typ::*,
 };
 
-use malachite::base::num::conversion::traits::ToSci;
 use once_cell::sync::Lazy;
 use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -903,7 +902,9 @@ impl<'a> Pretty<'a, Allocator> for &Term {
             }
             Term::Op2(data) => docs![
                 allocator,
-                if let (&BinaryOp::Sub, Some(&Number::ZERO)) = (&data.op, data.arg1.as_number()) {
+                if let (&BinaryOp::Sub, Some(n)) = (&data.op, data.arg1.as_number())
+                    && n.is_zero()
+                {
                     docs![allocator, allocator.text("-"), allocator.atom(&data.arg2)]
                 } else if data.op.pos() == OpPos::Prefix {
                     data.op.pretty(allocator).append(

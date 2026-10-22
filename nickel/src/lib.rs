@@ -19,8 +19,6 @@ use std::{
 };
 
 use codespan_reporting::term::termcolor::{Ansi, NoColor, WriteColor};
-use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
-
 use nickel_lang_core::{
     cache::{CacheHub, InputFormat, SourcePath},
     deserialize::RustDeserializationError as DeserializationError,
@@ -723,7 +721,7 @@ impl Number<'_> {
 
     /// The value of this number, rounded to the nearest `f64`.
     pub fn as_f64(&self) -> f64 {
-        f64::rounding_from(self.num, RoundingMode::Nearest).0
+        self.num.to_f64()
     }
 
     /// The exact value of this number, as a rational number.
@@ -731,8 +729,8 @@ impl Number<'_> {
     /// Both the numerator and denominator are provided as decimal strings.
     pub fn as_rational(&self) -> (String, String) {
         (
-            self.num.numerator_ref().to_string(),
-            self.num.denominator_ref().to_string(),
+            self.num.abs_numerator().to_string(),
+            self.num.denominator().to_string(),
         )
     }
 }

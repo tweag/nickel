@@ -25,21 +25,14 @@ use crate::{
     primop_app,
 };
 
-use malachite::{
-    Integer,
-    base::num::conversion::traits::{FromSciString, FromStringBase},
-};
-
 pub struct ParseNumberError;
 
 pub fn parse_number_sci(slice: &str) -> Result<Number, ParseNumberError> {
-    Number::from_sci_string(slice).ok_or(ParseNumberError)
+    Number::from_sci_str(slice).ok_or(ParseNumberError)
 }
 
 pub fn parse_number_base(base: u8, slice: &str) -> Result<Number, ParseNumberError> {
-    Ok(Number::from(
-        Integer::from_string_base(base, slice).ok_or(ParseNumberError)?,
-    ))
+    Number::from_str_radix(slice, base).ok_or(ParseNumberError)
 }
 
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string

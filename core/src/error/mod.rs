@@ -5,7 +5,6 @@
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
-use malachite::base::num::conversion::traits::ToSci;
 
 use ouroboros::self_referencing;
 
