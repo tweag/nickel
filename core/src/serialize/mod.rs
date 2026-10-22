@@ -719,7 +719,7 @@ pub mod toml_deser {
             match self {
                 Value::String(s) => NickelValue::string_posless(s.value()),
                 Value::Integer(i) => NickelValue::number_posless(*i.value()),
-                Value::Float(f) => NickelValue::number_posless(Rational::exact_from(*f.value())),
+                Value::Float(f) => super::deserialize_float(*f.value()),
                 Value::Boolean(b) => NickelValue::bool_value_posless(*b.value()),
                 Value::Array(vs) => NickelValue::array_posless(
                     vs.iter()
