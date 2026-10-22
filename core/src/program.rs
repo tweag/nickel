@@ -1037,6 +1037,7 @@ pub struct ProgramBuilder<R = NullReporter, W = io::Sink> {
     contracts: Vec<ProgramContract>,
     contract_paths: Vec<OsString>,
     import_paths: Vec<PathBuf>,
+    virtual_files: Vec<(OsString, String, InputFormat)>,
     package_map: Option<PackageMap>,
     extra_env: Vec<(Ident, NickelValue)>,
     #[cfg(feature = "incremental-experimental")]
@@ -1062,6 +1063,7 @@ impl ProgramBuilder {
             contracts: Vec::new(),
             contract_paths: Vec::new(),
             import_paths: Vec::new(),
+            virtual_files: Vec::new(),
             package_map: None,
             extra_env: Vec::new(),
             #[cfg(feature = "incremental-experimental")]
@@ -1161,6 +1163,24 @@ impl<R, W> ProgramBuilder<R, W> {
         self
     }
 
+    /// Adds a virtual file at `path` with the in-memory `content`, as though it were
+    /// a file in the file system.
+    pub fn add_virtual_file(
+        mut self,
+        content: impl Into<String>,
+        path: impl Into<OsString>,
+        format: InputFormat,
+    ) -> Self {
+        let mut virtual_path = OsString::new();
+        // See https://github.com/tweag/nickel/issues/2362 and the documentation of
+        // VIRTUAL_PATH_PREFIX
+        virtual_path.push(VIRTUAL_PATH_PREFIX);
+        virtual_path.push(path.into());
+        self.virtual_files
+            .push((virtual_path, content.into(), format));
+        self
+    }
+
     /// Set the field path the program will operate on.
     pub fn with_field_path(mut self, field: FieldPath) -> Self {
         self.field = field;
@@ -1185,6 +1205,7 @@ impl<R, W> ProgramBuilder<R, W> {
             contracts: self.contracts,
             contract_paths: self.contract_paths,
             import_paths: self.import_paths,
+            virtual_files: self.virtual_files,
             package_map: self.package_map,
             extra_env: self.extra_env,
             #[cfg(feature = "incremental-experimental")]
@@ -1206,6 +1227,7 @@ impl<R, W> ProgramBuilder<R, W> {
             contracts: self.contracts,
             contract_paths: self.contract_paths,
             import_paths: self.import_paths,
+            virtual_files: self.virtual_files,
             package_map: self.package_map,
             extra_env: self.extra_env,
             #[cfg(feature = "incremental-experimental")]
@@ -1264,6 +1286,7 @@ where
             mut contracts,
             contract_paths,
             import_paths,
+            virtual_files,
             package_map,
             extra_env,
             #[cfg(feature = "incremental-experimental")]
@@ -1277,6 +1300,25 @@ where
         }
 
         let mut cache = CacheHub::new();
+
+        // Insert virtual files first
+        for (path, content, format) in virtual_files {
+            // Require all virtual files be prefixed correctly, skipping conversion to UTF8
+            if !is_virtual_path(&path)
+            {
+                return Err(BuilderError::Io {
+                    path: Some(path.into()),
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Virtual file paths must be prefixed by {VIRTUAL_PATH_PREFIX}"),
+                    ),
+                });
+            }
+
+            cache
+                .sources
+                .add_string(SourcePath::Path(path.into(), format), content);
+        }
 
         let main_id = if inputs.len() == 1 {
             // Single-input fast path: register it directly and use its file id as the main id.
@@ -1397,13 +1439,13 @@ fn register_input_as_import(
         } => {
             let mut import_path = OsString::new();
             // See https://github.com/tweag/nickel/issues/2362 and the documentation of
-            // IN_MEMORY_SOURCE_PATH_PREFIX
-            import_path.push(IN_MEMORY_SOURCE_PATH_PREFIX);
+            // VIRTUAL_PATH_PREFIX
+            import_path.push(VIRTUAL_PATH_PREFIX);
             import_path.push(&name);
 
             cache
                 .sources
-                .add_source(SourcePath::Path(name.clone().into(), format), source)
+                .add_source(SourcePath::Path(import_path.clone().into(), format), source)
                 .map_err(|err| BuilderError::Io {
                     path: Some(name.into()),
                     error: err,
