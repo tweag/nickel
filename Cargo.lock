@@ -1111,6 +1111,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashu-base"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "861a614e79388a4c72aa66b0bdabc91e3a4f30d53e0c8d962953e207d75884d0"
+dependencies = [
+ "num-modular",
+]
+
+[[package]]
+name = "dashu-float"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4be5a53987dee3a7e9e874aad24cd42cf074f0aa1e6b4d1230189837ea672a49"
+dependencies = [
+ "dashu-base",
+ "dashu-int",
+ "static_assertions",
+]
+
+[[package]]
+name = "dashu-int"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64a0490b40a6a3f6427970035f17f76fd59c01d3cd9f9140809672863a0d64c8"
+dependencies = [
+ "cfg-if",
+ "dashu-base",
+ "num-modular",
+ "static_assertions",
+]
+
+[[package]]
+name = "dashu-ratio"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb0b7e2610ae7f28b2ab8b09229afedc9cbc7a32e7c647b916a3a49ca00123c1"
+dependencies = [
+ "dashu-base",
+ "dashu-float",
+ "dashu-int",
+]
+
+[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3913,6 +3956,10 @@ dependencies = [
  "clap",
  "codespan",
  "codespan-reporting 0.13.1",
+ "dashu-base",
+ "dashu-float",
+ "dashu-int",
+ "dashu-ratio",
  "indexmap",
  "indoc",
  "insta",
@@ -4052,6 +4099,12 @@ dependencies = [
  "arrayvec 0.7.6",
  "itoa",
 ]
+
+[[package]]
+name = "num-modular"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd8e500409e6cd603b03e477c26a6caecdc27ac58979a53e881c75eafc079f44"
 
 [[package]]
 name = "num-traits"

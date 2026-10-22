@@ -13,6 +13,10 @@ repository.workspace = true
 readme.workspace = true
 
 [features]
+default = ["malachite"]
+# The arithmetic backend of Nickel numbers. See the features of nickel-lang-parser.
+malachite = ["nickel-lang-core/malachite"]
+dashu = ["nickel-lang-core/dashu"]
 
 [dependencies]
 anyhow.workspace = true

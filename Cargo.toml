@@ -32,10 +32,10 @@ readme = "README.md"
 nickel-lang-core = { version = "0.19.0", path = "./core", default-features = false }
 nickel-lang-flock = { version = "0.1.0", path = "./flock" }
 nickel-lang-git = { version = "0.3.0", path = "./git" }
-nickel-lang-package = { version = "0.8.0", path = "./package" }
-nickel-lang-parser = { version = "0.4.0", path = "./parser" }
+nickel-lang-package = { version = "0.8.0", path = "./package", default-features = false }
+nickel-lang-parser = { version = "0.4.0", path = "./parser", default-features = false }
 nickel-lang-vector = { version = "0.2.0", path = "./vector" }
-nickel-lang-utils = { version = "0.1.0", path = "./utils" }
+nickel-lang-utils = { version = "0.1.0", path = "./utils", default-features = false }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 
 # The nix flake pulls in wasm-bindgen tooling based on the version in Cargo.lock,
@@ -64,6 +64,10 @@ crossbeam = "0.8"
 csv = "1"
 cxx = "1"
 cxx-build = "1"
+dashu-base = { version = "0.6", default-features = false, features = ["std"] }
+dashu-float = { version = "0.6", default-features = false, features = ["std"] }
+dashu-int = { version = "0.6", default-features = false, features = ["std"] }
+dashu-ratio = { version = "0.6", default-features = false, features = ["std", "dashu-float"] }
 directories = "6"
 env_logger = "0.11"
 git-version = "0.3"

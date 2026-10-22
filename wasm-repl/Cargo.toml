@@ -11,7 +11,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-nickel-lang-core = { workspace = true, default-features = false, features = ["repl-wasm"] }
+nickel-lang-core = { workspace = true, default-features = false, features = ["malachite", "repl-wasm"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
