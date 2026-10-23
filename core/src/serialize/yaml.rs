@@ -32,23 +32,6 @@ use crate::{
     traverse::Traverse,
 };
 
-use super::{MINUS_INF_TAG, NOT_A_NUMBER_TAG, PLUS_INF_TAG};
-
-/// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
-fn plus_inf(alloc: &AstAlloc) -> ast::Node<'_> {
-    alloc.enum_variant(PLUS_INF_TAG.into(), None)
-}
-
-/// The constant Nickel value we use to deserialize `-inf` float values.
-fn minus_inf(alloc: &AstAlloc) -> ast::Node<'_> {
-    alloc.enum_variant(MINUS_INF_TAG.into(), None)
-}
-
-/// The constant Nickel value we use to deserialize `NaN` float values.
-fn not_a_number(alloc: &AstAlloc) -> ast::Node<'_> {
-    alloc.enum_variant(NOT_A_NUMBER_TAG.into(), None)
-}
-
 fn mk_pos(file_id: Option<FileId>, start: usize, end: usize, char_index_map: &[usize]) -> TermPos {
     let start_byte = char_index_map.get(start).copied().unwrap_or(start);
     let end_byte = char_index_map.get(end).copied().unwrap_or(end);
@@ -293,6 +276,8 @@ impl<'ast> Loader<'ast> {
         // contract, but they can also handle them differently. We also don't want to silently
         // treating them as a string.
         fn parse_float<'a>(v: &str, alloc: &'a AstAlloc) -> Option<ast::Node<'a>> {
+            use super::float::ast::{minus_inf, not_a_number, plus_inf};
+
             match v {
                 ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => Some(plus_inf(alloc)),
                 "-.inf" | "-.Inf" | "-.INF" => Some(minus_inf(alloc)),
