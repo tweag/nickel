@@ -32,10 +32,10 @@ readme = "README.md"
 nickel-lang-core = { version = "0.19.0", path = "./core", default-features = false }
 nickel-lang-flock = { version = "0.1.0", path = "./flock" }
 nickel-lang-git = { version = "0.3.0", path = "./git" }
-nickel-lang-package = { version = "0.8.0", path = "./package", default-features = false }
-nickel-lang-parser = { version = "0.4.0", path = "./parser", default-features = false }
+nickel-lang-package = { version = "0.8.0", path = "./package" }
+nickel-lang-parser = { version = "0.4.0", path = "./parser" }
 nickel-lang-vector = { version = "0.2.0", path = "./vector" }
-nickel-lang-utils = { version = "0.1.0", path = "./utils", default-features = false }
+nickel-lang-utils = { version = "0.1.0", path = "./utils" }
 lsp-harness = { version = "0.1.0", path = "./lsp/lsp-harness" }
 
 # The nix flake pulls in wasm-bindgen tooling based on the version in Cargo.lock,
@@ -88,7 +88,6 @@ log = "0.4"
 logos = "0.16"
 lsp-server = "0.7"
 lsp-types = "0.95"
-malachite = "0.9"
 md-5 = "0.11"
 notify = "8"
 notify-debouncer-full = "0.7"

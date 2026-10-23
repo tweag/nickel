@@ -86,9 +86,8 @@ for f in *.o; do
 done
 
 # We've deleted all the .o files that had a bitcode section, but there are usually
-# some .o files left (I think some of them come from malachite's hand-written assembly,
-# for example). We need to be sure not to garbage-collect any symbols needed by those
-# remaining .o files.
+# some .o files left, for example from crates with hand-written assembly. We need to
+# be sure not to garbage-collect any symbols needed by those remaining .o files.
 llvm-nm ./*.o | grep ' U ' | awk '{print $2}' >> symlist.txt
 
 # Although macOS symbols start with an underscore, the `opt` command expects its

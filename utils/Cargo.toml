@@ -15,10 +15,6 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["malachite"]
-# The arithmetic backend of Nickel numbers. See the features of nickel-lang-parser.
-malachite = ["nickel-lang-core/malachite"]
-dashu = ["nickel-lang-core/dashu"]
 pprof = ["dep:pprof"]
 
 [dependencies]

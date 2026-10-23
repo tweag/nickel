@@ -63,10 +63,6 @@ tempfile.workspace = true
 test-generator.workspace = true
 
 [features]
-default = ["malachite"]
-# The arithmetic backend of Nickel numbers. See the features of nickel-lang-parser.
-malachite = ["nickel-lang-core/malachite"]
-dashu = ["nickel-lang-core/dashu"]
 nix-experimental = ["nickel-lang-core/nix-experimental"]
 
 [package.metadata.binstall]

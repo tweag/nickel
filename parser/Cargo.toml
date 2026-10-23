@@ -11,12 +11,6 @@ repository.workspace = true
 readme.workspace = true
 
 [features]
-default = ["malachite"]
-# The arithmetic backend of Nickel numbers. Exactly one is needed; if both are
-# enabled, malachite is used. malachite is licensed under the LGPL-3.0 and dashu
-# under MIT or Apache-2.0. Both give the same results.
-malachite = ["dep:malachite"]
-dashu = ["dep:dashu-base", "dep:dashu-float", "dep:dashu-int", "dep:dashu-ratio"]
 metrics = ["dep:metrics", "dep:metrics-util"]
 clap = ["dep:clap"]
 nix-experimental = []
@@ -26,14 +20,13 @@ bumpalo.workspace = true
 clap = { workspace = true, features = ["derive"], optional = true }
 codespan.workspace = true
 codespan-reporting.workspace = true
-dashu-base = { workspace = true, optional = true }
-dashu-float = { workspace = true, optional = true }
-dashu-int = { workspace = true, optional = true }
-dashu-ratio = { workspace = true, optional = true }
+dashu-base.workspace = true
+dashu-float.workspace = true
+dashu-int.workspace = true
+dashu-ratio.workspace = true
 indexmap.workspace = true
 lalrpop-util.workspace = true
 logos.workspace = true
-malachite = { workspace = true, optional = true }
 metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
 nickel-lang-vector.workspace = true
