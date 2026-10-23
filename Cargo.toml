@@ -64,6 +64,10 @@ crossbeam = "0.8"
 csv = "1"
 cxx = "1"
 cxx-build = "1"
+dashu-base = { version = "0.6", default-features = false, features = ["std"] }
+dashu-float = { version = "0.6", default-features = false, features = ["std"] }
+dashu-int = { version = "0.6", default-features = false, features = ["std"] }
+dashu-ratio = { version = "0.6", default-features = false, features = ["std", "dashu-float"] }
 directories = "6"
 env_logger = "0.11"
 git-version = "0.3"
@@ -84,8 +88,6 @@ log = "0.4"
 logos = "0.16"
 lsp-server = "0.7"
 lsp-types = "0.95"
-malachite = "0.9"
-malachite-q = "0.9"
 md-5 = "0.11"
 notify = "8"
 notify-debouncer-full = "0.7"

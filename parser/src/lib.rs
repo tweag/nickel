@@ -24,6 +24,7 @@ pub mod files;
 pub mod identifier;
 pub mod lexer;
 pub mod metrics;
+pub mod number;
 pub mod position;
 pub mod traverse;
 pub mod typ;

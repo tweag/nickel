@@ -43,14 +43,6 @@ use nickel_lang_parser::utils::parse_number_sci;
 #[cfg(feature = "metrics")]
 use crate::pretty::PrettyPrintCap;
 
-use malachite::{
-    Integer,
-    base::{
-        num::{arithmetic::traits::Pow, basic::traits::Zero, conversion::traits::RoundingFrom},
-        rounding_modes::RoundingMode,
-    },
-};
-
 use md5::digest::Digest as _;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
@@ -587,7 +579,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number");
                 };
 
-                if n < &Number::ZERO {
+                if n < &Number::zero() {
                     return Err(Box::new(EvalErrorKind::Other(
                         format!(
                             "array/generate expects its first argument to be a positive number, got {n}"
@@ -1483,7 +1475,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
         } = eval_data;
 
         if let Some(n) = value.as_number() {
-            let result_as_f64 = f(f64::rounding_from(n, RoundingMode::Nearest).0);
+            let result_as_f64 = f(n.to_f64());
             let result = Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                 Box::new(EvalErrorKind::Other(
                     format!(
@@ -1638,7 +1630,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                if n2 == &Number::ZERO {
+                if n2.is_zero() {
                     Err(Box::new(EvalErrorKind::Other(
                         String::from("division by zero"),
                         pos_op,
@@ -1656,7 +1648,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                if n2 == &Number::ZERO {
+                if n2.is_zero() {
                     return Err(Box::new(EvalErrorKind::Other(
                         String::from("division by zero (%)"),
                         pos2,
@@ -1664,7 +1656,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 }
 
                 // This is the equivalent of `truncate()` for `Number`
-                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
+                let quotient = (n1 / n2).trunc();
 
                 Ok(NickelValue::number(n1 - quotient * n2, pos_op_inh).into())
             }
@@ -1677,8 +1669,8 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                let y = f64::rounding_from(n1, RoundingMode::Nearest).0;
-                let x = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                let y = n1.to_f64();
+                let x = n2.to_f64();
 
                 let result_as_f64 = y.atan2(x);
 
@@ -1704,14 +1696,14 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                     return mk_type_error!("Number", 2, value2);
                 };
 
-                let n = f64::rounding_from(n1, RoundingMode::Nearest).0;
+                let n = n1.to_f64();
 
-                let result_as_f64 = if n2 == &2 {
+                let result_as_f64 = if n2 == &Number::from(2) {
                     n.log2()
                 } else if n2 == &Number::from(10) {
                     n.log10()
                 } else {
-                    let base = f64::rounding_from(n2, RoundingMode::Nearest).0;
+                    let base = n2.to_f64();
                     n.log(base)
                 };
 
@@ -1750,9 +1742,7 @@ impl<'ctxt, R: ImportResolver, C: Cache> VirtualMachine<'ctxt, R, C> {
                 let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
                     n1.pow(n2_as_i64)
                 } else {
-                    let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
-                        .0
-                        .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
+                    let result_as_f64 = n1.to_f64().powf(n2.to_f64());
                     // The following conversion fails if the result is NaN or +/-infinity
                     Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                         Box::new(EvalErrorKind::Other(

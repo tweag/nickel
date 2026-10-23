@@ -18,7 +18,6 @@ use crate::{
     typ::Type,
 };
 
-use malachite::base::num::conversion::traits::ToSci as _;
 use nickel_lang_vector::Slice;
 use std::{
     alloc::{Layout, alloc, dealloc},
@@ -1288,7 +1287,7 @@ impl NickelValue {
             | DataTag::SealingKey
             | DataTag::Label
             | DataTag::String => true,
-            DataTag::Number => self.as_value_data::<NumberData>().unwrap() >= &0,
+            DataTag::Number => self.as_value_data::<NumberData>().unwrap() >= &Number::zero(),
             DataTag::EnumVariant => self
                 .as_value_data::<EnumVariantData>()
                 .unwrap()

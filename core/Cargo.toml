@@ -80,8 +80,6 @@ pretty.workspace = true
 comrak = { workspace = true, optional = true, features = [] }
 once_cell.workspace = true
 typed-arena.workspace = true
-malachite = { workspace = true, features = ["enable_serde"] }
-malachite-q.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 strip-ansi-escapes.workspace = true
 

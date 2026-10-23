@@ -13,13 +13,7 @@ use serde::{
     ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
-use malachite::base::{
-    num::{
-        basic::floats::PrimitiveFloat,
-        conversion::traits::{IsInteger, RoundingFrom},
-    },
-    rounding_modes::RoundingMode,
-};
+use nickel_lang_parser::number::Float;
 use once_cell::sync::Lazy;
 
 use std::{fmt, io};
@@ -122,7 +116,7 @@ where
     S: Serializer,
 {
     if n.is_integer() {
-        if *n < 0 {
+        if *n < Number::zero() {
             if let Ok(n_as_integer) = i64::try_from(n) {
                 return n_as_integer.serialize(serializer);
             }
@@ -131,25 +125,19 @@ where
         }
     }
 
-    f64::rounding_from(n, RoundingMode::Nearest)
-        .0
-        .serialize(serializer)
+    n.to_f64().serialize(serializer)
 }
 
 /// Helper function to convert a serialized primitive float to a Nickel number.
 ///
 /// Returns special non-number constants (enum tags) if the floating point value is either
 /// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
-fn deserialize_float<F: PrimitiveFloat>(float_value: F) -> NickelValue
-where
-    Number: TryFrom<
-            F,
-            Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
-        >,
-{
+fn deserialize_float<F: Float>(float_value: F) -> NickelValue {
     Number::try_from_float_simplest(float_value)
         .map(NickelValue::number_posless)
-        .unwrap_or_else(|_| if float_value.is_nan() {
+        .unwrap_or_else(|_| {
+            let float_value: f64 = float_value.into();
+            if float_value.is_nan() {
             not_a_number()
         } else if float_value.is_infinite() && float_value.is_sign_negative() {
             minus_inf()
@@ -157,7 +145,7 @@ where
             plus_inf()
         } else {
             unreachable!("conversion from float value {float_value} failed, but it was neither +inf, -inf nor NaN")
-        })
+        }})
 }
 
 /// Serializer for annotated values.
@@ -660,10 +648,12 @@ pub mod toml_deser {
         files::FileId,
         identifier::LocIdent,
         position::{PosTable, RawSpan, TermPos},
-        term::record::{RecordAttrs, RecordData},
+        term::{
+            Number,
+            record::{RecordAttrs, RecordData},
+        },
     };
     use codespan::ByteIndex;
-    use malachite::{base::num::conversion::traits::ExactFrom as _, rational::Rational};
     use nickel_lang_parser::ast::{
         Ast, AstAlloc, Node,
         record::{FieldDef, FieldMetadata, FieldPathElem},
@@ -719,7 +709,9 @@ pub mod toml_deser {
             match self {
                 Value::String(s) => NickelValue::string_posless(s.value()),
                 Value::Integer(i) => NickelValue::number_posless(*i.value()),
-                Value::Float(f) => NickelValue::number_posless(Rational::exact_from(*f.value())),
+                Value::Float(f) => {
+                    NickelValue::number_posless(Number::try_from(*f.value()).unwrap())
+                }
                 Value::Boolean(b) => NickelValue::bool_value_posless(*b.value()),
                 Value::Array(vs) => NickelValue::array_posless(
                     vs.iter()
@@ -831,7 +823,7 @@ pub mod toml_deser {
             let node = match self {
                 Value::String(s) => alloc.string(s.value()),
                 Value::Integer(i) => alloc.number((*i.value()).into()),
-                Value::Float(f) => alloc.number(Rational::exact_from(*f.value())),
+                Value::Float(f) => alloc.number(Number::try_from(*f.value()).unwrap()),
                 Value::Boolean(b) => Node::Bool(*b.value()),
                 Value::Datetime(dt) => alloc.string(&dt.to_string()),
                 Value::Array(array) => alloc.array(
@@ -944,6 +936,35 @@ mod tests {
         assert_nickel_eq(&mut vm_ctxt, from_json, evaluated.clone());
         assert_nickel_eq(&mut vm_ctxt, from_yaml, evaluated.clone());
         assert_nickel_eq(&mut vm_ctxt, from_toml, evaluated);
+    }
+
+    #[test]
+    fn numbers() {
+        assert_json_eq("1/3", 0.3333333333333333);
+        assert_json_eq("0.1 + 0.2", 0.3);
+        assert_json_eq("9223372036854775807", i64::MAX);
+        assert_json_eq("-9223372036854775808", i64::MIN);
+        assert_json_eq("18446744073709551615", u64::MAX);
+        assert_json_eq("18446744073709551616", 18446744073709551616.0);
+        assert_json_eq("-9223372036854775809", -9223372036854775809.0);
+        assert_json_eq("-1e-400", -0.0);
+
+        for (json, expected) in [
+            ("0.1", "1/10"),
+            ("-2.75", "-11/4"),
+            ("123456.789", "123456789/1000"),
+            (
+                "1e300",
+                "1000000000000000052504760255204420248704468581108159154915854115511802457988908195786371375080447864043704443832883878176942523235360430575644792184786706982848387200926575803737830233794788090059368953234970799945081119038967640880074652742780142494579258788820056842838115669472196386865459400540160",
+            ),
+            ("18446744073709551616", "18446744073709551616"),
+            ("-9223372036854775808", "-9223372036854775808"),
+        ] {
+            let value: NickelValue = serde_json::from_str(json).unwrap();
+            assert_eq!(value.as_number().unwrap().to_string(), expected, "{json}");
+        }
+
+        assert_involutory("{a = 1/3, b = -2.5, c = 1e20, d = 0.1, e = 18446744073709551615}");
     }
 
     #[test]

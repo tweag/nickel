@@ -20,10 +20,13 @@ bumpalo.workspace = true
 clap = { workspace = true, features = ["derive"], optional = true }
 codespan.workspace = true
 codespan-reporting.workspace = true
+dashu-base.workspace = true
+dashu-float.workspace = true
+dashu-int.workspace = true
+dashu-ratio.workspace = true
 indexmap.workspace = true
 lalrpop-util.workspace = true
 logos.workspace = true
-malachite.workspace = true
 metrics = { workspace = true, optional = true }
 metrics-util = { workspace = true, optional = true }
 nickel-lang-vector.workspace = true

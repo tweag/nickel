@@ -1,6 +1,5 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
-use malachite::base::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 use std::{ffi::OsString, io::Cursor, iter::ExactSizeIterator};
 
 use serde::de::{
@@ -19,24 +18,37 @@ use crate::{
     },
     identifier::LocIdent,
     program::{Program, ProgramBuilder},
-    term::{IndexMap, record::Field},
+    term::{IndexMap, Number, record::Field},
 };
 
 macro_rules! deserialize_number {
-    ($method:ident, $type:tt, $visit:ident) => {
+    ($method:ident, $visit:ident, $convert:expr) => {
         fn $method<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
         {
             match self.content_ref() {
                 ValueContentRef::Number(n) => {
-                    return visitor.$visit($type::rounding_from(n, RoundingMode::Nearest).0);
+                    return visitor.$visit($convert(n));
                 }
                 _ => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
                     occurred: self.type_of().unwrap_or("Other").to_owned(),
                 }),
             }
+        }
+    };
+}
+
+macro_rules! round_saturating {
+    ($type:ty) => {
+        |n: &Number| {
+            let n = n.round_ties_even();
+            <$type>::try_from(&n).unwrap_or(if n < Number::zero() {
+                <$type>::MIN
+            } else {
+                <$type>::MAX
+            })
         }
     };
 }
@@ -178,9 +190,7 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         match self.content() {
             ValueContent::Null(_) => visitor.visit_unit(),
             ValueContent::Bool(lens) => visitor.visit_bool(lens.take()),
-            ValueContent::Number(lens) => {
-                visitor.visit_f64(f64::rounding_from(lens.take(), RoundingMode::Nearest).0)
-            }
+            ValueContent::Number(lens) => visitor.visit_f64(lens.take().to_f64()),
             ValueContent::String(lens) => visitor.visit_string(lens.take().into_inner()),
             ValueContent::EnumVariant(lens) => {
                 let enum_variant = lens.take();
@@ -198,18 +208,18 @@ impl<'de> serde::Deserializer<'de> for NickelValue {
         }
     }
 
-    deserialize_number!(deserialize_i8, i8, visit_i8);
-    deserialize_number!(deserialize_i16, i16, visit_i16);
-    deserialize_number!(deserialize_i32, i32, visit_i32);
-    deserialize_number!(deserialize_i64, i64, visit_i64);
-    deserialize_number!(deserialize_i128, i128, visit_i128);
-    deserialize_number!(deserialize_u8, u8, visit_u8);
-    deserialize_number!(deserialize_u16, u16, visit_u16);
-    deserialize_number!(deserialize_u32, u32, visit_u32);
-    deserialize_number!(deserialize_u64, u64, visit_u64);
-    deserialize_number!(deserialize_u128, u128, visit_u128);
-    deserialize_number!(deserialize_f32, f32, visit_f32);
-    deserialize_number!(deserialize_f64, f64, visit_f64);
+    deserialize_number!(deserialize_i8, visit_i8, round_saturating!(i8));
+    deserialize_number!(deserialize_i16, visit_i16, round_saturating!(i16));
+    deserialize_number!(deserialize_i32, visit_i32, round_saturating!(i32));
+    deserialize_number!(deserialize_i64, visit_i64, round_saturating!(i64));
+    deserialize_number!(deserialize_i128, visit_i128, round_saturating!(i128));
+    deserialize_number!(deserialize_u8, visit_u8, round_saturating!(u8));
+    deserialize_number!(deserialize_u16, visit_u16, round_saturating!(u16));
+    deserialize_number!(deserialize_u32, visit_u32, round_saturating!(u32));
+    deserialize_number!(deserialize_u64, visit_u64, round_saturating!(u64));
+    deserialize_number!(deserialize_u128, visit_u128, round_saturating!(u128));
+    deserialize_number!(deserialize_f32, visit_f32, Number::to_f32);
+    deserialize_number!(deserialize_f64, visit_f64, Number::to_f64);
 
     /// Deserialize nullable field.
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>

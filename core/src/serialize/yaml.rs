@@ -300,9 +300,7 @@ impl<'ast> Loader<'ast> {
                 // `f64::from_str` will succeed on "NaN" and "inf". Since those aren't
                 // valid YAML floats, we want to skip them.
                 _ if v.as_bytes().iter().any(u8::is_ascii_digit) => {
-                    use malachite::base::num::conversion::traits::FromSciString;
-                    let n = Number::from_sci_string(v);
-                    n.map(|n| alloc.number(n))
+                    Number::from_sci_str(v).map(|n| alloc.number(n))
                 }
                 _ => None,
             }
