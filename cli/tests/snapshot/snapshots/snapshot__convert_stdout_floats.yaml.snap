@@ -1,0 +1,9 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  plus_inf = 'PlusInfinity,
+  minus_inf = 'MinusInfinity,
+  not_a_number = 'NotANumber
+}

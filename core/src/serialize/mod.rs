@@ -14,10 +14,7 @@ use serde::{
 };
 
 use malachite::base::{
-    num::{
-        basic::floats::PrimitiveFloat,
-        conversion::traits::{IsInteger, RoundingFrom},
-    },
+    num::conversion::traits::{IsInteger, RoundingFrom},
     rounding_modes::RoundingMode,
 };
 use once_cell::sync::Lazy;
@@ -87,24 +84,103 @@ impl fmt::Display for ParseFormatError {
     }
 }
 
-// Enum tags used for non-representable float values.
-const PLUS_INF_TAG: &str = "PlusInfinity";
-const MINUS_INF_TAG: &str = "MinusInfinity";
-const NOT_A_NUMBER_TAG: &str = "NotANumber";
+// Float deserialization, and in particular the handling of floats that are not representable as
+// Nickel number (NaN and infs)
+mod float {
+    use malachite::base::num::basic::floats::PrimitiveFloat;
 
-/// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
-fn plus_inf() -> NickelValue {
-    NickelValue::enum_tag_posless(PLUS_INF_TAG)
-}
+    // Enum tags used for non-representable float values.
+    const PLUS_INF_TAG: &str = "PlusInfinity";
+    const MINUS_INF_TAG: &str = "MinusInfinity";
+    const NOT_A_NUMBER_TAG: &str = "NotANumber";
 
-/// The constant Nickel value we use to deserialize `-inf` float values.
-fn minus_inf() -> NickelValue {
-    NickelValue::enum_tag_posless(MINUS_INF_TAG)
-}
+    pub mod value {
+        use super::{MINUS_INF_TAG, NOT_A_NUMBER_TAG, PLUS_INF_TAG, PrimitiveFloat};
+        use crate::{eval::value::NickelValue, term::Number};
 
-/// The constant Nickel value we use to deserialize `NaN` float values.
-fn not_a_number() -> NickelValue {
-    NickelValue::enum_tag_posless(NOT_A_NUMBER_TAG)
+        /// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
+        pub fn plus_inf() -> NickelValue {
+            NickelValue::enum_tag_posless(PLUS_INF_TAG)
+        }
+
+        /// The constant Nickel value we use to deserialize `-inf` float values.
+        pub fn minus_inf() -> NickelValue {
+            NickelValue::enum_tag_posless(MINUS_INF_TAG)
+        }
+
+        /// The constant Nickel value we use to deserialize `NaN` float values.
+        pub fn not_a_number() -> NickelValue {
+            NickelValue::enum_tag_posless(NOT_A_NUMBER_TAG)
+        }
+
+        /// Helper function to convert a serialized primitive float to a Nickel number.
+        ///
+        /// Returns special non-number constants (enum tags) if the floating point value is either
+        /// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
+        pub fn deserialize_float<F: PrimitiveFloat>(f: F) -> NickelValue
+        where
+            Number: TryFrom<
+                    F,
+                    Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
+                >,
+{
+            Number::try_from_float_simplest(f)
+                .map(NickelValue::number_posless)
+                .unwrap_or_else(|_| if f.is_nan() {
+                    not_a_number()
+                } else if f.is_infinite() && f.is_sign_negative() {
+                    minus_inf()
+                } else if f.is_infinite() {
+                    plus_inf()
+                } else {
+                    unreachable!("conversion from float value {f} failed, but it was neither +inf, -inf nor NaN")
+                })
+        }
+    }
+
+    pub(super) mod ast {
+        use super::{MINUS_INF_TAG, NOT_A_NUMBER_TAG, PLUS_INF_TAG, PrimitiveFloat};
+        use crate::ast::{AstAlloc, Node, Number};
+
+        /// The constant Nickel value we use to deserialize `inf`/`+inf` float values.
+        pub fn plus_inf(alloc: &AstAlloc) -> Node<'_> {
+            alloc.enum_variant(PLUS_INF_TAG.into(), None)
+        }
+
+        /// The constant Nickel value we use to deserialize `-inf` float values.
+        pub fn minus_inf(alloc: &AstAlloc) -> Node<'_> {
+            alloc.enum_variant(MINUS_INF_TAG.into(), None)
+        }
+
+        /// The constant Nickel value we use to deserialize `NaN` float values.
+        pub fn not_a_number(alloc: &AstAlloc) -> Node<'_> {
+            alloc.enum_variant(NOT_A_NUMBER_TAG.into(), None)
+        }
+
+        /// Helper function to convert a serialized primitive float to a Nickel number.
+        ///
+        /// Returns special non-number constants (enum tags) if the floating point value is either
+        /// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
+        pub fn deserialize_float<F: PrimitiveFloat>(alloc: &AstAlloc, f: F) -> Node<'_>
+        where
+            Number: TryFrom<
+                    F,
+                    Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
+                >,
+{
+            Number::try_from_float_simplest(f)
+                .map(|n| alloc.number(n))
+                .unwrap_or_else(|_| if f.is_nan() {
+                    not_a_number(alloc)
+                } else if f.is_infinite() && f.is_sign_negative() {
+                    minus_inf(alloc)
+                } else if f.is_infinite() {
+                    plus_inf(alloc)
+                } else {
+                    unreachable!("conversion from float value {f} failed, but it was neither +inf, -inf nor NaN")
+                })
+        }
+    }
 }
 
 /// Implicitly convert numbers to primitive integers when possible, and serialize an exact
@@ -134,30 +210,6 @@ where
     f64::rounding_from(n, RoundingMode::Nearest)
         .0
         .serialize(serializer)
-}
-
-/// Helper function to convert a serialized primitive float to a Nickel number.
-///
-/// Returns special non-number constants (enum tags) if the floating point value is either
-/// NaN or infinity, which is why the return value is a generic `NickelValue` and not a `Number`.
-fn deserialize_float<F: PrimitiveFloat>(float_value: F) -> NickelValue
-where
-    Number: TryFrom<
-            F,
-            Error = malachite_q::conversion::from_primitive_float::RationalFromPrimitiveFloatError,
-        >,
-{
-    Number::try_from_float_simplest(float_value)
-        .map(NickelValue::number_posless)
-        .unwrap_or_else(|_| if float_value.is_nan() {
-            not_a_number()
-        } else if float_value.is_infinite() && float_value.is_sign_negative() {
-            minus_inf()
-        } else if float_value.is_infinite() {
-            plus_inf()
-        } else {
-            unreachable!("conversion from float value {float_value} failed, but it was neither +inf, -inf nor NaN")
-        })
 }
 
 /// Serializer for annotated values.
@@ -303,14 +355,14 @@ impl<'de> Deserialize<'de> for NickelValue {
             where
                 E: serde::de::Error,
             {
-                Ok(deserialize_float(v))
+                Ok(float::value::deserialize_float(v))
             }
 
             fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(deserialize_float(v))
+                Ok(float::value::deserialize_float(v))
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -663,7 +715,6 @@ pub mod toml_deser {
         term::record::{RecordAttrs, RecordData},
     };
     use codespan::ByteIndex;
-    use malachite::{base::num::conversion::traits::ExactFrom as _, rational::Rational};
     use nickel_lang_parser::ast::{
         Ast, AstAlloc, Node,
         record::{FieldDef, FieldMetadata, FieldPathElem},
@@ -719,7 +770,7 @@ pub mod toml_deser {
             match self {
                 Value::String(s) => NickelValue::string_posless(s.value()),
                 Value::Integer(i) => NickelValue::number_posless(*i.value()),
-                Value::Float(f) => NickelValue::number_posless(Rational::exact_from(*f.value())),
+                Value::Float(f) => super::float::value::deserialize_float(*f.value()),
                 Value::Boolean(b) => NickelValue::bool_value_posless(*b.value()),
                 Value::Array(vs) => NickelValue::array_posless(
                     vs.iter()
@@ -831,7 +882,7 @@ pub mod toml_deser {
             let node = match self {
                 Value::String(s) => alloc.string(s.value()),
                 Value::Integer(i) => alloc.number((*i.value()).into()),
-                Value::Float(f) => alloc.number(Rational::exact_from(*f.value())),
+                Value::Float(f) => super::float::ast::deserialize_float(alloc, *f.value()),
                 Value::Boolean(b) => Node::Bool(*b.value()),
                 Value::Datetime(dt) => alloc.string(&dt.to_string()),
                 Value::Array(array) => alloc.array(

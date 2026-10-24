@@ -1,0 +1,5 @@
+{
+  plus_inf: .inf,
+  minus_inf: -.INF,
+  not_a_number: .nan,
+}
